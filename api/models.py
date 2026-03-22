@@ -25,6 +25,8 @@ class Session(Base):
     user_id = Column(Integer, ForeignKey("users.id"))
     created_at = Column(DateTime, default=datetime.utcnow)
     status = Column(String, default="created")  # created, running, completed, error
+    title = Column(String, nullable=True)
+    rounds = Column(Integer, default=1)
     inputs_path = Column(String)  # path to seed documents
     outputs_path = Column(String) # path to simulation outputs
 

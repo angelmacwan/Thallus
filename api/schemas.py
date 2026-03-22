@@ -23,6 +23,8 @@ class SessionResponse(BaseModel):
     session_id: str
     created_at: datetime
     status: str
+    title: Optional[str]
+    rounds: int
     inputs_path: str
     outputs_path: str
 

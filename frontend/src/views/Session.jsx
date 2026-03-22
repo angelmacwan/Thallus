@@ -3,15 +3,8 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../api';
-import {
-	RefreshCw,
-	Send,
-	Network,
-	Users,
-	Link2,
-	Info,
-	ArrowLeft,
-} from 'lucide-react';
+import { useSidebar } from '../SidebarContext';
+import { RefreshCw, Send, Network, Users, Link2, Info } from 'lucide-react';
 
 // ─── Event log icons ──────────────────────────────────────────────────────────
 const EVENT_ICONS = {
@@ -625,6 +618,20 @@ export default function SessionView() {
 	const [dbEvents, setDbEvents] = useState([]);
 	const messagesEndRef = useRef(null);
 	const logEndRef = useRef(null);
+	const { setSessionNav } = useSidebar();
+
+	useEffect(() => {
+		const agentCount = (artifacts.agents || []).length;
+		const relationCount = ((artifacts.graph || {}).relations || []).length;
+		setSessionNav({
+			activeTab,
+			setActiveTab,
+			agentCount,
+			relationCount,
+			session,
+		});
+		return () => setSessionNav(null);
+	}, [activeTab, artifacts, session]);
 
 	useEffect(() => {
 		fetchData();
@@ -750,49 +757,6 @@ export default function SessionView() {
 	const graph = artifacts.graph || { entities: {}, relations: [] };
 	const relations = graph.relations || [];
 
-	const tabs = [
-		{
-			id: 'graph',
-			label: 'Graph',
-			icon: (
-				<Network
-					size={13}
-					style={{ marginRight: 3 }}
-				/>
-			),
-		},
-		{
-			id: 'agents',
-			label: `Agents (${agents.length})`,
-			icon: (
-				<Users
-					size={13}
-					style={{ marginRight: 3 }}
-				/>
-			),
-		},
-		{
-			id: 'relations',
-			label: `Relations (${relations.length})`,
-			icon: (
-				<Link2
-					size={13}
-					style={{ marginRight: 3 }}
-				/>
-			),
-		},
-		{
-			id: 'info',
-			label: 'Info',
-			icon: (
-				<Info
-					size={13}
-					style={{ marginRight: 3 }}
-				/>
-			),
-		},
-	];
-
 	return (
 		<div
 			className="fade-in"
@@ -866,8 +830,8 @@ export default function SessionView() {
 							</div>
 							<div
 								style={{
-									background: '#1a1208',
-									border: '2px solid rgba(232,114,10,0.2)',
+									background: 'var(--primary)',
+									border: '1px solid var(--primary-container)',
 									borderRadius: '8px',
 									padding: '0.85rem',
 									fontFamily: 'monospace',
@@ -875,7 +839,7 @@ export default function SessionView() {
 									lineHeight: 1.65,
 									flex: 1,
 									overflowY: 'auto',
-									color: '#d4c8bc',
+									color: 'var(--primary-fixed)',
 								}}
 							>
 								{liveLog.length === 0 && (
@@ -940,29 +904,9 @@ export default function SessionView() {
 								Simulation failed. Check the backend logs for
 								details.
 							</span>
-							<button
-								onClick={() => navigate('/')}
-								style={{
-									display: 'flex',
-									alignItems: 'center',
-									gap: '0.4rem',
-									padding: '0.45rem 0.85rem',
-									borderRadius: '7px',
-									border: '1px solid rgba(220,38,38,0.3)',
-									background: 'rgba(220,38,38,0.1)',
-									color: 'var(--danger-color)',
-									cursor: 'pointer',
-									fontSize: '0.82rem',
-									fontWeight: 600,
-								}}
-							>
-								<ArrowLeft size={14} />
-								Back
-							</button>
 						</div>
 					)}
 
-					{/* Completed: tabs */}
 					{session.status === 'completed' && (
 						<div
 							className="card"
@@ -975,41 +919,6 @@ export default function SessionView() {
 								overflowY: 'auto',
 							}}
 						>
-							<div
-								style={{
-									display: 'flex',
-									alignItems: 'center',
-									gap: '0.5rem',
-								}}
-							>
-								<button
-									onClick={() => navigate('/')}
-									title="Back"
-									style={{
-										display: 'flex',
-										alignItems: 'center',
-										justifyContent: 'center',
-										width: 32,
-										height: 32,
-										flexShrink: 0,
-										borderRadius: '7px',
-										border: '1px solid var(--border-color)',
-										background: '#fdf7f2',
-										color: 'var(--text-secondary)',
-										cursor: 'pointer',
-									}}
-								>
-									<ArrowLeft size={15} />
-								</button>
-								<div style={{ flex: 1 }}>
-									<Tabs
-										tabs={tabs}
-										active={activeTab}
-										onChange={setActiveTab}
-									/>
-								</div>
-							</div>
-
 							{/* Graph */}
 							{activeTab === 'graph' &&
 								(agents.length === 0 ? (
@@ -1060,9 +969,10 @@ export default function SessionView() {
 												alignItems: 'center',
 												gap: '0.75rem',
 												padding: '0.6rem 0.75rem',
-												background: '#fdf7f2',
+												background:
+													'var(--surface-container-low)',
 												borderRadius: '8px',
-												border: '1px solid var(--border-color)',
+												border: '1px solid var(--outline-variant)',
 											}}
 										>
 											<div
@@ -1155,9 +1065,10 @@ export default function SessionView() {
 												gap: '0.5rem',
 												fontSize: '0.78rem',
 												padding: '0.4rem 0.65rem',
-												background: '#fdf7f2',
+												background:
+													'var(--surface-container-low)',
 												borderRadius: '6px',
-												border: '1px solid var(--border-color)',
+												border: '1px solid var(--outline-variant)',
 											}}
 										>
 											<span
@@ -1218,8 +1129,9 @@ export default function SessionView() {
 									{/* Session metadata */}
 									<div
 										style={{
-											background: '#fdf7f2',
-											border: '1px solid var(--border-color)',
+											background:
+												'var(--surface-container-low)',
+											border: '1px solid var(--outline-variant)',
 											borderRadius: '8px',
 											padding: '0.85rem',
 											display: 'flex',
@@ -1330,8 +1242,8 @@ export default function SessionView() {
 									</div>
 									<div
 										style={{
-											background: '#1a1208',
-											border: '2px solid rgba(232,114,10,0.2)',
+											background: 'var(--primary)',
+											border: '1px solid var(--primary-container)',
 											borderRadius: '8px',
 											padding: '0.85rem',
 											fontFamily: 'monospace',
@@ -1339,7 +1251,7 @@ export default function SessionView() {
 											lineHeight: 1.65,
 											flex: 1,
 											overflowY: 'auto',
-											color: '#d4c8bc',
+											color: 'var(--primary-fixed)',
 											minHeight: '8rem',
 										}}
 									>
@@ -1456,8 +1368,8 @@ export default function SessionView() {
 								flexDirection: 'column',
 								flex: 1,
 								minHeight: '480px',
-								background: '#faf7f4',
-								border: '1.5px solid var(--border-color)',
+								background: 'var(--surface-container-lowest)',
+								border: '1px solid var(--outline-variant)',
 								borderRadius: '12px',
 								overflow: 'hidden',
 							}}
@@ -1534,8 +1446,8 @@ export default function SessionView() {
 									gap: '0.5rem',
 									padding: '0.85rem',
 									borderTop:
-										'1.5px solid var(--border-color)',
-									background: '#fff',
+										'1px solid var(--outline-variant)',
+									background: 'var(--surface-container-low)',
 								}}
 							>
 								<input

@@ -22,8 +22,8 @@ def log_action(db: Session, user_id: int, action: str, details: str = None):
 def get_sessions_for_user(db: Session, user_id: int):
     return db.query(models.Session).filter(models.Session.user_id == user_id).order_by(models.Session.created_at.desc()).all()
 
-def create_session(db: Session, user_id: int, inputs_path: str, outputs_path: str):
-    db_session = models.Session(user_id=user_id, inputs_path=inputs_path, outputs_path=outputs_path)
+def create_session(db: Session, user_id: int, inputs_path: str, outputs_path: str, rounds: int = 1, title: str = None):
+    db_session = models.Session(user_id=user_id, inputs_path=inputs_path, outputs_path=outputs_path, rounds=rounds, title=title)
     db.add(db_session)
     db.commit()
     db.refresh(db_session)
