@@ -1163,7 +1163,9 @@ export default function SessionView() {
 	useEffect(() => {
 		if (session?.status !== 'running') return;
 		const token = localStorage.getItem('token');
-		const url = `http://localhost:8000/api/simulation/stream/${id}?token=${encodeURIComponent(token)}`;
+		const base =
+			import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
+		const url = `${base}/simulation/stream/${id}?token=${encodeURIComponent(token)}`;
 		const es = new EventSource(url);
 		es.onmessage = (e) => {
 			try {
