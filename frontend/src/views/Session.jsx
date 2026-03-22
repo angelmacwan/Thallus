@@ -1,7 +1,17 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useParams } from 'react-router-dom';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import { useParams, useNavigate } from 'react-router-dom';
 import api from '../api';
-import { RefreshCw, Send, Network, Users, Link2, Info } from 'lucide-react';
+import {
+	RefreshCw,
+	Send,
+	Network,
+	Users,
+	Link2,
+	Info,
+	ArrowLeft,
+} from 'lucide-react';
 
 // ─── Event log icons ──────────────────────────────────────────────────────────
 const EVENT_ICONS = {
@@ -600,6 +610,7 @@ function ForceGraph({ agents, graph }) {
 // ─── Main view ────────────────────────────────────────────────────────────────
 export default function SessionView() {
 	const { id } = useParams();
+	const navigate = useNavigate();
 	const [session, setSession] = useState(null);
 	const [messages, setMessages] = useState([]);
 	const [query, setQuery] = useState('');
@@ -914,15 +925,40 @@ export default function SessionView() {
 					{session.status === 'error' && (
 						<div
 							style={{
-								padding: '1rem',
+								display: 'flex',
+								flexDirection: 'column',
+								alignItems: 'flex-start',
+								gap: '1rem',
+								padding: '1.25rem',
 								background: 'rgba(220,38,38,0.07)',
 								border: '1px solid rgba(220,38,38,0.2)',
 								borderRadius: '8px',
 								color: 'var(--danger-color)',
 							}}
 						>
-							Simulation failed. Check the backend logs for
-							details.
+							<span>
+								Simulation failed. Check the backend logs for
+								details.
+							</span>
+							<button
+								onClick={() => navigate('/')}
+								style={{
+									display: 'flex',
+									alignItems: 'center',
+									gap: '0.4rem',
+									padding: '0.45rem 0.85rem',
+									borderRadius: '7px',
+									border: '1px solid rgba(220,38,38,0.3)',
+									background: 'rgba(220,38,38,0.1)',
+									color: 'var(--danger-color)',
+									cursor: 'pointer',
+									fontSize: '0.82rem',
+									fontWeight: 600,
+								}}
+							>
+								<ArrowLeft size={14} />
+								Back
+							</button>
 						</div>
 					)}
 
@@ -939,11 +975,40 @@ export default function SessionView() {
 								overflowY: 'auto',
 							}}
 						>
-							<Tabs
-								tabs={tabs}
-								active={activeTab}
-								onChange={setActiveTab}
-							/>
+							<div
+								style={{
+									display: 'flex',
+									alignItems: 'center',
+									gap: '0.5rem',
+								}}
+							>
+								<button
+									onClick={() => navigate('/')}
+									title="Back"
+									style={{
+										display: 'flex',
+										alignItems: 'center',
+										justifyContent: 'center',
+										width: 32,
+										height: 32,
+										flexShrink: 0,
+										borderRadius: '7px',
+										border: '1px solid var(--border-color)',
+										background: '#fdf7f2',
+										color: 'var(--text-secondary)',
+										cursor: 'pointer',
+									}}
+								>
+									<ArrowLeft size={15} />
+								</button>
+								<div style={{ flex: 1 }}>
+									<Tabs
+										tabs={tabs}
+										active={activeTab}
+										onChange={setActiveTab}
+									/>
+								</div>
+							</div>
 
 							{/* Graph */}
 							{activeTab === 'graph' &&
@@ -1434,18 +1499,11 @@ export default function SessionView() {
 										key={msg.id || idx}
 										className={`chat-bubble ${msg.is_user ? 'user' : 'agent'}`}
 									>
-										{msg.is_user ? (
-											msg.text
-										) : (
-											<div
-												dangerouslySetInnerHTML={{
-													__html: msg.text.replace(
-														/\n/g,
-														'<br/>',
-													),
-												}}
-											/>
-										)}
+										<ReactMarkdown
+											remarkPlugins={[remarkGfm]}
+										>
+											{msg.text}
+										</ReactMarkdown>
 									</div>
 								))}
 								{chatLoading && (
