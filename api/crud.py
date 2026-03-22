@@ -19,6 +19,13 @@ def log_action(db: Session, user_id: int, action: str, details: str = None):
     db.commit()
     return log
 
+def log_unauthorized_register(db: Session, email: str):
+    attempt = models.UnauthorizedRegisterAttempt(email=email)
+    db.add(attempt)
+    db.commit()
+    return attempt
+
+
 def get_sessions_for_user(db: Session, user_id: int):
     return db.query(models.Session).filter(models.Session.user_id == user_id).order_by(models.Session.created_at.desc()).all()
 

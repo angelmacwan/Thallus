@@ -73,6 +73,15 @@ class SimulationEvent(Base):
     session = relationship("Session", back_populates="events")
 
 
+class UnauthorizedRegisterAttempt(Base):
+    __tablename__ = "unauthorized_register_attempts"
+
+    id = Column(Integer, primary_key=True, index=True)
+    email = Column(String, index=True)
+    timestamp = Column(DateTime, default=datetime.utcnow)
+    ip_address = Column(String, nullable=True)
+
+
 class Report(Base):
     __tablename__ = "reports"
 
