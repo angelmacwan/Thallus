@@ -91,7 +91,7 @@ export default function Home() {
 		>
 			{/* ── Left: Simulation list ─────────────────────────────── */}
 			<section>
-				<h2 style={{ marginBottom: '1.25rem' }}>Your Simulations</h2>
+				<h1 style={{ marginBottom: '1.25rem' }}>Your Simulations</h1>
 
 				{loading ? (
 					<p style={{ color: 'var(--text-secondary)' }}>Loading…</p>
@@ -546,6 +546,22 @@ export default function Home() {
 							{uploading ? 'Initializing…' : 'INITIALIZE ENGINE'}
 						</button>
 					</form>
+				</div>
+
+				<div
+					style={{
+						marginTop: '1.25rem',
+						textAlign: 'center',
+						fontSize: '0.72rem',
+						color: 'var(--text-secondary)',
+						lineHeight: 1.6,
+					}}
+				>
+					<p style={{ margin: 0, fontWeight: 600 }}>
+						Created by StaticaLabs Internal
+					</p>
+					<p style={{ margin: 0 }}>angelmacwan@staticalabs.com</p>
+					<p>ALPHA</p>
 				</div>
 			</aside>
 		</div>
