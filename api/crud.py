@@ -22,8 +22,8 @@ def log_action(db: Session, user_id: int, action: str, details: str = None):
 def get_sessions_for_user(db: Session, user_id: int):
     return db.query(models.Session).filter(models.Session.user_id == user_id).order_by(models.Session.created_at.desc()).all()
 
-def create_session(db: Session, user_id: int, inputs_path: str, outputs_path: str):
-    db_session = models.Session(user_id=user_id, inputs_path=inputs_path, outputs_path=outputs_path)
+def create_session(db: Session, user_id: int, inputs_path: str, outputs_path: str, rounds: int = 1, title: str = None):
+    db_session = models.Session(user_id=user_id, inputs_path=inputs_path, outputs_path=outputs_path, rounds=rounds, title=title)
     db.add(db_session)
     db.commit()
     db.refresh(db_session)
@@ -44,3 +44,48 @@ def get_simulation_events(db: Session, session_id: int):
     return db.query(models.SimulationEvent).filter(
         models.SimulationEvent.session_id == session_id
     ).order_by(models.SimulationEvent.id).all()
+
+
+def create_report(db: Session, session_db_id: int, user_id: int, title: str, description: str, file_path: str, report_uuid: str):
+    report = models.Report(
+        report_id=report_uuid,
+        session_id=session_db_id,
+        user_id=user_id,
+        title=title,
+        description=description,
+        file_path=file_path,
+    )
+    db.add(report)
+    db.commit()
+    db.refresh(report)
+    return report
+
+
+def get_reports_for_user(db: Session, user_id: int):
+    return (
+        db.query(models.Report)
+        .filter(models.Report.user_id == user_id)
+        .order_by(models.Report.created_at.desc())
+        .all()
+    )
+
+
+def get_report_by_uuid(db: Session, report_id: str):
+    return db.query(models.Report).filter(models.Report.report_id == report_id).first()
+
+
+def get_reports_for_session(db: Session, session_uuid: str):
+    db_session = db.query(models.Session).filter(models.Session.session_id == session_uuid).first()
+    if not db_session:
+        return []
+    return (
+        db.query(models.Report)
+        .filter(models.Report.session_id == db_session.id)
+        .order_by(models.Report.created_at.desc())
+        .all()
+    )
+
+
+def delete_report(db: Session, report: models.Report):
+    db.delete(report)
+    db.commit()

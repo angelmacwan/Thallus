@@ -106,6 +106,7 @@ def run_simulation_task(session_id: int, session_uuid: str, inputs_path: str, ou
 async def upload_and_simulate(
     background_tasks: BackgroundTasks,
     rounds: int = Form(...),
+    title: str = Form(None),
     files: List[UploadFile] = File(...),
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
@@ -125,7 +126,7 @@ async def upload_and_simulate(
             f.write(await file.read())
 
     # Create session
-    db_session = crud.create_session(db, current_user.id, inputs_path, outputs_path)
+    db_session = crud.create_session(db, current_user.id, inputs_path, outputs_path, rounds, title)
     db_session.session_id = session_uuid
     db.commit()
     db.refresh(db_session)

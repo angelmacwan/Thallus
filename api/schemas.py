@@ -23,6 +23,8 @@ class SessionResponse(BaseModel):
     session_id: str
     created_at: datetime
     status: str
+    title: Optional[str]
+    rounds: int
     inputs_path: str
     outputs_path: str
 
@@ -46,6 +48,25 @@ class SimulationEventResponse(BaseModel):
     type: str
     message: str
     timestamp: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class ReportCreate(BaseModel):
+    description: str
+
+
+class ReportResponse(BaseModel):
+    id: int
+    report_id: str
+    session_id: int
+    title: str
+    description: str
+    file_path: str
+    created_at: datetime
+    session_title: Optional[str] = None
+    session_uuid: Optional[str] = None
 
     class Config:
         from_attributes = True

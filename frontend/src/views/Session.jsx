@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import mermaid from 'mermaid';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../api';
+import { useSidebar } from '../SidebarContext';
 import {
 	RefreshCw,
 	Send,
@@ -10,10 +12,359 @@ import {
 	Users,
 	Link2,
 	Info,
-	ArrowLeft,
+	FileText,
+	X,
+	Trash2,
 } from 'lucide-react';
 
-// ─── Event log icons ──────────────────────────────────────────────────────────
+mermaid.initialize({ startOnLoad: false, theme: 'neutral' });
+
+// ─── Mermaid diagram block ────────────────────────────────────────────────────
+function MermaidBlock({ code }) {
+	const ref = useRef(null);
+	const idRef = useRef(`mermaid-${Math.random().toString(36).slice(2)}`);
+	useEffect(() => {
+		if (!ref.current) return;
+		mermaid
+			.render(idRef.current, code)
+			.then(({ svg }) => {
+				if (ref.current) ref.current.innerHTML = svg;
+			})
+			.catch(() => {
+				if (ref.current)
+					ref.current.innerHTML = `<pre style="font-size:0.78rem;color:#666">${code}</pre>`;
+			});
+	}, [code]);
+	return (
+		<div
+			ref={ref}
+			style={{
+				overflowX: 'auto',
+				margin: '1rem 0',
+				padding: '1rem',
+				background: 'var(--surface-container-low)',
+				borderRadius: '10px',
+				border: '1px solid var(--outline-variant)',
+			}}
+		/>
+	);
+}
+
+// ─── Session Reports Tab ──────────────────────────────────────────────────────
+function SessionReportsList({ sessionId, onCountChange }) {
+	const [reports, setReports] = useState([]);
+	const [loading, setLoading] = useState(true);
+	const [selected, setSelected] = useState(null);
+	const [content, setContent] = useState(null);
+	const [contentLoading, setContentLoading] = useState(false);
+	const [deleting, setDeleting] = useState(null);
+
+	const fetchReports = async () => {
+		setLoading(true);
+		try {
+			const res = await api.get(`/reports/session/${sessionId}`);
+			setReports(res.data);
+			onCountChange(res.data.length);
+		} catch {
+			/* noop */
+		} finally {
+			setLoading(false);
+		}
+	};
+
+	useEffect(() => {
+		fetchReports();
+	}, [sessionId]);
+
+	const openReport = async (report) => {
+		setSelected(report);
+		setContent(null);
+		setContentLoading(true);
+		try {
+			const res = await api.get(`/reports/${report.report_id}/content`, {
+				responseType: 'text',
+				transformResponse: [(d) => d],
+			});
+			setContent(res.data);
+		} catch {
+			setContent(null);
+		} finally {
+			setContentLoading(false);
+		}
+	};
+
+	const deleteReport = async (report, e) => {
+		e.stopPropagation();
+		setDeleting(report.report_id);
+		try {
+			await api.delete(`/reports/${report.report_id}`);
+			const next = reports.filter(
+				(r) => r.report_id !== report.report_id,
+			);
+			setReports(next);
+			onCountChange(next.length);
+			if (selected?.report_id === report.report_id) {
+				setSelected(null);
+				setContent(null);
+			}
+		} catch {
+			/* noop */
+		} finally {
+			setDeleting(null);
+		}
+	};
+
+	const mdComponents = {
+		code({ node, inline, className, children, ...props }) {
+			const lang = (className || '').replace('language-', '');
+			if (!inline && lang === 'mermaid')
+				return <MermaidBlock code={String(children).trim()} />;
+			return inline ? (
+				<code
+					style={{
+						background: 'var(--surface-container)',
+						padding: '0.1em 0.35em',
+						borderRadius: '4px',
+						fontSize: '0.85em',
+					}}
+					{...props}
+				>
+					{children}
+				</code>
+			) : (
+				<pre
+					style={{
+						background: 'var(--surface-container)',
+						padding: '1rem',
+						borderRadius: '8px',
+						overflowX: 'auto',
+						fontSize: '0.82rem',
+						lineHeight: 1.6,
+					}}
+				>
+					<code {...props}>{children}</code>
+				</pre>
+			);
+		},
+	};
+
+	return (
+		<div
+			style={{
+				display: 'flex',
+				flex: 1,
+				minHeight: 0,
+				gap: '1rem',
+				overflow: 'hidden',
+			}}
+		>
+			{/* List */}
+			<div
+				style={{
+					width: selected ? '280px' : '100%',
+					flexShrink: 0,
+					display: 'flex',
+					flexDirection: 'column',
+					gap: '0.5rem',
+					overflowY: 'auto',
+					transition: 'width 0.25s ease',
+					paddingRight: '0.25rem',
+				}}
+			>
+				{loading && (
+					<div
+						style={{
+							textAlign: 'center',
+							color: 'var(--text-secondary)',
+							padding: '2rem',
+							fontSize: '0.85rem',
+						}}
+					>
+						Loading…
+					</div>
+				)}
+				{!loading && reports.length === 0 && (
+					<div
+						style={{
+							textAlign: 'center',
+							color: 'var(--text-secondary)',
+							padding: '2.5rem 1rem',
+							fontSize: '0.85rem',
+						}}
+					>
+						<FileText
+							size={28}
+							style={{ marginBottom: '0.5rem', opacity: 0.4 }}
+						/>
+						<div>No reports yet.</div>
+						<div
+							style={{ fontSize: '0.75rem', marginTop: '0.3rem' }}
+						>
+							Generate one using the button above.
+						</div>
+					</div>
+				)}
+				{reports.map((r) => (
+					<div
+						key={r.report_id}
+						onClick={() => openReport(r)}
+						style={{
+							padding: '0.75rem 0.85rem',
+							borderRadius: '8px',
+							border: `1px solid ${selected?.report_id === r.report_id ? 'var(--accent-color)' : 'var(--outline-variant)'}`,
+							background:
+								selected?.report_id === r.report_id
+									? 'rgba(var(--accent-rgb, 37,99,235),0.07)'
+									: 'var(--surface-container-low)',
+							cursor: 'pointer',
+							display: 'flex',
+							alignItems: 'flex-start',
+							gap: '0.65rem',
+							transition: 'border-color 0.15s, background 0.15s',
+						}}
+					>
+						<FileText
+							size={16}
+							color="var(--accent-color)"
+							style={{ marginTop: '0.1rem', flexShrink: 0 }}
+						/>
+						<div style={{ flex: 1, minWidth: 0 }}>
+							<div
+								style={{
+									fontWeight: 600,
+									fontSize: '0.83rem',
+									whiteSpace: 'nowrap',
+									overflow: 'hidden',
+									textOverflow: 'ellipsis',
+								}}
+							>
+								{r.title}
+							</div>
+							<div
+								style={{
+									fontSize: '0.71rem',
+									color: 'var(--text-secondary)',
+									marginTop: '0.15rem',
+								}}
+							>
+								{new Date(r.created_at).toLocaleString()}
+							</div>
+						</div>
+						<button
+							onClick={(e) => deleteReport(r, e)}
+							disabled={deleting === r.report_id}
+							style={{
+								background: 'none',
+								border: 'none',
+								cursor: 'pointer',
+								color: 'var(--text-secondary)',
+								padding: '0.15rem',
+								borderRadius: '4px',
+								flexShrink: 0,
+								opacity: deleting === r.report_id ? 0.4 : 1,
+							}}
+						>
+							<Trash2 size={13} />
+						</button>
+					</div>
+				))}
+			</div>
+
+			{/* Viewer */}
+			{selected && (
+				<div
+					style={{
+						flex: 1,
+						display: 'flex',
+						flexDirection: 'column',
+						minHeight: 0,
+						background: 'var(--surface-container-low)',
+						border: '1px solid var(--outline-variant)',
+						borderRadius: '10px',
+						overflow: 'hidden',
+					}}
+				>
+					<div
+						style={{
+							display: 'flex',
+							alignItems: 'center',
+							justifyContent: 'space-between',
+							padding: '0.75rem 1rem',
+							borderBottom: '1px solid var(--outline-variant)',
+							flexShrink: 0,
+						}}
+					>
+						<div
+							style={{
+								fontWeight: 700,
+								fontSize: '0.9rem',
+								overflow: 'hidden',
+								textOverflow: 'ellipsis',
+								whiteSpace: 'nowrap',
+							}}
+						>
+							{selected.title}
+						</div>
+						<button
+							onClick={() => {
+								setSelected(null);
+								setContent(null);
+							}}
+							style={{
+								background: 'none',
+								border: 'none',
+								cursor: 'pointer',
+								color: 'var(--text-secondary)',
+								display: 'flex',
+								padding: '0.2rem',
+								borderRadius: '4px',
+							}}
+						>
+							<X size={16} />
+						</button>
+					</div>
+					<div
+						style={{
+							flex: 1,
+							overflowY: 'auto',
+							padding: '1.25rem 1.5rem',
+						}}
+					>
+						{contentLoading && (
+							<div
+								style={{
+									color: 'var(--text-secondary)',
+									fontSize: '0.85rem',
+								}}
+							>
+								Loading…
+							</div>
+						)}
+						{!contentLoading && content && (
+							<ReactMarkdown
+								remarkPlugins={[remarkGfm]}
+								components={mdComponents}
+							>
+								{content}
+							</ReactMarkdown>
+						)}
+						{!contentLoading && !content && (
+							<div
+								style={{
+									color: 'var(--text-secondary)',
+									fontSize: '0.85rem',
+								}}
+							>
+								Could not load report content.
+							</div>
+						)}
+					</div>
+				</div>
+			)}
+		</div>
+	);
+}
+
 const EVENT_ICONS = {
 	stage: '⚙️',
 	agent: '🤖',
@@ -25,10 +376,10 @@ const EVENT_ICONS = {
 
 // ─── Graph node colours by entity type ───────────────────────────────────────
 const TYPE_COLOR = {
-	PERSON: '#fb923c',
-	ORGANIZATION: '#60a5fa',
-	LOCATION: '#4ade80',
-	EVENT: '#c084fc',
+	PERSON: '#2563eb',
+	ORGANIZATION: '#506071',
+	LOCATION: '#2d6a4f',
+	EVENT: '#7c3aed',
 };
 
 // ─── Tab bar ──────────────────────────────────────────────────────────────────
@@ -96,7 +447,7 @@ function ForceGraph({ agents, graph }) {
 
 		const dpr = window.devicePixelRatio || 1;
 		const W = container.offsetWidth || 600;
-		const H = 460;
+		const H = container.offsetHeight || 600;
 		canvas.width = W * dpr;
 		canvas.height = H * dpr;
 		canvas.style.width = W + 'px';
@@ -119,7 +470,7 @@ function ForceGraph({ agents, graph }) {
 				fullLabel: a.realname,
 				detail: `@${a.username} · ${a.profession || ''}`,
 				isAgent: true,
-				color: '#e8720a',
+				color: '#12283c',
 				r: 20,
 				x: W / 2 + (Math.random() - 0.5) * W * 0.45,
 				y: H / 2 + (Math.random() - 0.5) * H * 0.45,
@@ -143,7 +494,7 @@ function ForceGraph({ agents, graph }) {
 					fullLabel: name,
 					detail: type,
 					isAgent: false,
-					color: TYPE_COLOR[type] || '#a8a29e',
+					color: TYPE_COLOR[type] || '#74777d',
 					r: 13,
 					x: W / 2 + (Math.random() - 0.5) * W * 0.5,
 					y: H / 2 + (Math.random() - 0.5) * H * 0.5,
@@ -234,15 +585,6 @@ function ForceGraph({ agents, graph }) {
 			ctx.translate(t.x, t.y);
 			ctx.scale(t.scale, t.scale);
 
-			// subtle dot grid
-			ctx.fillStyle = 'rgba(255,255,255,0.05)';
-			for (let gx = 28; gx < W; gx += 36)
-				for (let gy = 28; gy < H; gy += 36) {
-					ctx.beginPath();
-					ctx.arc(gx, gy, 1.2, 0, Math.PI * 2);
-					ctx.fill();
-				}
-
 			// edges
 			drawEdges.forEach((e) => {
 				const n1 = nodes[e.si],
@@ -250,8 +592,8 @@ function ForceGraph({ agents, graph }) {
 				ctx.beginPath();
 				ctx.moveTo(n1.x, n1.y);
 				ctx.lineTo(n2.x, n2.y);
-				ctx.strokeStyle = 'rgba(232,114,10,0.38)';
-				ctx.lineWidth = 1.8;
+				ctx.strokeStyle = 'rgba(18,40,60,0.18)';
+				ctx.lineWidth = 1.5;
 				ctx.stroke();
 
 				// edge label
@@ -263,8 +605,8 @@ function ForceGraph({ agents, graph }) {
 					ctx.font = '600 10px Inter,system-ui,sans-serif';
 					const tw = ctx.measureText(label).width;
 					// pill background
-					ctx.fillStyle = 'rgba(24,14,4,0.78)';
-					const pad = 4;
+					const pad = 5;
+					ctx.fillStyle = 'rgba(255,255,255,0.96)';
 					ctx.beginPath();
 					ctx.roundRect(
 						mx - tw / 2 - pad,
@@ -274,7 +616,10 @@ function ForceGraph({ agents, graph }) {
 						4,
 					);
 					ctx.fill();
-					ctx.fillStyle = 'rgba(255,190,120,0.9)';
+					ctx.strokeStyle = 'rgba(18,40,60,0.12)';
+					ctx.lineWidth = 0.5;
+					ctx.stroke();
+					ctx.fillStyle = '#43474c';
 					ctx.textAlign = 'center';
 					ctx.textBaseline = 'middle';
 					ctx.fillText(label, mx, my);
@@ -283,46 +628,26 @@ function ForceGraph({ agents, graph }) {
 
 			// nodes
 			nodes.forEach((n) => {
-				// glow halo for agents
-				if (n.isAgent) {
-					const grad = ctx.createRadialGradient(
-						n.x,
-						n.y,
-						n.r * 0.6,
-						n.x,
-						n.y,
-						n.r + 18,
-					);
-					grad.addColorStop(0, 'rgba(232,114,10,0.45)');
-					grad.addColorStop(1, 'transparent');
-					ctx.beginPath();
-					ctx.arc(n.x, n.y, n.r + 18, 0, Math.PI * 2);
-					ctx.fillStyle = grad;
-					ctx.fill();
-				}
+				// drop shadow
+				ctx.shadowColor = 'rgba(25,28,28,0.16)';
+				ctx.shadowBlur = 10;
+				ctx.shadowOffsetY = 3;
 
-				// node circle with inner gradient
-				const nodeGrad = ctx.createRadialGradient(
-					n.x - n.r * 0.3,
-					n.y - n.r * 0.3,
-					n.r * 0.1,
-					n.x,
-					n.y,
-					n.r,
-				);
-				nodeGrad.addColorStop(0, lighten(n.color, 0.35));
-				nodeGrad.addColorStop(1, n.color);
+				// flat node circle
 				ctx.beginPath();
 				ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2);
-				ctx.fillStyle = nodeGrad;
+				ctx.fillStyle = n.color;
 				ctx.fill();
 
-				// border ring
-				ctx.strokeStyle = 'rgba(255,255,255,0.55)';
-				ctx.lineWidth = n.isAgent ? 2.5 : 1.8;
+				ctx.shadowBlur = 0;
+				ctx.shadowOffsetY = 0;
+
+				// subtle inner highlight ring
+				ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+				ctx.lineWidth = n.isAgent ? 2 : 1.5;
 				ctx.stroke();
 
-				// label below node with shadow
+				// label below node
 				const fontSize = n.isAgent ? 12 : 11;
 				ctx.font = n.isAgent
 					? `bold ${fontSize}px Inter,system-ui,sans-serif`
@@ -330,30 +655,11 @@ function ForceGraph({ agents, graph }) {
 				ctx.textAlign = 'center';
 				ctx.textBaseline = 'top';
 				const labelY = n.y + n.r + 4;
-				// text shadow
-				ctx.shadowColor = 'rgba(0,0,0,0.9)';
-				ctx.shadowBlur = 6;
-				ctx.fillStyle = n.isAgent ? '#fff' : '#e8ddd4';
+				ctx.fillStyle = n.isAgent ? '#12283c' : '#43474c';
 				ctx.fillText(n.label, n.x, labelY);
-				ctx.shadowBlur = 0;
 			});
 
 			ctx.restore();
-		}
-
-		// helper: lighten a hex color
-		function lighten(hex, amount) {
-			const num = parseInt(hex.replace('#', ''), 16);
-			const r = Math.min(
-				255,
-				((num >> 16) & 0xff) + Math.round(255 * amount),
-			);
-			const g = Math.min(
-				255,
-				((num >> 8) & 0xff) + Math.round(255 * amount),
-			);
-			const b = Math.min(255, (num & 0xff) + Math.round(255 * amount));
-			return `rgb(${r},${g},${b})`;
 		}
 
 		function onWheel(e) {
@@ -460,10 +766,8 @@ function ForceGraph({ agents, graph }) {
 				position: 'relative',
 				borderRadius: '12px',
 				overflow: 'hidden',
-				background: 'linear-gradient(145deg, #1c130a 0%, #120c04 100%)',
-				border: '2px solid rgba(232,114,10,0.35)',
-				boxShadow:
-					'0 4px 24px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.04)',
+				flex: 1,
+				minHeight: 0,
 			}}
 		>
 			<canvas
@@ -471,7 +775,7 @@ function ForceGraph({ agents, graph }) {
 				style={{
 					display: 'block',
 					width: '100%',
-					height: '460px',
+					height: '100%',
 					cursor: 'grab',
 				}}
 				onMouseDown={handleMouseDown}
@@ -490,22 +794,23 @@ function ForceGraph({ agents, graph }) {
 					position: 'absolute',
 					top: 10,
 					right: 10,
-					background: 'rgba(14,8,2,0.90)',
-					border: '1px solid rgba(232,114,10,0.25)',
+					background: 'rgba(255,255,255,0.96)',
+					border: '1px solid #e7e8e8',
 					borderRadius: '9px',
 					padding: '0.55rem 0.75rem',
 					fontSize: '0.72rem',
 					display: 'flex',
 					flexDirection: 'column',
 					gap: 5,
+					boxShadow: '0 2px 8px rgba(25,28,28,0.08)',
 				}}
 			>
 				{[
-					['#e8720a', 'Agent'],
-					['#fb923c', 'Person'],
-					['#60a5fa', 'Org'],
-					['#4ade80', 'Location'],
-					['#c084fc', 'Event'],
+					['#12283c', 'Agent'],
+					['#2563eb', 'Person'],
+					['#506071', 'Org'],
+					['#2d6a4f', 'Location'],
+					['#7c3aed', 'Event'],
 				].map(([c, l]) => (
 					<div
 						key={l}
@@ -513,7 +818,7 @@ function ForceGraph({ agents, graph }) {
 							display: 'flex',
 							alignItems: 'center',
 							gap: 7,
-							color: '#e0d4c8',
+							color: '#43474c',
 							fontWeight: 500,
 						}}
 					>
@@ -524,7 +829,6 @@ function ForceGraph({ agents, graph }) {
 								borderRadius: '50%',
 								background: c,
 								flexShrink: 0,
-								boxShadow: `0 0 6px ${c}88`,
 							}}
 						/>
 						{l}
@@ -555,9 +859,9 @@ function ForceGraph({ agents, graph }) {
 							width: 28,
 							height: 28,
 							borderRadius: 6,
-							border: '1px solid rgba(232,114,10,0.35)',
-							background: 'rgba(14,8,2,0.88)',
-							color: '#d4c8bc',
+							border: '1px solid #e7e8e8',
+							background: 'rgba(255,255,255,0.96)',
+							color: '#12283c',
 							cursor: 'pointer',
 							fontSize: '0.88rem',
 							fontWeight: 700,
@@ -565,6 +869,7 @@ function ForceGraph({ agents, graph }) {
 							display: 'flex',
 							alignItems: 'center',
 							justifyContent: 'center',
+							boxShadow: '0 1px 4px rgba(25,28,28,0.08)',
 						}}
 					>
 						{label}
@@ -577,14 +882,15 @@ function ForceGraph({ agents, graph }) {
 						position: 'absolute',
 						bottom: 110,
 						left: 10,
-						background: 'rgba(18,10,2,0.94)',
-						border: '1px solid rgba(232,114,10,0.35)',
+						background: 'rgba(255,255,255,0.97)',
+						border: '1px solid #e7e8e8',
 						borderRadius: '8px',
 						padding: '0.45rem 0.75rem',
-						color: '#e8ddd4',
+						color: '#191c1c',
 						fontSize: '0.78rem',
 						maxWidth: 210,
 						pointerEvents: 'none',
+						boxShadow: '0 2px 8px rgba(25,28,28,0.10)',
 					}}
 				>
 					<div style={{ fontWeight: 700, color: hovered.color }}>
@@ -593,7 +899,7 @@ function ForceGraph({ agents, graph }) {
 					{hovered.detail && (
 						<div
 							style={{
-								color: '#8c7c6c',
+								color: '#506071',
 								marginTop: 2,
 								fontSize: '0.71rem',
 							}}
@@ -603,6 +909,205 @@ function ForceGraph({ agents, graph }) {
 					)}
 				</div>
 			)}
+		</div>
+	);
+}
+
+// ─── Create Report Modal ──────────────────────────────────────────────────────
+function CreateReportModal({ sessionId, onClose, onCreated }) {
+	const [description, setDescription] = useState('');
+	const [generating, setGenerating] = useState(false);
+	const [error, setError] = useState(null);
+
+	const handleSubmit = async (e) => {
+		e.preventDefault();
+		if (!description.trim()) return;
+		setGenerating(true);
+		setError(null);
+		try {
+			const res = await api.post(`/reports/generate/${sessionId}`, {
+				description: description.trim(),
+			});
+			onCreated(res.data);
+			onClose();
+		} catch (err) {
+			setError(
+				err?.response?.data?.detail || 'Failed to generate report.',
+			);
+		} finally {
+			setGenerating(false);
+		}
+	};
+
+	return (
+		<div
+			style={{
+				position: 'fixed',
+				inset: 0,
+				background: 'rgba(0,0,0,0.45)',
+				display: 'flex',
+				alignItems: 'center',
+				justifyContent: 'center',
+				zIndex: 1000,
+				padding: '1rem',
+			}}
+			onClick={(e) => {
+				if (e.target === e.currentTarget) onClose();
+			}}
+		>
+			<div
+				style={{
+					background: 'var(--surface)',
+					borderRadius: '14px',
+					padding: '2rem',
+					width: '100%',
+					maxWidth: '560px',
+					display: 'flex',
+					flexDirection: 'column',
+					gap: '1.25rem',
+					boxShadow: '0 8px 32px rgba(0,0,0,0.22)',
+					border: '1px solid var(--outline-variant)',
+				}}
+			>
+				{/* Header */}
+				<div
+					style={{
+						display: 'flex',
+						alignItems: 'center',
+						justifyContent: 'space-between',
+					}}
+				>
+					<div
+						style={{
+							display: 'flex',
+							alignItems: 'center',
+							gap: '0.6rem',
+						}}
+					>
+						<FileText
+							size={20}
+							color="var(--accent-color)"
+						/>
+						<h3 style={{ margin: 0, fontSize: '1rem' }}>
+							Generate Report
+						</h3>
+					</div>
+					<button
+						onClick={onClose}
+						style={{
+							background: 'none',
+							border: 'none',
+							cursor: 'pointer',
+							color: 'var(--text-secondary)',
+							display: 'flex',
+							alignItems: 'center',
+							padding: '0.25rem',
+							borderRadius: '6px',
+						}}
+					>
+						<X size={18} />
+					</button>
+				</div>
+
+				{/* Body */}
+				<p
+					style={{
+						margin: 0,
+						fontSize: '0.85rem',
+						color: 'var(--text-secondary)',
+						lineHeight: 1.6,
+					}}
+				>
+					Describe the focus or question for this report. The agent
+					will use the simulation data, knowledge graph, and chat
+					history to produce an enterprise-grade Markdown report with
+					diagrams.
+				</p>
+
+				<form
+					onSubmit={handleSubmit}
+					style={{
+						display: 'flex',
+						flexDirection: 'column',
+						gap: '1rem',
+					}}
+				>
+					<textarea
+						className="input-field"
+						value={description}
+						onChange={(e) => setDescription(e.target.value)}
+						placeholder="e.g. Analyse information spread patterns and identify key influencers in this simulation…"
+						rows={5}
+						disabled={generating}
+						style={{
+							resize: 'vertical',
+							fontFamily: 'inherit',
+							fontSize: '0.88rem',
+							lineHeight: 1.6,
+						}}
+					/>
+
+					{error && (
+						<div
+							style={{
+								padding: '0.65rem 0.85rem',
+								background: 'rgba(220,38,38,0.08)',
+								border: '1px solid rgba(220,38,38,0.2)',
+								borderRadius: '8px',
+								color: 'var(--danger-color)',
+								fontSize: '0.82rem',
+							}}
+						>
+							{error}
+						</div>
+					)}
+
+					<div
+						style={{
+							display: 'flex',
+							gap: '0.75rem',
+							justifyContent: 'flex-end',
+						}}
+					>
+						<button
+							type="button"
+							className="btn btn-secondary"
+							onClick={onClose}
+							disabled={generating}
+						>
+							Cancel
+						</button>
+						<button
+							type="submit"
+							className="btn"
+							disabled={generating || !description.trim()}
+							style={{
+								display: 'flex',
+								alignItems: 'center',
+								gap: '0.45rem',
+							}}
+						>
+							{generating ? (
+								<>
+									<RefreshCw
+										size={14}
+										style={{
+											animation:
+												'spin 1.4s linear infinite',
+										}}
+									/>
+									Generating…
+								</>
+							) : (
+								<>
+									<FileText size={14} />
+									Generate Report
+								</>
+							)}
+						</button>
+					</div>
+				</form>
+			</div>
 		</div>
 	);
 }
@@ -623,8 +1128,29 @@ export default function SessionView() {
 	});
 	const [activeTab, setActiveTab] = useState('graph');
 	const [dbEvents, setDbEvents] = useState([]);
+	const [showReportModal, setShowReportModal] = useState(false);
+	const [reportsCount, setReportsCount] = useState(0);
 	const messagesEndRef = useRef(null);
 	const logEndRef = useRef(null);
+	const { setSessionNav } = useSidebar();
+
+	useEffect(() => {
+		const agentCount = (artifacts.agents || []).length;
+		const relationCount = ((artifacts.graph || {}).relations || []).length;
+		setSessionNav({
+			activeTab,
+			setActiveTab,
+			agentCount,
+			relationCount,
+			reportsCount,
+			session,
+			onCreateReport:
+				session?.status === 'completed'
+					? () => setShowReportModal(true)
+					: null,
+		});
+		return () => setSessionNav(null);
+	}, [activeTab, artifacts, session, reportsCount]);
 
 	useEffect(() => {
 		fetchData();
@@ -750,49 +1276,6 @@ export default function SessionView() {
 	const graph = artifacts.graph || { entities: {}, relations: [] };
 	const relations = graph.relations || [];
 
-	const tabs = [
-		{
-			id: 'graph',
-			label: 'Graph',
-			icon: (
-				<Network
-					size={13}
-					style={{ marginRight: 3 }}
-				/>
-			),
-		},
-		{
-			id: 'agents',
-			label: `Agents (${agents.length})`,
-			icon: (
-				<Users
-					size={13}
-					style={{ marginRight: 3 }}
-				/>
-			),
-		},
-		{
-			id: 'relations',
-			label: `Relations (${relations.length})`,
-			icon: (
-				<Link2
-					size={13}
-					style={{ marginRight: 3 }}
-				/>
-			),
-		},
-		{
-			id: 'info',
-			label: 'Info',
-			icon: (
-				<Info
-					size={13}
-					style={{ marginRight: 3 }}
-				/>
-			),
-		},
-	];
-
 	return (
 		<div
 			className="fade-in"
@@ -805,6 +1288,14 @@ export default function SessionView() {
 			}}
 		>
 			<style>{`@keyframes spin { 100% { transform: rotate(360deg); } }`}</style>
+
+			{showReportModal && session && (
+				<CreateReportModal
+					sessionId={id}
+					onClose={() => setShowReportModal(false)}
+					onCreated={() => {}}
+				/>
+			)}
 
 			{/* ── Split body ── */}
 			<div
@@ -866,8 +1357,8 @@ export default function SessionView() {
 							</div>
 							<div
 								style={{
-									background: '#1a1208',
-									border: '2px solid rgba(232,114,10,0.2)',
+									background: 'var(--primary)',
+									border: '1px solid var(--primary-container)',
 									borderRadius: '8px',
 									padding: '0.85rem',
 									fontFamily: 'monospace',
@@ -875,7 +1366,7 @@ export default function SessionView() {
 									lineHeight: 1.65,
 									flex: 1,
 									overflowY: 'auto',
-									color: '#d4c8bc',
+									color: 'var(--primary-fixed)',
 								}}
 							>
 								{liveLog.length === 0 && (
@@ -940,29 +1431,9 @@ export default function SessionView() {
 								Simulation failed. Check the backend logs for
 								details.
 							</span>
-							<button
-								onClick={() => navigate('/')}
-								style={{
-									display: 'flex',
-									alignItems: 'center',
-									gap: '0.4rem',
-									padding: '0.45rem 0.85rem',
-									borderRadius: '7px',
-									border: '1px solid rgba(220,38,38,0.3)',
-									background: 'rgba(220,38,38,0.1)',
-									color: 'var(--danger-color)',
-									cursor: 'pointer',
-									fontSize: '0.82rem',
-									fontWeight: 600,
-								}}
-							>
-								<ArrowLeft size={14} />
-								Back
-							</button>
 						</div>
 					)}
 
-					{/* Completed: tabs */}
 					{session.status === 'completed' && (
 						<div
 							className="card"
@@ -972,44 +1443,10 @@ export default function SessionView() {
 								flexDirection: 'column',
 								gap: '1rem',
 								flex: 1,
-								overflowY: 'auto',
+								minHeight: 0,
+								overflow: 'hidden',
 							}}
 						>
-							<div
-								style={{
-									display: 'flex',
-									alignItems: 'center',
-									gap: '0.5rem',
-								}}
-							>
-								<button
-									onClick={() => navigate('/')}
-									title="Back"
-									style={{
-										display: 'flex',
-										alignItems: 'center',
-										justifyContent: 'center',
-										width: 32,
-										height: 32,
-										flexShrink: 0,
-										borderRadius: '7px',
-										border: '1px solid var(--border-color)',
-										background: '#fdf7f2',
-										color: 'var(--text-secondary)',
-										cursor: 'pointer',
-									}}
-								>
-									<ArrowLeft size={15} />
-								</button>
-								<div style={{ flex: 1 }}>
-									<Tabs
-										tabs={tabs}
-										active={activeTab}
-										onChange={setActiveTab}
-									/>
-								</div>
-							</div>
-
 							{/* Graph */}
 							{activeTab === 'graph' &&
 								(agents.length === 0 ? (
@@ -1060,9 +1497,10 @@ export default function SessionView() {
 												alignItems: 'center',
 												gap: '0.75rem',
 												padding: '0.6rem 0.75rem',
-												background: '#fdf7f2',
+												background:
+													'var(--surface-container-low)',
 												borderRadius: '8px',
-												border: '1px solid var(--border-color)',
+												border: '1px solid var(--outline-variant)',
 											}}
 										>
 											<div
@@ -1155,9 +1593,10 @@ export default function SessionView() {
 												gap: '0.5rem',
 												fontSize: '0.78rem',
 												padding: '0.4rem 0.65rem',
-												background: '#fdf7f2',
+												background:
+													'var(--surface-container-low)',
 												borderRadius: '6px',
-												border: '1px solid var(--border-color)',
+												border: '1px solid var(--outline-variant)',
 											}}
 										>
 											<span
@@ -1218,8 +1657,9 @@ export default function SessionView() {
 									{/* Session metadata */}
 									<div
 										style={{
-											background: '#fdf7f2',
-											border: '1px solid var(--border-color)',
+											background:
+												'var(--surface-container-low)',
+											border: '1px solid var(--outline-variant)',
 											borderRadius: '8px',
 											padding: '0.85rem',
 											display: 'flex',
@@ -1330,8 +1770,8 @@ export default function SessionView() {
 									</div>
 									<div
 										style={{
-											background: '#1a1208',
-											border: '2px solid rgba(232,114,10,0.2)',
+											background: 'var(--primary)',
+											border: '1px solid var(--primary-container)',
 											borderRadius: '8px',
 											padding: '0.85rem',
 											fontFamily: 'monospace',
@@ -1339,7 +1779,7 @@ export default function SessionView() {
 											lineHeight: 1.65,
 											flex: 1,
 											overflowY: 'auto',
-											color: '#d4c8bc',
+											color: 'var(--primary-fixed)',
 											minHeight: '8rem',
 										}}
 									>
@@ -1406,6 +1846,14 @@ export default function SessionView() {
 									</div>
 								</div>
 							)}
+
+							{/* Reports */}
+							{activeTab === 'reports' && (
+								<SessionReportsList
+									sessionId={id}
+									onCountChange={setReportsCount}
+								/>
+							)}
 						</div>
 					)}
 				</div>
@@ -1456,8 +1904,8 @@ export default function SessionView() {
 								flexDirection: 'column',
 								flex: 1,
 								minHeight: '480px',
-								background: '#faf7f4',
-								border: '1.5px solid var(--border-color)',
+								background: 'var(--surface-container-lowest)',
+								border: '1px solid var(--outline-variant)',
 								borderRadius: '12px',
 								overflow: 'hidden',
 							}}
@@ -1534,8 +1982,8 @@ export default function SessionView() {
 									gap: '0.5rem',
 									padding: '0.85rem',
 									borderTop:
-										'1.5px solid var(--border-color)',
-									background: '#fff',
+										'1px solid var(--outline-variant)',
+									background: 'var(--surface-container-low)',
 								}}
 							>
 								<input
