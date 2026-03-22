@@ -18,10 +18,10 @@ const EVENT_ICONS = {
 
 // ─── Graph node colours by entity type ───────────────────────────────────────
 const TYPE_COLOR = {
-	PERSON: '#fb923c',
-	ORGANIZATION: '#60a5fa',
-	LOCATION: '#4ade80',
-	EVENT: '#c084fc',
+	PERSON: '#2563eb',
+	ORGANIZATION: '#506071',
+	LOCATION: '#2d6a4f',
+	EVENT: '#7c3aed',
 };
 
 // ─── Tab bar ──────────────────────────────────────────────────────────────────
@@ -112,7 +112,7 @@ function ForceGraph({ agents, graph }) {
 				fullLabel: a.realname,
 				detail: `@${a.username} · ${a.profession || ''}`,
 				isAgent: true,
-				color: '#e8720a',
+				color: '#12283c',
 				r: 20,
 				x: W / 2 + (Math.random() - 0.5) * W * 0.45,
 				y: H / 2 + (Math.random() - 0.5) * H * 0.45,
@@ -136,7 +136,7 @@ function ForceGraph({ agents, graph }) {
 					fullLabel: name,
 					detail: type,
 					isAgent: false,
-					color: TYPE_COLOR[type] || '#a8a29e',
+					color: TYPE_COLOR[type] || '#74777d',
 					r: 13,
 					x: W / 2 + (Math.random() - 0.5) * W * 0.5,
 					y: H / 2 + (Math.random() - 0.5) * H * 0.5,
@@ -227,15 +227,6 @@ function ForceGraph({ agents, graph }) {
 			ctx.translate(t.x, t.y);
 			ctx.scale(t.scale, t.scale);
 
-			// subtle dot grid
-			ctx.fillStyle = 'rgba(255,255,255,0.05)';
-			for (let gx = 28; gx < W; gx += 36)
-				for (let gy = 28; gy < H; gy += 36) {
-					ctx.beginPath();
-					ctx.arc(gx, gy, 1.2, 0, Math.PI * 2);
-					ctx.fill();
-				}
-
 			// edges
 			drawEdges.forEach((e) => {
 				const n1 = nodes[e.si],
@@ -243,8 +234,8 @@ function ForceGraph({ agents, graph }) {
 				ctx.beginPath();
 				ctx.moveTo(n1.x, n1.y);
 				ctx.lineTo(n2.x, n2.y);
-				ctx.strokeStyle = 'rgba(232,114,10,0.38)';
-				ctx.lineWidth = 1.8;
+				ctx.strokeStyle = 'rgba(18,40,60,0.18)';
+				ctx.lineWidth = 1.5;
 				ctx.stroke();
 
 				// edge label
@@ -256,8 +247,8 @@ function ForceGraph({ agents, graph }) {
 					ctx.font = '600 10px Inter,system-ui,sans-serif';
 					const tw = ctx.measureText(label).width;
 					// pill background
-					ctx.fillStyle = 'rgba(24,14,4,0.78)';
-					const pad = 4;
+					const pad = 5;
+					ctx.fillStyle = 'rgba(255,255,255,0.96)';
 					ctx.beginPath();
 					ctx.roundRect(
 						mx - tw / 2 - pad,
@@ -267,7 +258,10 @@ function ForceGraph({ agents, graph }) {
 						4,
 					);
 					ctx.fill();
-					ctx.fillStyle = 'rgba(255,190,120,0.9)';
+					ctx.strokeStyle = 'rgba(18,40,60,0.12)';
+					ctx.lineWidth = 0.5;
+					ctx.stroke();
+					ctx.fillStyle = '#43474c';
 					ctx.textAlign = 'center';
 					ctx.textBaseline = 'middle';
 					ctx.fillText(label, mx, my);
@@ -276,46 +270,26 @@ function ForceGraph({ agents, graph }) {
 
 			// nodes
 			nodes.forEach((n) => {
-				// glow halo for agents
-				if (n.isAgent) {
-					const grad = ctx.createRadialGradient(
-						n.x,
-						n.y,
-						n.r * 0.6,
-						n.x,
-						n.y,
-						n.r + 18,
-					);
-					grad.addColorStop(0, 'rgba(232,114,10,0.45)');
-					grad.addColorStop(1, 'transparent');
-					ctx.beginPath();
-					ctx.arc(n.x, n.y, n.r + 18, 0, Math.PI * 2);
-					ctx.fillStyle = grad;
-					ctx.fill();
-				}
+				// drop shadow
+				ctx.shadowColor = 'rgba(25,28,28,0.16)';
+				ctx.shadowBlur = 10;
+				ctx.shadowOffsetY = 3;
 
-				// node circle with inner gradient
-				const nodeGrad = ctx.createRadialGradient(
-					n.x - n.r * 0.3,
-					n.y - n.r * 0.3,
-					n.r * 0.1,
-					n.x,
-					n.y,
-					n.r,
-				);
-				nodeGrad.addColorStop(0, lighten(n.color, 0.35));
-				nodeGrad.addColorStop(1, n.color);
+				// flat node circle
 				ctx.beginPath();
 				ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2);
-				ctx.fillStyle = nodeGrad;
+				ctx.fillStyle = n.color;
 				ctx.fill();
 
-				// border ring
-				ctx.strokeStyle = 'rgba(255,255,255,0.55)';
-				ctx.lineWidth = n.isAgent ? 2.5 : 1.8;
+				ctx.shadowBlur = 0;
+				ctx.shadowOffsetY = 0;
+
+				// subtle inner highlight ring
+				ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+				ctx.lineWidth = n.isAgent ? 2 : 1.5;
 				ctx.stroke();
 
-				// label below node with shadow
+				// label below node
 				const fontSize = n.isAgent ? 12 : 11;
 				ctx.font = n.isAgent
 					? `bold ${fontSize}px Inter,system-ui,sans-serif`
@@ -323,30 +297,11 @@ function ForceGraph({ agents, graph }) {
 				ctx.textAlign = 'center';
 				ctx.textBaseline = 'top';
 				const labelY = n.y + n.r + 4;
-				// text shadow
-				ctx.shadowColor = 'rgba(0,0,0,0.9)';
-				ctx.shadowBlur = 6;
-				ctx.fillStyle = n.isAgent ? '#fff' : '#e8ddd4';
+				ctx.fillStyle = n.isAgent ? '#12283c' : '#43474c';
 				ctx.fillText(n.label, n.x, labelY);
-				ctx.shadowBlur = 0;
 			});
 
 			ctx.restore();
-		}
-
-		// helper: lighten a hex color
-		function lighten(hex, amount) {
-			const num = parseInt(hex.replace('#', ''), 16);
-			const r = Math.min(
-				255,
-				((num >> 16) & 0xff) + Math.round(255 * amount),
-			);
-			const g = Math.min(
-				255,
-				((num >> 8) & 0xff) + Math.round(255 * amount),
-			);
-			const b = Math.min(255, (num & 0xff) + Math.round(255 * amount));
-			return `rgb(${r},${g},${b})`;
 		}
 
 		function onWheel(e) {
@@ -453,10 +408,6 @@ function ForceGraph({ agents, graph }) {
 				position: 'relative',
 				borderRadius: '12px',
 				overflow: 'hidden',
-				background: 'linear-gradient(145deg, #1c130a 0%, #120c04 100%)',
-				border: '2px solid rgba(232,114,10,0.35)',
-				boxShadow:
-					'0 4px 24px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.04)',
 			}}
 		>
 			<canvas
@@ -483,22 +434,23 @@ function ForceGraph({ agents, graph }) {
 					position: 'absolute',
 					top: 10,
 					right: 10,
-					background: 'rgba(14,8,2,0.90)',
-					border: '1px solid rgba(232,114,10,0.25)',
+					background: 'rgba(255,255,255,0.96)',
+					border: '1px solid #e7e8e8',
 					borderRadius: '9px',
 					padding: '0.55rem 0.75rem',
 					fontSize: '0.72rem',
 					display: 'flex',
 					flexDirection: 'column',
 					gap: 5,
+					boxShadow: '0 2px 8px rgba(25,28,28,0.08)',
 				}}
 			>
 				{[
-					['#e8720a', 'Agent'],
-					['#fb923c', 'Person'],
-					['#60a5fa', 'Org'],
-					['#4ade80', 'Location'],
-					['#c084fc', 'Event'],
+					['#12283c', 'Agent'],
+					['#2563eb', 'Person'],
+					['#506071', 'Org'],
+					['#2d6a4f', 'Location'],
+					['#7c3aed', 'Event'],
 				].map(([c, l]) => (
 					<div
 						key={l}
@@ -506,7 +458,7 @@ function ForceGraph({ agents, graph }) {
 							display: 'flex',
 							alignItems: 'center',
 							gap: 7,
-							color: '#e0d4c8',
+							color: '#43474c',
 							fontWeight: 500,
 						}}
 					>
@@ -517,7 +469,6 @@ function ForceGraph({ agents, graph }) {
 								borderRadius: '50%',
 								background: c,
 								flexShrink: 0,
-								boxShadow: `0 0 6px ${c}88`,
 							}}
 						/>
 						{l}
@@ -548,9 +499,9 @@ function ForceGraph({ agents, graph }) {
 							width: 28,
 							height: 28,
 							borderRadius: 6,
-							border: '1px solid rgba(232,114,10,0.35)',
-							background: 'rgba(14,8,2,0.88)',
-							color: '#d4c8bc',
+							border: '1px solid #e7e8e8',
+							background: 'rgba(255,255,255,0.96)',
+							color: '#12283c',
 							cursor: 'pointer',
 							fontSize: '0.88rem',
 							fontWeight: 700,
@@ -558,6 +509,7 @@ function ForceGraph({ agents, graph }) {
 							display: 'flex',
 							alignItems: 'center',
 							justifyContent: 'center',
+							boxShadow: '0 1px 4px rgba(25,28,28,0.08)',
 						}}
 					>
 						{label}
@@ -570,14 +522,15 @@ function ForceGraph({ agents, graph }) {
 						position: 'absolute',
 						bottom: 110,
 						left: 10,
-						background: 'rgba(18,10,2,0.94)',
-						border: '1px solid rgba(232,114,10,0.35)',
+						background: 'rgba(255,255,255,0.97)',
+						border: '1px solid #e7e8e8',
 						borderRadius: '8px',
 						padding: '0.45rem 0.75rem',
-						color: '#e8ddd4',
+						color: '#191c1c',
 						fontSize: '0.78rem',
 						maxWidth: 210,
 						pointerEvents: 'none',
+						boxShadow: '0 2px 8px rgba(25,28,28,0.10)',
 					}}
 				>
 					<div style={{ fontWeight: 700, color: hovered.color }}>
@@ -586,7 +539,7 @@ function ForceGraph({ agents, graph }) {
 					{hovered.detail && (
 						<div
 							style={{
-								color: '#8c7c6c',
+								color: '#506071',
 								marginTop: 2,
 								fontSize: '0.71rem',
 							}}
