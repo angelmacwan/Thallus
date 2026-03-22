@@ -1,0 +1,5 @@
+google-genai
+pydantic
+rich
+python-dotenv
+camel-oasis>=0.2.5
