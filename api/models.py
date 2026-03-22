@@ -15,6 +15,7 @@ class User(Base):
 
     sessions = relationship("Session", back_populates="owner")
     logs = relationship("ActionLog", back_populates="user")
+    reports = relationship("Report", back_populates="owner")
 
 
 class Session(Base):
@@ -33,6 +34,7 @@ class Session(Base):
     owner = relationship("User", back_populates="sessions")
     chat_messages = relationship("ChatMessage", back_populates="session")
     events = relationship("SimulationEvent", back_populates="session", order_by="SimulationEvent.id")
+    reports = relationship("Report", back_populates="session")
 
 
 class ActionLog(Base):
@@ -69,3 +71,19 @@ class SimulationEvent(Base):
     timestamp = Column(DateTime, default=datetime.utcnow)
 
     session = relationship("Session", back_populates="events")
+
+
+class Report(Base):
+    __tablename__ = "reports"
+
+    id = Column(Integer, primary_key=True, index=True)
+    report_id = Column(String, unique=True, index=True, default=lambda: str(uuid.uuid4()))
+    session_id = Column(Integer, ForeignKey("sessions.id"))
+    user_id = Column(Integer, ForeignKey("users.id"))
+    title = Column(String)
+    description = Column(Text)       # user-supplied prompt/focus
+    file_path = Column(String)       # absolute-ish path to the .md file on disk
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    session = relationship("Session", back_populates="reports")
+    owner = relationship("User", back_populates="reports")

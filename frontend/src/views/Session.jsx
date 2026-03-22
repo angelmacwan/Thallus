@@ -1,12 +1,370 @@
 import React, { useState, useEffect, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import mermaid from 'mermaid';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../api';
 import { useSidebar } from '../SidebarContext';
-import { RefreshCw, Send, Network, Users, Link2, Info } from 'lucide-react';
+import {
+	RefreshCw,
+	Send,
+	Network,
+	Users,
+	Link2,
+	Info,
+	FileText,
+	X,
+	Trash2,
+} from 'lucide-react';
 
-// ─── Event log icons ──────────────────────────────────────────────────────────
+mermaid.initialize({ startOnLoad: false, theme: 'neutral' });
+
+// ─── Mermaid diagram block ────────────────────────────────────────────────────
+function MermaidBlock({ code }) {
+	const ref = useRef(null);
+	const idRef = useRef(`mermaid-${Math.random().toString(36).slice(2)}`);
+	useEffect(() => {
+		if (!ref.current) return;
+		mermaid
+			.render(idRef.current, code)
+			.then(({ svg }) => {
+				if (ref.current) ref.current.innerHTML = svg;
+			})
+			.catch(() => {
+				if (ref.current)
+					ref.current.innerHTML = `<pre style="font-size:0.78rem;color:#666">${code}</pre>`;
+			});
+	}, [code]);
+	return (
+		<div
+			ref={ref}
+			style={{
+				overflowX: 'auto',
+				margin: '1rem 0',
+				padding: '1rem',
+				background: 'var(--surface-container-low)',
+				borderRadius: '10px',
+				border: '1px solid var(--outline-variant)',
+			}}
+		/>
+	);
+}
+
+// ─── Session Reports Tab ──────────────────────────────────────────────────────
+function SessionReportsList({ sessionId, onCountChange }) {
+	const [reports, setReports] = useState([]);
+	const [loading, setLoading] = useState(true);
+	const [selected, setSelected] = useState(null);
+	const [content, setContent] = useState(null);
+	const [contentLoading, setContentLoading] = useState(false);
+	const [deleting, setDeleting] = useState(null);
+
+	const fetchReports = async () => {
+		setLoading(true);
+		try {
+			const res = await api.get(`/reports/session/${sessionId}`);
+			setReports(res.data);
+			onCountChange(res.data.length);
+		} catch {
+			/* noop */
+		} finally {
+			setLoading(false);
+		}
+	};
+
+	useEffect(() => {
+		fetchReports();
+	}, [sessionId]);
+
+	const openReport = async (report) => {
+		setSelected(report);
+		setContent(null);
+		setContentLoading(true);
+		try {
+			const res = await api.get(`/reports/${report.report_id}/content`, {
+				responseType: 'text',
+				transformResponse: [(d) => d],
+			});
+			setContent(res.data);
+		} catch {
+			setContent(null);
+		} finally {
+			setContentLoading(false);
+		}
+	};
+
+	const deleteReport = async (report, e) => {
+		e.stopPropagation();
+		setDeleting(report.report_id);
+		try {
+			await api.delete(`/reports/${report.report_id}`);
+			const next = reports.filter(
+				(r) => r.report_id !== report.report_id,
+			);
+			setReports(next);
+			onCountChange(next.length);
+			if (selected?.report_id === report.report_id) {
+				setSelected(null);
+				setContent(null);
+			}
+		} catch {
+			/* noop */
+		} finally {
+			setDeleting(null);
+		}
+	};
+
+	const mdComponents = {
+		code({ node, inline, className, children, ...props }) {
+			const lang = (className || '').replace('language-', '');
+			if (!inline && lang === 'mermaid')
+				return <MermaidBlock code={String(children).trim()} />;
+			return inline ? (
+				<code
+					style={{
+						background: 'var(--surface-container)',
+						padding: '0.1em 0.35em',
+						borderRadius: '4px',
+						fontSize: '0.85em',
+					}}
+					{...props}
+				>
+					{children}
+				</code>
+			) : (
+				<pre
+					style={{
+						background: 'var(--surface-container)',
+						padding: '1rem',
+						borderRadius: '8px',
+						overflowX: 'auto',
+						fontSize: '0.82rem',
+						lineHeight: 1.6,
+					}}
+				>
+					<code {...props}>{children}</code>
+				</pre>
+			);
+		},
+	};
+
+	return (
+		<div
+			style={{
+				display: 'flex',
+				flex: 1,
+				minHeight: 0,
+				gap: '1rem',
+				overflow: 'hidden',
+			}}
+		>
+			{/* List */}
+			<div
+				style={{
+					width: selected ? '280px' : '100%',
+					flexShrink: 0,
+					display: 'flex',
+					flexDirection: 'column',
+					gap: '0.5rem',
+					overflowY: 'auto',
+					transition: 'width 0.25s ease',
+					paddingRight: '0.25rem',
+				}}
+			>
+				{loading && (
+					<div
+						style={{
+							textAlign: 'center',
+							color: 'var(--text-secondary)',
+							padding: '2rem',
+							fontSize: '0.85rem',
+						}}
+					>
+						Loading…
+					</div>
+				)}
+				{!loading && reports.length === 0 && (
+					<div
+						style={{
+							textAlign: 'center',
+							color: 'var(--text-secondary)',
+							padding: '2.5rem 1rem',
+							fontSize: '0.85rem',
+						}}
+					>
+						<FileText
+							size={28}
+							style={{ marginBottom: '0.5rem', opacity: 0.4 }}
+						/>
+						<div>No reports yet.</div>
+						<div
+							style={{ fontSize: '0.75rem', marginTop: '0.3rem' }}
+						>
+							Generate one using the button above.
+						</div>
+					</div>
+				)}
+				{reports.map((r) => (
+					<div
+						key={r.report_id}
+						onClick={() => openReport(r)}
+						style={{
+							padding: '0.75rem 0.85rem',
+							borderRadius: '8px',
+							border: `1px solid ${selected?.report_id === r.report_id ? 'var(--accent-color)' : 'var(--outline-variant)'}`,
+							background:
+								selected?.report_id === r.report_id
+									? 'rgba(var(--accent-rgb, 37,99,235),0.07)'
+									: 'var(--surface-container-low)',
+							cursor: 'pointer',
+							display: 'flex',
+							alignItems: 'flex-start',
+							gap: '0.65rem',
+							transition: 'border-color 0.15s, background 0.15s',
+						}}
+					>
+						<FileText
+							size={16}
+							color="var(--accent-color)"
+							style={{ marginTop: '0.1rem', flexShrink: 0 }}
+						/>
+						<div style={{ flex: 1, minWidth: 0 }}>
+							<div
+								style={{
+									fontWeight: 600,
+									fontSize: '0.83rem',
+									whiteSpace: 'nowrap',
+									overflow: 'hidden',
+									textOverflow: 'ellipsis',
+								}}
+							>
+								{r.title}
+							</div>
+							<div
+								style={{
+									fontSize: '0.71rem',
+									color: 'var(--text-secondary)',
+									marginTop: '0.15rem',
+								}}
+							>
+								{new Date(r.created_at).toLocaleString()}
+							</div>
+						</div>
+						<button
+							onClick={(e) => deleteReport(r, e)}
+							disabled={deleting === r.report_id}
+							style={{
+								background: 'none',
+								border: 'none',
+								cursor: 'pointer',
+								color: 'var(--text-secondary)',
+								padding: '0.15rem',
+								borderRadius: '4px',
+								flexShrink: 0,
+								opacity: deleting === r.report_id ? 0.4 : 1,
+							}}
+						>
+							<Trash2 size={13} />
+						</button>
+					</div>
+				))}
+			</div>
+
+			{/* Viewer */}
+			{selected && (
+				<div
+					style={{
+						flex: 1,
+						display: 'flex',
+						flexDirection: 'column',
+						minHeight: 0,
+						background: 'var(--surface-container-low)',
+						border: '1px solid var(--outline-variant)',
+						borderRadius: '10px',
+						overflow: 'hidden',
+					}}
+				>
+					<div
+						style={{
+							display: 'flex',
+							alignItems: 'center',
+							justifyContent: 'space-between',
+							padding: '0.75rem 1rem',
+							borderBottom: '1px solid var(--outline-variant)',
+							flexShrink: 0,
+						}}
+					>
+						<div
+							style={{
+								fontWeight: 700,
+								fontSize: '0.9rem',
+								overflow: 'hidden',
+								textOverflow: 'ellipsis',
+								whiteSpace: 'nowrap',
+							}}
+						>
+							{selected.title}
+						</div>
+						<button
+							onClick={() => {
+								setSelected(null);
+								setContent(null);
+							}}
+							style={{
+								background: 'none',
+								border: 'none',
+								cursor: 'pointer',
+								color: 'var(--text-secondary)',
+								display: 'flex',
+								padding: '0.2rem',
+								borderRadius: '4px',
+							}}
+						>
+							<X size={16} />
+						</button>
+					</div>
+					<div
+						style={{
+							flex: 1,
+							overflowY: 'auto',
+							padding: '1.25rem 1.5rem',
+						}}
+					>
+						{contentLoading && (
+							<div
+								style={{
+									color: 'var(--text-secondary)',
+									fontSize: '0.85rem',
+								}}
+							>
+								Loading…
+							</div>
+						)}
+						{!contentLoading && content && (
+							<ReactMarkdown
+								remarkPlugins={[remarkGfm]}
+								components={mdComponents}
+							>
+								{content}
+							</ReactMarkdown>
+						)}
+						{!contentLoading && !content && (
+							<div
+								style={{
+									color: 'var(--text-secondary)',
+									fontSize: '0.85rem',
+								}}
+							>
+								Could not load report content.
+							</div>
+						)}
+					</div>
+				</div>
+			)}
+		</div>
+	);
+}
+
 const EVENT_ICONS = {
 	stage: '⚙️',
 	agent: '🤖',
@@ -89,7 +447,7 @@ function ForceGraph({ agents, graph }) {
 
 		const dpr = window.devicePixelRatio || 1;
 		const W = container.offsetWidth || 600;
-		const H = 460;
+		const H = container.offsetHeight || 600;
 		canvas.width = W * dpr;
 		canvas.height = H * dpr;
 		canvas.style.width = W + 'px';
@@ -408,6 +766,8 @@ function ForceGraph({ agents, graph }) {
 				position: 'relative',
 				borderRadius: '12px',
 				overflow: 'hidden',
+				flex: 1,
+				minHeight: 0,
 			}}
 		>
 			<canvas
@@ -415,7 +775,7 @@ function ForceGraph({ agents, graph }) {
 				style={{
 					display: 'block',
 					width: '100%',
-					height: '460px',
+					height: '100%',
 					cursor: 'grab',
 				}}
 				onMouseDown={handleMouseDown}
@@ -553,6 +913,205 @@ function ForceGraph({ agents, graph }) {
 	);
 }
 
+// ─── Create Report Modal ──────────────────────────────────────────────────────
+function CreateReportModal({ sessionId, onClose, onCreated }) {
+	const [description, setDescription] = useState('');
+	const [generating, setGenerating] = useState(false);
+	const [error, setError] = useState(null);
+
+	const handleSubmit = async (e) => {
+		e.preventDefault();
+		if (!description.trim()) return;
+		setGenerating(true);
+		setError(null);
+		try {
+			const res = await api.post(`/reports/generate/${sessionId}`, {
+				description: description.trim(),
+			});
+			onCreated(res.data);
+			onClose();
+		} catch (err) {
+			setError(
+				err?.response?.data?.detail || 'Failed to generate report.',
+			);
+		} finally {
+			setGenerating(false);
+		}
+	};
+
+	return (
+		<div
+			style={{
+				position: 'fixed',
+				inset: 0,
+				background: 'rgba(0,0,0,0.45)',
+				display: 'flex',
+				alignItems: 'center',
+				justifyContent: 'center',
+				zIndex: 1000,
+				padding: '1rem',
+			}}
+			onClick={(e) => {
+				if (e.target === e.currentTarget) onClose();
+			}}
+		>
+			<div
+				style={{
+					background: 'var(--surface)',
+					borderRadius: '14px',
+					padding: '2rem',
+					width: '100%',
+					maxWidth: '560px',
+					display: 'flex',
+					flexDirection: 'column',
+					gap: '1.25rem',
+					boxShadow: '0 8px 32px rgba(0,0,0,0.22)',
+					border: '1px solid var(--outline-variant)',
+				}}
+			>
+				{/* Header */}
+				<div
+					style={{
+						display: 'flex',
+						alignItems: 'center',
+						justifyContent: 'space-between',
+					}}
+				>
+					<div
+						style={{
+							display: 'flex',
+							alignItems: 'center',
+							gap: '0.6rem',
+						}}
+					>
+						<FileText
+							size={20}
+							color="var(--accent-color)"
+						/>
+						<h3 style={{ margin: 0, fontSize: '1rem' }}>
+							Generate Report
+						</h3>
+					</div>
+					<button
+						onClick={onClose}
+						style={{
+							background: 'none',
+							border: 'none',
+							cursor: 'pointer',
+							color: 'var(--text-secondary)',
+							display: 'flex',
+							alignItems: 'center',
+							padding: '0.25rem',
+							borderRadius: '6px',
+						}}
+					>
+						<X size={18} />
+					</button>
+				</div>
+
+				{/* Body */}
+				<p
+					style={{
+						margin: 0,
+						fontSize: '0.85rem',
+						color: 'var(--text-secondary)',
+						lineHeight: 1.6,
+					}}
+				>
+					Describe the focus or question for this report. The agent
+					will use the simulation data, knowledge graph, and chat
+					history to produce an enterprise-grade Markdown report with
+					diagrams.
+				</p>
+
+				<form
+					onSubmit={handleSubmit}
+					style={{
+						display: 'flex',
+						flexDirection: 'column',
+						gap: '1rem',
+					}}
+				>
+					<textarea
+						className="input-field"
+						value={description}
+						onChange={(e) => setDescription(e.target.value)}
+						placeholder="e.g. Analyse information spread patterns and identify key influencers in this simulation…"
+						rows={5}
+						disabled={generating}
+						style={{
+							resize: 'vertical',
+							fontFamily: 'inherit',
+							fontSize: '0.88rem',
+							lineHeight: 1.6,
+						}}
+					/>
+
+					{error && (
+						<div
+							style={{
+								padding: '0.65rem 0.85rem',
+								background: 'rgba(220,38,38,0.08)',
+								border: '1px solid rgba(220,38,38,0.2)',
+								borderRadius: '8px',
+								color: 'var(--danger-color)',
+								fontSize: '0.82rem',
+							}}
+						>
+							{error}
+						</div>
+					)}
+
+					<div
+						style={{
+							display: 'flex',
+							gap: '0.75rem',
+							justifyContent: 'flex-end',
+						}}
+					>
+						<button
+							type="button"
+							className="btn btn-secondary"
+							onClick={onClose}
+							disabled={generating}
+						>
+							Cancel
+						</button>
+						<button
+							type="submit"
+							className="btn"
+							disabled={generating || !description.trim()}
+							style={{
+								display: 'flex',
+								alignItems: 'center',
+								gap: '0.45rem',
+							}}
+						>
+							{generating ? (
+								<>
+									<RefreshCw
+										size={14}
+										style={{
+											animation:
+												'spin 1.4s linear infinite',
+										}}
+									/>
+									Generating…
+								</>
+							) : (
+								<>
+									<FileText size={14} />
+									Generate Report
+								</>
+							)}
+						</button>
+					</div>
+				</form>
+			</div>
+		</div>
+	);
+}
+
 // ─── Main view ────────────────────────────────────────────────────────────────
 export default function SessionView() {
 	const { id } = useParams();
@@ -569,6 +1128,8 @@ export default function SessionView() {
 	});
 	const [activeTab, setActiveTab] = useState('graph');
 	const [dbEvents, setDbEvents] = useState([]);
+	const [showReportModal, setShowReportModal] = useState(false);
+	const [reportsCount, setReportsCount] = useState(0);
 	const messagesEndRef = useRef(null);
 	const logEndRef = useRef(null);
 	const { setSessionNav } = useSidebar();
@@ -581,10 +1142,15 @@ export default function SessionView() {
 			setActiveTab,
 			agentCount,
 			relationCount,
+			reportsCount,
 			session,
+			onCreateReport:
+				session?.status === 'completed'
+					? () => setShowReportModal(true)
+					: null,
 		});
 		return () => setSessionNav(null);
-	}, [activeTab, artifacts, session]);
+	}, [activeTab, artifacts, session, reportsCount]);
 
 	useEffect(() => {
 		fetchData();
@@ -722,6 +1288,14 @@ export default function SessionView() {
 			}}
 		>
 			<style>{`@keyframes spin { 100% { transform: rotate(360deg); } }`}</style>
+
+			{showReportModal && session && (
+				<CreateReportModal
+					sessionId={id}
+					onClose={() => setShowReportModal(false)}
+					onCreated={() => {}}
+				/>
+			)}
 
 			{/* ── Split body ── */}
 			<div
@@ -869,7 +1443,8 @@ export default function SessionView() {
 								flexDirection: 'column',
 								gap: '1rem',
 								flex: 1,
-								overflowY: 'auto',
+								minHeight: 0,
+								overflow: 'hidden',
 							}}
 						>
 							{/* Graph */}
@@ -1270,6 +1845,14 @@ export default function SessionView() {
 										})()}
 									</div>
 								</div>
+							)}
+
+							{/* Reports */}
+							{activeTab === 'reports' && (
+								<SessionReportsList
+									sessionId={id}
+									onCountChange={setReportsCount}
+								/>
 							)}
 						</div>
 					)}

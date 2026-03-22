@@ -51,3 +51,22 @@ class SimulationEventResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class ReportCreate(BaseModel):
+    description: str
+
+
+class ReportResponse(BaseModel):
+    id: int
+    report_id: str
+    session_id: int
+    title: str
+    description: str
+    file_path: str
+    created_at: datetime
+    session_title: Optional[str] = None
+    session_uuid: Optional[str] = None
+
+    class Config:
+        from_attributes = True

@@ -17,6 +17,7 @@ import {
 	Users,
 	Link2,
 	Info,
+	PlusSquare,
 } from 'lucide-react';
 import { SidebarCtx } from './SidebarContext';
 import Auth from './views/Auth';
@@ -91,6 +92,11 @@ function Sidebar() {
 								icon: <Info size={15} />,
 								label: 'Info',
 							},
+							{
+								id: 'reports',
+								icon: <FileText size={15} />,
+								label: `Reports${sessionNav.reportsCount ? ` (${sessionNav.reportsCount})` : ''}`,
+							},
 						].map((item) => (
 							<button
 								key={item.id}
@@ -101,6 +107,29 @@ function Sidebar() {
 								{item.label}
 							</button>
 						))}
+						{/* Generate Report button – only for completed sessions */}
+						{sessionNav.onCreateReport && (
+							<>
+								<div
+									style={{
+										height: '1px',
+										background: 'var(--outline-variant)',
+										margin: '0.5rem 0.85rem',
+									}}
+								/>
+								<button
+									className="sidebar-nav-btn"
+									onClick={sessionNav.onCreateReport}
+									style={{
+										color: 'var(--accent-color)',
+										fontWeight: 700,
+									}}
+								>
+									<PlusSquare size={15} />
+									Generate Report
+								</button>
+							</>
+						)}
 						{sessionNav.session &&
 							(() => {
 								const status =
