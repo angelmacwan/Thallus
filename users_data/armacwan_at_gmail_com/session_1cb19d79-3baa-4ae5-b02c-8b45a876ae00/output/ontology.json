@@ -1,0 +1,683 @@
+{
+  "classes": [
+    {
+      "name": "Organisation",
+      "label": "Organisation",
+      "description": "A group of people who work together in an organized way for a shared purpose.",
+      "superclass": null
+    },
+    {
+      "name": "Person",
+      "label": "Person",
+      "description": "An individual human being.",
+      "superclass": null
+    },
+    {
+      "name": "Country",
+      "label": "Country",
+      "description": "A nation with its own government, occupying a particular territory.",
+      "superclass": "Organisation"
+    },
+    {
+      "name": "NuclearFacility",
+      "label": "Nuclear Facility",
+      "description": "A facility involved in the production or processing of nuclear materials.",
+      "superclass": "Organisation"
+    },
+    {
+      "name": "NewsAgency",
+      "label": "News Agency",
+      "description": "An organization that gathers and distributes news to other media outlets.",
+      "superclass": "Organisation"
+    },
+    {
+      "name": "MilitaryOrganisation",
+      "label": "Military Organisation",
+      "description": "An organization belonging to a country's armed forces.",
+      "superclass": "Organisation"
+    },
+    {
+      "name": "Location",
+      "label": "Location",
+      "description": "A particular place or position.",
+      "superclass": null
+    },
+    {
+      "name": "Convoy",
+      "label": "Convoy",
+      "description": "A group of vehicles or ships traveling together.",
+      "superclass": "Organisation"
+    },
+    {
+      "name": "PoliticalEntity",
+      "label": "Political Entity",
+      "description": "An entity that has political significance.",
+      "superclass": "Organisation"
+    }
+  ],
+  "object_properties": [
+    {
+      "name": "attack",
+      "label": "attack",
+      "domain": "Organisation",
+      "range": "Organisation",
+      "description": "Indicates an attack by one organization on another."
+    },
+    {
+      "name": "attacked",
+      "label": "attacked",
+      "domain": "Organisation",
+      "range": "Organisation",
+      "description": "Indicates an organization being attacked by another."
+    },
+    {
+      "name": "targets",
+      "label": "targets",
+      "domain": "Organisation",
+      "range": "Organisation",
+      "description": "Indicates an organization targeting another organization."
+    },
+    {
+      "name": "threatenedToExpand",
+      "label": "threatened to expand",
+      "domain": "Organisation",
+      "range": "String",
+      "description": "Indicates an organization's threat to expand certain activities."
+    },
+    {
+      "name": "consideringRemovalOf",
+      "label": "considering removal of",
+      "domain": "Organisation",
+      "range": "String",
+      "description": "Indicates an organization is considering removing a ban or restriction."
+    },
+    {
+      "name": "believesSignalsEndOf",
+      "label": "believes signals end of",
+      "domain": "Person",
+      "range": "String",
+      "description": "Indicates a person's belief about what an event signals."
+    },
+    {
+      "name": "funeralHeldFor",
+      "label": "funeral held for",
+      "domain": "Organisation",
+      "range": "Organisation",
+      "description": "Indicates a funeral was held for a member or representative of an organization."
+    },
+    {
+      "name": "missileAttackFailedOn",
+      "label": "missile attack failed on",
+      "domain": "Organisation",
+      "range": "Location",
+      "description": "Indicates a failed missile attack by an organization on a location."
+    },
+    {
+      "name": "videoOf",
+      "label": "video of",
+      "domain": "String",
+      "range": "String",
+      "description": "Indicates a video depicting a specific event or subject."
+    },
+    {
+      "name": "flotillaFor",
+      "label": "flotilla for",
+      "domain": "Convoy",
+      "range": "Country",
+      "description": "Indicates a convoy is organized for a specific country."
+    },
+    {
+      "name": "journeyTo",
+      "label": "journey to",
+      "domain": "Organisation",
+      "range": "Location",
+      "description": "Indicates a journey made to a specific location."
+    },
+    {
+      "name": "journeyFrom",
+      "label": "journey from",
+      "domain": "Organisation",
+      "range": "Location",
+      "description": "Indicates a journey made from a specific location."
+    },
+    {
+      "name": "notSeeking",
+      "label": "not seeking",
+      "domain": "Person",
+      "range": "String",
+      "description": "Indicates a person's disavowal of seeking a particular outcome."
+    },
+    {
+      "name": "relyOnFor",
+      "label": "rely on for",
+      "domain": "NewsAgency",
+      "range": "String",
+      "description": "Indicates reliance on a news agency for a specific quality or information."
+    },
+    {
+      "name": "attackedBy",
+      "label": "attacked by",
+      "domain": "Organisation",
+      "range": "Organisation",
+      "description": "Indicates an organization that was attacked by another."
+    },
+    {
+      "name": "accused",
+      "label": "accused",
+      "domain": "Organisation",
+      "range": "Organisation",
+      "description": "Indicates an organization accusing another."
+    },
+    {
+      "name": "condemnedAttackOn",
+      "label": "condemned attack on",
+      "domain": "Organisation",
+      "range": "Organisation",
+      "description": "Indicates an organization condemning an attack on another."
+    },
+    {
+      "name": "spokespersonFor",
+      "label": "spokesperson for",
+      "domain": "Person",
+      "range": "Organisation",
+      "description": "Indicates a person serving as a spokesperson for an organization."
+    },
+    {
+      "name": "isIn",
+      "label": "is in",
+      "domain": "Location",
+      "range": "Country",
+      "description": "Indicates a location that is part of a country."
+    },
+    {
+      "name": "increaseAttacksAgainst",
+      "label": "increase attacks against",
+      "domain": "Organisation",
+      "range": "Organisation",
+      "description": "Indicates an organization increasing its attacks against another."
+    },
+    {
+      "name": "condemnedTargetingOf",
+      "label": "condemned targeting of",
+      "domain": "Organisation",
+      "range": "Location",
+      "description": "Indicates an organization condemning the targeting of a location."
+    },
+    {
+      "name": "claimedNoEnrichmentCapacityFor",
+      "label": "claimed no enrichment capacity for",
+      "domain": "Person",
+      "range": "Organisation",
+      "description": "Indicates a person's claim about an organization's nuclear enrichment capacity."
+    },
+    {
+      "name": "spokeTo",
+      "label": "spoke to",
+      "domain": "Person",
+      "range": "Person",
+      "description": "Indicates a conversation between two people."
+    },
+    {
+      "name": "easedOilSanctionsOn",
+      "label": "eased oil sanctions on",
+      "domain": "Person",
+      "range": "Organisation",
+      "description": "Indicates a person easing oil sanctions on an organization."
+    },
+    {
+      "name": "filedPapersAsIndependentIn",
+      "label": "filed papers as independent in",
+      "domain": "Person",
+      "range": "Location",
+      "description": "Indicates a person filing papers as an independent candidate in a specific location."
+    },
+    {
+      "name": "failedToCondemnAttacksOn",
+      "label": "failed to condemn attacks on",
+      "domain": "Organisation",
+      "range": "Organisation",
+      "description": "Indicates an organization's failure to condemn attacks on another."
+    },
+    {
+      "name": "reportedBy",
+      "label": "reported by",
+      "domain": "Organisation",
+      "range": "NewsAgency",
+      "description": "Indicates an organization whose reports are published by a news agency."
+    },
+    {
+      "name": "targeted",
+      "label": "targeted",
+      "domain": "Organisation",
+      "range": "Organisation",
+      "description": "Indicates an organization being targeted by another."
+    }
+  ],
+  "data_properties": [
+    {
+      "name": "name",
+      "label": "name",
+      "domain": "Organisation",
+      "type": "xsd:string",
+      "description": "The name of the organization."
+    },
+    {
+      "name": "name",
+      "label": "name",
+      "domain": "Person",
+      "type": "xsd:string",
+      "description": "The name of the person."
+    },
+    {
+      "name": "name",
+      "label": "name",
+      "domain": "NuclearFacility",
+      "type": "xsd:string",
+      "description": "The name of the nuclear facility."
+    },
+    {
+      "name": "name",
+      "label": "name",
+      "domain": "Location",
+      "type": "xsd:string",
+      "description": "The name of the location."
+    },
+    {
+      "name": "name",
+      "label": "name",
+      "domain": "Convoy",
+      "type": "xsd:string",
+      "description": "The name of the convoy."
+    }
+  ],
+  "individuals": [
+    {
+      "name": "US",
+      "class": "Country",
+      "properties": {}
+    },
+    {
+      "name": "Israel",
+      "class": "Country",
+      "properties": {}
+    },
+    {
+      "name": "Iran",
+      "class": "Country",
+      "properties": {}
+    },
+    {
+      "name": "Natanz",
+      "class": "Location",
+      "properties": {
+        "name": "Natanz"
+      }
+    },
+    {
+      "name": "Diego Garcia",
+      "class": "Location",
+      "properties": {
+        "name": "Diego Garcia"
+      }
+    },
+    {
+      "name": "Ali Larijani",
+      "class": "Person",
+      "properties": {
+        "name": "Ali Larijani"
+      }
+    },
+    {
+      "name": "Will Hutton",
+      "class": "Person",
+      "properties": {
+        "name": "Will Hutton"
+      }
+    },
+    {
+      "name": "IRGC",
+      "class": "MilitaryOrganisation",
+      "properties": {
+        "name": "IRGC"
+      }
+    },
+    {
+      "name": "Cuba",
+      "class": "Country",
+      "properties": {}
+    },
+    {
+      "name": "Nuestra America Convoy",
+      "class": "Convoy",
+      "properties": {
+        "name": "Nuestra America Convoy"
+      }
+    },
+    {
+      "name": "Yucatan",
+      "class": "Location",
+      "properties": {
+        "name": "Yucatan"
+      }
+    },
+    {
+      "name": "Reuters",
+      "class": "NewsAgency",
+      "properties": {
+        "name": "Reuters"
+      }
+    },
+    {
+      "name": "Nicolas Haque",
+      "class": "Person",
+      "properties": {
+        "name": "Nicolas Haque"
+      }
+    },
+    {
+      "name": "Jordan",
+      "class": "Country",
+      "properties": {}
+    },
+    {
+      "name": "Iraq",
+      "class": "Country",
+      "properties": {}
+    },
+    {
+      "name": "Al Jazeera",
+      "class": "NewsAgency",
+      "properties": {
+        "name": "Al Jazeera"
+      }
+    },
+    {
+      "name": "Pezeshkian",
+      "class": "Person",
+      "properties": {
+        "name": "Pezeshkian"
+      }
+    },
+    {
+      "name": "United States",
+      "class": "Country",
+      "properties": {}
+    },
+    {
+      "name": "Natanz nuclear facility",
+      "class": "NuclearFacility",
+      "properties": {
+        "name": "Natanz nuclear facility"
+      }
+    },
+    {
+      "name": "Iran atomic energy organisation",
+      "class": "Organisation",
+      "properties": {
+        "name": "Iran atomic energy organisation"
+      }
+    },
+    {
+      "name": "Zionist regime",
+      "class": "Organisation",
+      "properties": {
+        "name": "Zionist regime"
+      }
+    },
+    {
+      "name": "Tasnim news agency",
+      "class": "NewsAgency",
+      "properties": {
+        "name": "Tasnim news agency"
+      }
+    },
+    {
+      "name": "Russia",
+      "class": "Country",
+      "properties": {}
+    },
+    {
+      "name": "Russian Foreign Ministry",
+      "class": "Organisation",
+      "properties": {
+        "name": "Russian Foreign Ministry"
+      }
+    },
+    {
+      "name": "Maria Zakharova",
+      "class": "Person",
+      "properties": {
+        "name": "Maria Zakharova"
+      }
+    },
+    {
+      "name": "Netanyahu",
+      "class": "Person",
+      "properties": {
+        "name": "Netanyahu"
+      }
+    },
+    {
+      "name": "PM Modi",
+      "class": "Person",
+      "properties": {
+        "name": "PM Modi"
+      }
+    },
+    {
+      "name": "Iran President",
+      "class": "Person",
+      "properties": {
+        "name": "Iran President"
+      }
+    },
+    {
+      "name": "Trump",
+      "class": "Person",
+      "properties": {
+        "name": "Trump"
+      }
+    },
+    {
+      "name": "Britain",
+      "class": "Country",
+      "properties": {}
+    },
+    {
+      "name": "G. Sudhakaran",
+      "class": "Person",
+      "properties": {
+        "name": "G. Sudhakaran"
+      }
+    },
+    {
+      "name": "Modi government",
+      "class": "Organisation",
+      "properties": {
+        "name": "Modi government"
+      }
+    },
+    {
+      "name": "Lebanon",
+      "class": "Country",
+      "properties": {}
+    },
+    {
+      "name": "Iranian oil",
+      "class": "Organisation",
+      "properties": {
+        "name": "Iranian oil"
+      }
+    },
+    {
+      "name": "war",
+      "class": "String",
+      "properties": {
+        "name": "war"
+      }
+    },
+    {
+      "name": "UK",
+      "class": "Country",
+      "properties": {}
+    },
+    {
+      "name": "Iranian woman",
+      "class": "Organisation",
+      "properties": {
+        "name": "Iranian woman"
+      }
+    },
+    {
+      "name": "US-Israel attack",
+      "class": "String",
+      "properties": {
+        "name": "US-Israel attack"
+      }
+    },
+    {
+      "name": "Al Jazeera reporter",
+      "class": "Organisation",
+      "properties": {
+        "name": "Al Jazeera reporter"
+      }
+    },
+    {
+      "name": "truth",
+      "class": "String",
+      "properties": {
+        "name": "truth"
+      }
+    },
+    {
+      "name": "transparency",
+      "class": "String",
+      "properties": {
+        "name": "transparency"
+      }
+    },
+    {
+      "name": "Natanz enrichment complex",
+      "class": "NuclearFacility",
+      "properties": {
+        "name": "Natanz enrichment complex"
+      }
+    },
+    {
+      "name": "Iran's Natanz enrichment facility",
+      "class": "NuclearFacility",
+      "properties": {
+        "name": "Iran's Natanz enrichment facility"
+      }
+    },
+    {
+      "name": "Tehran",
+      "class": "Location",
+      "properties": {
+        "name": "Tehran"
+      }
+    },
+    {
+      "name": "Ambalappuzha",
+      "class": "Location",
+      "properties": {
+        "name": "Ambalappuzha"
+      }
+    },
+    {
+      "name": "base",
+      "class": "Location",
+      "properties": {
+        "name": "base"
+      }
+    }
+  ],
+  "axioms": [
+    "US is a Country.",
+    "Israel is a Country.",
+    "Iran is a Country.",
+    "Natanz is a Location.",
+    "Diego Garcia is a Location.",
+    "Ali Larijani is a Person.",
+    "Will Hutton is a Person.",
+    "IRGC is a MilitaryOrganisation.",
+    "Cuba is a Country.",
+    "Nuestra America Convoy is a Convoy.",
+    "Yucatan is a Location.",
+    "Reuters is a NewsAgency.",
+    "Nicolas Haque is a Person.",
+    "Jordan is a Country.",
+    "Iraq is a Country.",
+    "Al Jazeera is a NewsAgency.",
+    "Pezeshkian is a Person.",
+    "United States is a Country.",
+    "Natanz nuclear facility is a NuclearFacility.",
+    "Iran atomic energy organisation is an Organisation.",
+    "Zionist regime is an Organisation.",
+    "Tasnim news agency is a NewsAgency.",
+    "Russia is a Country.",
+    "Russian Foreign Ministry is an Organisation.",
+    "Maria Zakharova is a Person.",
+    "Netanyahu is a Person.",
+    "PM Modi is a Person.",
+    "Iran President is a Person.",
+    "Trump is a Person.",
+    "Britain is a Country.",
+    "G. Sudhakaran is a Person.",
+    "Modi government is an Organisation.",
+    "Lebanon is a Country.",
+    "Iranian oil is an Organisation.",
+    "war is a String.",
+    "UK is a Country.",
+    "Iranian woman is an Organisation.",
+    "US-Israel attack is a String.",
+    "Al Jazeera reporter is an Organisation.",
+    "truth is a String.",
+    "transparency is a String.",
+    "Natanz enrichment complex is a NuclearFacility.",
+    "Iran's Natanz enrichment facility is a NuclearFacility.",
+    "Tehran is a Location.",
+    "Ambalappuzha is a Location.",
+    "base is a Location.",
+    "US attack Iran.",
+    "US attack Natanz.",
+    "Israel attack Iran.",
+    "Israel attack Natanz.",
+    "Diego Garcia targeted base.",
+    "Israel attack Lebanon.",
+    "Iran threatenedToExpand attacks.",
+    "US consideringRemovalOf Iranian oil.",
+    "Will Hutton believesSignalsEndOf war.",
+    "Iran funeralHeldFor IRGC spokesman.",
+    "UK missileAttackFailedOn Diego Garcia.",
+    "US attack Israel.",
+    "Iranian woman videoOf US-Israel attack.",
+    "Nuestra America Convoy flotillaFor Cuba.",
+    "Al Jazeera reporter journeyTo Iraq.",
+    "Al Jazeera reporter journeyFrom Jordan.",
+    "Pezeshkian notSeeking war.",
+    "Al Jazeera relyOnFor truth.",
+    "Al Jazeera relyOnFor transparency.",
+    "United States attacked Iran.",
+    "Israel attacked Iran.",
+    "United States attacked Natanz nuclear facility.",
+    "Israel attacked Natanz nuclear facility.",
+    "Iran atomic energy organisation accused United States.",
+    "Iran atomic energy organisation accused Zionist regime.",
+    "Iran atomic energy organisation targeted Natanz enrichment complex.",
+    "Iran reportedBy Tasnim news agency.",
+    "Russia condemnedAttackOn Iran.",
+    "Russian Foreign Ministry condemnedAttackOn Iran's Natanz enrichment facility.",
+    "Maria Zakharova spokespersonFor Russian Foreign Ministry.",
+    "Natanz isIn Iran.",
+    "Israel attacked Iran.",
+    "United States attacked Iran.",
+    "Israel increaseAttacksAgainst Iran.",
+    "Britain condemnedTargetingOf Tehran.",
+    "Netanyahu claimedNoEnrichmentCapacityFor Iran.",
+    "PM Modi spokeTo Iran President.",
+    "Trump easedOilSanctionsOn Iran.",
+    "G. Sudhakaran filedPapersAsIndependentIn Ambalappuzha.",
+    "Modi government failedToCondemnAttacksOn Iran."
+  ]
+}

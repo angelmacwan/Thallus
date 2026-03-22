@@ -62,3 +62,20 @@ OUTPUTS/
     report_2.md
     ...
 ```
+
+Commands to Run the Application
+If they are not already running, open two separate terminal instances from /Users/angel/Documents/mv2 and run:
+
+1. FastAPI Backend Server (Port 8000)
+
+```bash
+uvicorn api.main:app --reload --port 8000
+```
+
+2. Vite React Frontend (Port 5173)
+
+```bash
+cd frontend && npm run dev
+```
+
+Navigate to http://localhost:5173/ in your browser. From here you can create a test user, login, upload some sample .txt seed files into the "New Session" configurator, hit "Simulate", and begin asking the agent questions once its completed!

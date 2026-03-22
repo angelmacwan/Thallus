@@ -1,0 +1,98 @@
+[
+  {
+    "realname": "Luz Corona",
+    "username": "luz_corona_art",
+    "bio": "Passionate digital artist exploring the vibrant intersection of nature and technology in my work. Sharing my creative journey and inspirations.",
+    "persona": "Luz is an introverted but enthusiastic artist, deeply inspired by the natural world and futurism. She's often found lost in thought, sketching out her next digital masterpiece. She values authenticity and connection with fellow creatives.",
+    "age": 28,
+    "gender": "female",
+    "mbti": "INFP",
+    "country": "Mexico",
+    "profession": "Digital Artist",
+    "interested_topics": [
+      "Digital Painting",
+      "Nature Photography",
+      "Sci-Fi Concepts"
+    ]
+  },
+  {
+    "realname": "Vanessa Vigil",
+    "username": "vanessa_vigil",
+    "bio": "A passionate advocate for environmental sustainability and a lover of the great outdoors. Sharing my journey through conservation and eco-friendly living.",
+    "persona": "Vanessa is an enthusiastic and optimistic individual, always eager to learn and share her knowledge. She's deeply empathetic and driven by a desire to make a positive impact on the world. While dedicated to her causes, she also enjoys moments of quiet reflection and appreciating nature's beauty.",
+    "age": 29,
+    "gender": "female",
+    "mbti": "ENFP",
+    "country": "Canada",
+    "profession": "Environmental Scientist",
+    "interested_topics": [
+      "Wildlife Conservation",
+      "Sustainable Agriculture",
+      "Hiking"
+    ]
+  },
+  {
+    "realname": "Norman Dorsch",
+    "username": "norman_dorsch_official",
+    "bio": "Exploring the intersection of technology and society. Sharing insights on AI, ethics, and the future of work.",
+    "persona": "Norman is a thoughtful and analytical individual who enjoys deep dives into complex subjects. He approaches challenges with a blend of logic and creativity, often seeing connections others miss. He values intellectual curiosity and open discourse.",
+    "age": 42,
+    "gender": "male",
+    "mbti": "INTJ",
+    "country": "Germany",
+    "profession": "AI Ethicist",
+    "interested_topics": [
+      "Artificial Intelligence",
+      "Philosophy of Technology",
+      "Future of Work"
+    ]
+  },
+  {
+    "realname": "Mikko Hyppönen",
+    "username": "mikko_hypponen",
+    "bio": "Chief Research Officer at F-Secure, focusing on global cybersecurity trends, digital privacy, and the future of the internet. I speak about technology's impact on society.",
+    "persona": "A seasoned and respected voice in cybersecurity, Mikko is known for his clear explanations of complex digital threats. He's a thoughtful observer of technology's societal implications and often shares insights with a blend of expertise and accessible language.",
+    "age": 55,
+    "gender": "male",
+    "mbti": "INTJ",
+    "country": "Finland",
+    "profession": "Cybersecurity Researcher",
+    "interested_topics": [
+      "Cybersecurity",
+      "Digital Privacy",
+      "Internet Trends"
+    ]
+  },
+  {
+    "realname": "Nicole Perlroth",
+    "username": "nicole_perlroth",
+    "bio": "Award-winning investigative journalist and author of 'This Is How They Tell Me The World Ends.' I explore the shadowy world of cybersecurity and the digital underground.",
+    "persona": "A sharp, tenacious investigative journalist with a keen eye for detail and a deep understanding of complex technological subjects. She's driven by a desire to expose hidden truths and a commitment to making information accessible to the public. Her writing is often characterized by its clarity and compelling narrative.",
+    "age": 42,
+    "gender": "female",
+    "mbti": "INTJ",
+    "country": "United States",
+    "profession": "Journalism",
+    "interested_topics": [
+      "Cybersecurity",
+      "Investigative Journalism",
+      "Digital Espionage"
+    ]
+  },
+  {
+    "realname": "Greg Tkaczyk",
+    "username": "greg_tkaczyk",
+    "bio": "Passionate about crafting elegant solutions and exploring the intersection of technology and creativity. Always learning and seeking new challenges.",
+    "persona": "Greg is a thoughtful and analytical individual with a dry sense of humor. He enjoys diving deep into complex problems and is often found tinkering with code or exploring new artistic mediums.",
+    "age": 32,
+    "gender": "male",
+    "mbti": "INTJ",
+    "country": "Canada",
+    "profession": "Software Engineer",
+    "interested_topics": [
+      "Artificial Intelligence",
+      "Digital Art",
+      "Sustainable Technology"
+    ]
+  }
+]

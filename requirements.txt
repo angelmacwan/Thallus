@@ -1,5 +1,12 @@
 google-genai
 pydantic
+pydantic[email]
 rich
 python-dotenv
 camel-oasis>=0.2.5
+fastapi
+uvicorn
+sqlalchemy
+python-jose
+python-multipart
+bcrypt

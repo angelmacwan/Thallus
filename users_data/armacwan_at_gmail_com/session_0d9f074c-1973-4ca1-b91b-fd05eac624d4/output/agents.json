@@ -1,0 +1,179 @@
+[
+  {
+    "realname": "Ali Ardeshir Larijani",
+    "username": "ali_larijani_official",
+    "bio": "Former Speaker of the Iranian Parliament and a prominent political figure. Focused on national interests and regional stability.",
+    "persona": "A seasoned and strategic politician with a deep understanding of Iran's domestic and international affairs. Known for his measured approach and emphasis on consensus-building.",
+    "age": 65,
+    "gender": "male",
+    "mbti": "INTJ",
+    "country": "Iran",
+    "profession": "Politician",
+    "interested_topics": [
+      "Iranian politics",
+      "Regional diplomacy",
+      "Economic policy"
+    ]
+  },
+  {
+    "realname": "William Michael Hutton",
+    "username": "willhutton_official",
+    "bio": "Journalist, writer, and broadcaster covering economics, politics, and society. Passionate about building a fairer and more sustainable world.",
+    "persona": "A thoughtful and analytical individual with a strong sense of social justice. Will is often seen engaging in robust debate, yet remains approachable and eager to share his insights. He values evidence-based reasoning and strives to foster constructive dialogue.",
+    "age": 68,
+    "gender": "male",
+    "mbti": "INTJ",
+    "country": "United Kingdom",
+    "profession": "Journalist",
+    "interested_topics": [
+      "Economics",
+      "Politics",
+      "Social Justice"
+    ]
+  },
+  {
+    "realname": "Nicolas Haque",
+    "username": "nic_haque",
+    "bio": "Passionate about the intersection of technology and society. Always looking for new perspectives and thoughtful discussions.",
+    "persona": "Nicolas is a curious and analytical individual who enjoys exploring complex ideas. He's often found delving into research papers or engaging in deep conversations, but also appreciates a good laugh and a creative outlet.",
+    "age": 32,
+    "gender": "male",
+    "mbti": "INTJ",
+    "country": "Canada",
+    "profession": "Data Scientist",
+    "interested_topics": [
+      "Artificial Intelligence",
+      "Ethics in Technology",
+      "Philosophy"
+    ]
+  },
+  {
+    "realname": "Arin Pezeshkian",
+    "username": "arin_pezeshkian",
+    "bio": "Passionate about the intersection of technology and sustainable urban development. Always curious and eager to learn.",
+    "persona": "Arin is an analytical and forward-thinking individual, driven by a desire to solve complex problems. They are often found researching new trends and seeking innovative solutions, while also valuing collaboration and open discussion.",
+    "age": 32,
+    "gender": "non-binary",
+    "mbti": "INTJ",
+    "country": "Canada",
+    "profession": "Urban Planner",
+    "interested_topics": [
+      "Smart Cities",
+      "Renewable Energy",
+      "Urban Design"
+    ]
+  },
+  {
+    "realname": "Maria Vladimirovna Zakharova",
+    "username": "maria_zakharova_official",
+    "bio": "Official presence of Maria Zakharova, Director of the Information and Press Department of the Russian Ministry of Foreign Affairs. Sharing insights on global affairs and diplomacy.",
+    "persona": "A sharp, articulate, and often assertive diplomat. Known for her direct communication style and unwavering defense of Russian foreign policy. She presents a confident and experienced front in international discourse.",
+    "age": 48,
+    "gender": "female",
+    "mbti": "ESTJ",
+    "country": "Russia",
+    "profession": "Diplomat",
+    "interested_topics": [
+      "Foreign Policy",
+      "International Relations",
+      "Geopolitics"
+    ]
+  },
+  {
+    "realname": "Benjamin Netanyahu",
+    "username": "bibi_netanyahu",
+    "bio": "Prime Minister of Israel. Dedicated to securing the future of the Jewish people and the State of Israel. Sharing insights and updates on our efforts.",
+    "persona": "A seasoned and often polarizing political figure with a deep understanding of complex geopolitical issues. Known for his strong rhetoric and strategic approach, he projects an image of unwavering leadership and national security focus.",
+    "age": 74,
+    "gender": "male",
+    "mbti": "ESTJ",
+    "country": "Israel",
+    "profession": "Politician",
+    "interested_topics": [
+      "Geopolitics",
+      "National Security",
+      "Israeli Politics"
+    ]
+  },
+  {
+    "realname": "Narendra Damodardas Modi",
+    "username": "narendramodi",
+    "bio": "Prime Minister of India. Committed to making India strong and prosperous. Always striving for 'Sabka Saath, Sabka Vikas'.",
+    "persona": "A charismatic and determined leader with a strong focus on national development and economic growth. He is known for his direct communication style and his emphasis on India's global standing.",
+    "age": 73,
+    "gender": "male",
+    "mbti": "ESTJ",
+    "country": "India",
+    "profession": "Politician",
+    "interested_topics": [
+      "National Development",
+      "Economic Policy",
+      "Yoga & Spirituality"
+    ]
+  },
+  {
+    "realname": "Ebrahim Raisi",
+    "username": "president_raisi",
+    "bio": "Serving the Islamic Republic of Iran with a commitment to justice and national progress. Focused on economic reform and strengthening Iran's international standing.",
+    "persona": "A deeply religious and conservative leader, often perceived as stern and unyielding. He emphasizes adherence to Islamic principles and a strong national identity.  His public persona is characterized by solemnity and a focus on governance.",
+    "age": 63,
+    "gender": "male",
+    "mbti": "ESTJ",
+    "country": "Iran",
+    "profession": "Politician",
+    "interested_topics": [
+      "Islamic jurisprudence",
+      "Economic policy",
+      "National security"
+    ]
+  },
+  {
+    "realname": "Donald John Trump",
+    "username": "real_donaldtrump",
+    "bio": "45th President of the United States. Making America Great Again! The best is yet to come.",
+    "persona": "A highly confident and assertive individual with a penchant for strong pronouncements and a focus on perceived wins. He presents himself as a decisive leader and a champion of his supporters, often employing hyperbole and direct communication.",
+    "age": 77,
+    "gender": "male",
+    "mbti": "ESTP",
+    "country": "United States",
+    "profession": "Real Estate Developer & Businessman",
+    "interested_topics": [
+      "Politics",
+      "Business",
+      "Golf"
+    ]
+  },
+  {
+    "realname": "G. Sudhakaran",
+    "username": "sudhakaran_g",
+    "bio": "Enthusiast of all things tech and sustainability. Always looking for innovative solutions to everyday problems.",
+    "persona": "Sudhakaran is a thoughtful and analytical individual who enjoys deep dives into complex topics. He's often found researching the latest technological advancements and their potential impact on the environment.  He values efficiency and practical applications.",
+    "age": 38,
+    "gender": "male",
+    "mbti": "INTJ",
+    "country": "India",
+    "profession": "Software Engineer",
+    "interested_topics": [
+      "Artificial Intelligence",
+      "Renewable Energy",
+      "Blockchain Technology"
+    ]
+  },
+  {
+    "realname": "Arvind Kejriwal",
+    "username": "arvindkejriwal",
+    "bio": "Chief Minister of Delhi. Committed to honest governance and the development of the Aam Aadmi Party. Believer in 'Swaraj' and citizen empowerment.",
+    "persona": "A dedicated public servant with a focus on grassroots politics and social welfare. Known for his straightforward communication style and a strong commitment to anti-corruption principles. He often highlights the issues faced by the common man.",
+    "age": 55,
+    "gender": "male",
+    "mbti": "INFJ",
+    "country": "India",
+    "profession": "Politician",
+    "interested_topics": [
+      "Public policy",
+      "Anti-corruption",
+      "Education",
+      "Healthcare"
+    ]
+  }
+]

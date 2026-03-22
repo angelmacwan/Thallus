@@ -39,11 +39,13 @@ class SimulationRunner:
         agents_path: str,
         db_path: str,
         log_path: str,
+        emit_event=None,
     ):
         self.graph = graph
         self.agents_path = agents_path
         self.db_path = db_path
         self.log_path = log_path
+        self._emit = emit_event if callable(emit_event) else (lambda t, m: None)
 
     # ------------------------------------------------------------------
     # Public
@@ -61,10 +63,15 @@ class SimulationRunner:
             print("No agent profiles found. Skipping simulation.")
             return
 
+        for p in profiles:
+            username = p.get("username") or p.get("realname", "unknown")
+            self._emit("agent", f"Agent created: @{username}")
+
         print(
             f"Starting OASIS simulation with {len(profiles)} agent(s) "
             f"for {rounds} round(s)…"
         )
+        self._emit("stage", f"Starting simulation with {len(profiles)} agent(s) for {rounds} round(s)")
         asyncio.run(self._run_oasis(rounds))
 
     # ------------------------------------------------------------------
@@ -75,6 +82,7 @@ class SimulationRunner:
         import oasis
         from oasis import ActionType, LLMAction, ManualAction, generate_reddit_agent_graph
 
+        self._emit("stage", "Initializing AI model…")
         model = self._build_camel_model()
 
         available_actions = [
@@ -91,12 +99,14 @@ class SimulationRunner:
             ActionType.FOLLOW,
         ]
 
+        self._emit("stage", "Building agent graph…")
         print("Building OASIS agent graph…")
         agent_graph = await generate_reddit_agent_graph(
             profile_path=self.agents_path,
             model=model,
             available_actions=available_actions,
         )
+        self._emit("stage", "Agent graph ready")
 
         # Fresh database for this run
         if os.path.exists(self.db_path):
@@ -127,22 +137,27 @@ class SimulationRunner:
             }
             await env.step(seed_actions)
             print(f"Seeded simulation with {len(seed_contents)} context post(s).")
+            self._emit("action", f"Seeded platform with {len(seed_contents)} initial post(s)")
 
         # ── LLM rounds ────────────────────────────────────────────────
         for r in range(rounds):
             print(f"\n--- OASIS Round {r + 1}/{rounds} ---")
+            self._emit("round", f"Round {r + 1}/{rounds} — agents deciding actions…")
             llm_actions = {
                 agent: LLMAction()
                 for _, agent in env.agent_graph.get_agents()
             }
             await env.step(llm_actions)
             print(f"Round {r + 1} complete.")
+            self._emit("round", f"Round {r + 1}/{rounds} complete")
 
         await env.close()
 
         # ── Post-run export ───────────────────────────────────────────
+        self._emit("stage", "Exporting simulation data…")
         self._export_db_to_log()
         print(f"\nSimulation complete. Activity log → {self.log_path}")
+        self._emit("done", "Simulation complete")
 
     # ------------------------------------------------------------------
     # Helpers
