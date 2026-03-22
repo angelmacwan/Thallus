@@ -2,7 +2,6 @@
 .env
 INPUT/
 OUTPUTS/
-DOCS/
 logs/
 log/
 users_data/
