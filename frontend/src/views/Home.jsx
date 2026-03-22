@@ -1,7 +1,16 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../api';
-import { PlayCircle, FileText, UploadCloud, Zap } from 'lucide-react';
+import {
+	PlayCircle,
+	FileText,
+	UploadCloud,
+	Zap,
+	Target,
+	BookOpen,
+	Briefcase,
+	GraduationCap,
+} from 'lucide-react';
 
 export default function Home() {
 	const [sessions, setSessions] = useState([]);
@@ -209,6 +218,185 @@ export default function Home() {
 						})}
 					</div>
 				)}
+				{/* ── How it works ──────────────────────────────────── */}
+				<div style={{ marginTop: '2.5rem' }}>
+					<h3
+						style={{
+							marginBottom: '1rem',
+							fontSize: '0.75rem',
+							letterSpacing: '0.1em',
+							textTransform: 'uppercase',
+							color: 'var(--text-secondary)',
+							fontWeight: 600,
+						}}
+					>
+						How it works
+					</h3>
+					<div
+						style={{
+							display: 'grid',
+							gridTemplateColumns: 'repeat(3, 1fr)',
+							gap: '0.75rem',
+						}}
+					>
+						{[
+							{
+								icon: UploadCloud,
+								step: '01',
+								title: 'Upload Seeds',
+								body: 'Drop in documents—reports, papers, briefs, or notes—as the starting context for your simulation.',
+							},
+							{
+								icon: Zap,
+								step: '02',
+								title: 'Agents Deliberate',
+								body: 'AI agents read, challenge, and synthesize your material across multiple reasoning rounds.',
+							},
+							{
+								icon: FileText,
+								step: '03',
+								title: 'Get a Report',
+								body: 'Receive a structured report capturing insights, tensions, and conclusions from the session.',
+							},
+						].map(({ icon: Icon, step, title, body }) => (
+							<div
+								key={step}
+								style={{
+									background: 'var(--surface-container-high)',
+									borderRadius: '12px',
+									padding: '1.1rem',
+									display: 'flex',
+									flexDirection: 'column',
+									gap: '0.6rem',
+								}}
+							>
+								<div
+									style={{
+										display: 'flex',
+										alignItems: 'center',
+										gap: '0.5rem',
+									}}
+								>
+									<Icon
+										size={15}
+										color="var(--accent-color)"
+									/>
+									<span
+										style={{
+											fontSize: '0.65rem',
+											fontWeight: 700,
+											letterSpacing: '0.08em',
+											color: 'var(--accent-color)',
+											opacity: 0.8,
+										}}
+									>
+										STEP {step}
+									</span>
+								</div>
+								<p
+									style={{
+										fontWeight: 600,
+										fontSize: '0.88rem',
+										margin: 0,
+									}}
+								>
+									{title}
+								</p>
+								<p
+									style={{
+										fontSize: '0.78rem',
+										color: 'var(--text-secondary)',
+										margin: 0,
+										lineHeight: 1.5,
+									}}
+								>
+									{body}
+								</p>
+							</div>
+						))}
+					</div>
+
+					{/* ── Useful for ──────────────────────────────────────── */}
+					<h3
+						style={{
+							marginTop: '1.75rem',
+							marginBottom: '1rem',
+							fontSize: '0.75rem',
+							letterSpacing: '0.1em',
+							textTransform: 'uppercase',
+							color: 'var(--text-secondary)',
+							fontWeight: 600,
+						}}
+					>
+						Useful for
+					</h3>
+					<div
+						style={{
+							display: 'grid',
+							gridTemplateColumns: 'repeat(2, 1fr)',
+							gap: '0.75rem',
+						}}
+					>
+						{[
+							{
+								icon: Target,
+								title: 'Strategic Planning',
+								body: 'Model how stakeholders might react to a policy shift, market move, or product decision before you commit.',
+							},
+							{
+								icon: BookOpen,
+								title: 'Research Synthesis',
+								body: 'Feed competing papers or reports. The engine surfaces tensions, agreements, and blind spots across sources.',
+							},
+							{
+								icon: Briefcase,
+								title: 'Consulting & Briefings',
+								body: 'Turn dense client briefs into structured deliberation sessions and export polished reports.',
+							},
+							{
+								icon: GraduationCap,
+								title: 'Education & Training',
+								body: 'Simulate expert panels on any topic to create rich learning materials or stress-test arguments.',
+							},
+						].map(({ icon: Icon, title, body }) => (
+							<div
+								key={title}
+								style={{
+									background: 'var(--surface-container-high)',
+									borderRadius: '12px',
+									padding: '1.1rem',
+									display: 'flex',
+									flexDirection: 'column',
+									gap: '0.5rem',
+								}}
+							>
+								<Icon
+									size={16}
+									color="var(--accent-color)"
+								/>
+								<p
+									style={{
+										fontWeight: 600,
+										fontSize: '0.88rem',
+										margin: 0,
+									}}
+								>
+									{title}
+								</p>
+								<p
+									style={{
+										fontSize: '0.78rem',
+										color: 'var(--text-secondary)',
+										margin: 0,
+										lineHeight: 1.5,
+									}}
+								>
+									{body}
+								</p>
+							</div>
+						))}
+					</div>
+				</div>
 			</section>
 
 			{/* ── Right: New simulation panel ───────────────────────── */}
