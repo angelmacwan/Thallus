@@ -5,3 +5,5 @@ OUTPUTS/
 DOCS/
 logs/
 log/
+users_data/
+*.db
