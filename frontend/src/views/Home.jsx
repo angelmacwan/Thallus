@@ -23,8 +23,13 @@ export default function Home() {
 	const fileInputRef = useRef(null);
 	const navigate = useNavigate();
 
+	const [appVersion, setAppVersion] = useState('');
+
 	useEffect(() => {
 		fetchSessions();
+		api.get('/version')
+			.then((res) => setAppVersion(res.data.version))
+			.catch(() => {});
 	}, []);
 
 	const fetchSessions = async () => {
@@ -560,8 +565,8 @@ export default function Home() {
 					<p style={{ margin: 0, fontWeight: 600 }}>
 						Created by StaticaLabs Internal
 					</p>
-					<p style={{ margin: 0 }}>angelmacwan@staticalabs.com</p>
-					<p>ALPHA</p>
+					<p>angelmacwan@staticalabs.com</p>
+					<p style={{ margin: 0 }}>{appVersion || 'loading...'}</p>
 				</div>
 			</aside>
 		</div>

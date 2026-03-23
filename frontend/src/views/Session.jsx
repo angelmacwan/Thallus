@@ -8,13 +8,18 @@ import { useSidebar } from '../SidebarContext';
 import {
 	RefreshCw,
 	Send,
-	Network,
 	Users,
 	Link2,
 	Info,
 	FileText,
 	X,
 	Trash2,
+	Rss,
+	ThumbsUp,
+	ThumbsDown,
+	MessageSquare,
+	ChevronDown,
+	ChevronUp,
 } from 'lucide-react';
 
 mermaid.initialize({ startOnLoad: false, theme: 'neutral' });
@@ -374,14 +379,6 @@ const EVENT_ICONS = {
 	done: '✅',
 };
 
-// ─── Graph node colours by entity type ───────────────────────────────────────
-const TYPE_COLOR = {
-	PERSON: '#2563eb',
-	ORGANIZATION: '#506071',
-	LOCATION: '#2d6a4f',
-	EVENT: '#7c3aed',
-};
-
 // ─── Tab bar ──────────────────────────────────────────────────────────────────
 function Tabs({ tabs, active, onChange }) {
 	return (
@@ -430,485 +427,474 @@ function Tabs({ tabs, active, onChange }) {
 	);
 }
 
-// ─── Force-directed graph ─────────────────────────────────────────────────────
-function ForceGraph({ agents, graph }) {
-	const canvasRef = useRef(null);
-	const containerRef = useRef(null);
-	const animRef = useRef(null);
-	const nodesRef = useRef([]);
-	const transRef = useRef({ x: 0, y: 0, scale: 1 });
-	const dragRef = useRef(null);
-	const [hovered, setHovered] = useState(null);
+// ─── Social Feed
 
-	useEffect(() => {
-		const canvas = canvasRef.current;
-		const container = containerRef.current;
-		if (!canvas || !container) return;
+// ─── Social Feed ─────────────────────────────────────────────────────────────
+const FEED_AVATAR_COLORS = [
+	'#2563eb',
+	'#7c3aed',
+	'#db2777',
+	'#d97706',
+	'#059669',
+	'#0891b2',
+	'#4f46e5',
+	'#dc2626',
+	'#9d174d',
+	'#065f46',
+];
+const feedAvatarColor = (idx) =>
+	FEED_AVATAR_COLORS[
+		(((idx ?? 0) % FEED_AVATAR_COLORS.length) + FEED_AVATAR_COLORS.length) %
+			FEED_AVATAR_COLORS.length
+	];
 
-		const dpr = window.devicePixelRatio || 1;
-		const W = container.offsetWidth || 600;
-		const H = container.offsetHeight || 600;
-		canvas.width = W * dpr;
-		canvas.height = H * dpr;
-		canvas.style.width = W + 'px';
-		canvas.style.height = H + 'px';
+function getVal(obj, ...keys) {
+	for (const k of keys) {
+		if (obj[k] !== undefined && obj[k] !== null) return obj[k];
+	}
+	return null;
+}
 
-		const entities = graph?.entities || {};
-		const relations = graph?.relations || [];
-
-		const ctx = canvas.getContext('2d');
-		ctx.scale(dpr, dpr);
-
-		const nodeMap = {};
-		agents.forEach((a) => {
-			nodeMap[a.realname] = {
-				id: a.realname,
-				label:
-					(a.username || a.realname).length > 16
-						? (a.username || a.realname).slice(0, 14) + '…'
-						: a.username || a.realname,
-				fullLabel: a.realname,
-				detail: `@${a.username} · ${a.profession || ''}`,
-				isAgent: true,
-				color: '#12283c',
-				r: 20,
-				x: W / 2 + (Math.random() - 0.5) * W * 0.45,
-				y: H / 2 + (Math.random() - 0.5) * H * 0.45,
-				vx: 0,
-				vy: 0,
-			};
-		});
-
-		const inRelation = new Set();
-		relations.forEach((r) => {
-			inRelation.add(r.source);
-			inRelation.add(r.target);
-		});
-
-		Object.entries(entities).forEach(([name, data]) => {
-			if (!nodeMap[name] && inRelation.has(name)) {
-				const type = (data.type || '').toUpperCase();
-				nodeMap[name] = {
-					id: name,
-					label: name.length > 16 ? name.slice(0, 14) + '…' : name,
-					fullLabel: name,
-					detail: type,
-					isAgent: false,
-					color: TYPE_COLOR[type] || '#74777d',
-					r: 13,
-					x: W / 2 + (Math.random() - 0.5) * W * 0.5,
-					y: H / 2 + (Math.random() - 0.5) * H * 0.5,
-					vx: 0,
-					vy: 0,
-				};
-			}
-		});
-
-		const nodes = Object.values(nodeMap);
-		nodesRef.current = nodes;
-		const idx = {};
-		nodes.forEach((n, i) => {
-			idx[n.id] = i;
-		});
-
-		const edges = relations
-			.filter(
-				(r) =>
-					idx[r.source] !== undefined && idx[r.target] !== undefined,
-			)
-			.map((r) => ({
-				si: idx[r.source],
-				ti: idx[r.target],
-				type: r.type,
-			}));
-
-		const seen = new Set();
-		const drawEdges = edges.filter((e) => {
-			const key = `${Math.min(e.si, e.ti)}-${Math.max(e.si, e.ti)}`;
-			if (seen.has(key)) return false;
-			seen.add(key);
-			return true;
-		});
-
-		let frame = 0;
-
-		function simulate() {
-			const REPULSION = 4200,
-				SPRING_LEN = 140,
-				SPRING_K = 0.028,
-				DAMPING = 0.82,
-				GRAVITY = 0.01;
-			for (let i = 0; i < nodes.length; i++) {
-				for (let j = i + 1; j < nodes.length; j++) {
-					const dx = nodes[j].x - nodes[i].x,
-						dy = nodes[j].y - nodes[i].y;
-					const d2 = Math.max(dx * dx + dy * dy, 0.01),
-						d = Math.sqrt(d2);
-					const f = REPULSION / d2,
-						fx = (dx / d) * f,
-						fy = (dy / d) * f;
-					nodes[i].vx -= fx;
-					nodes[i].vy -= fy;
-					nodes[j].vx += fx;
-					nodes[j].vy += fy;
-				}
-			}
-			edges.forEach((e) => {
-				const n1 = nodes[e.si],
-					n2 = nodes[e.ti];
-				const dx = n2.x - n1.x,
-					dy = n2.y - n1.y,
-					d = Math.sqrt(dx * dx + dy * dy) || 0.01;
-				const f = (d - SPRING_LEN) * SPRING_K,
-					fx = (dx / d) * f,
-					fy = (dy / d) * f;
-				n1.vx += fx;
-				n1.vy += fy;
-				n2.vx -= fx;
-				n2.vy -= fy;
-			});
-			nodes.forEach((n) => {
-				n.vx += (W / 2 - n.x) * GRAVITY;
-				n.vy += (H / 2 - n.y) * GRAVITY;
-				n.vx *= DAMPING;
-				n.vy *= DAMPING;
-				n.x = Math.max(n.r + 6, Math.min(W - n.r - 6, n.x + n.vx));
-				n.y = Math.max(n.r + 6, Math.min(H - n.r - 6, n.y + n.vy));
-			});
+function formatFeedDate(val) {
+	if (!val) return null;
+	try {
+		if (typeof val === 'number') {
+			// Heuristic: if < 1e10 it's seconds, otherwise milliseconds
+			return new Date(val < 1e10 ? val * 1000 : val).toLocaleString();
 		}
+		return new Date(val).toLocaleString();
+	} catch {
+		return String(val);
+	}
+}
 
-		function draw() {
-			const t = transRef.current;
-			ctx.clearRect(0, 0, W, H);
-
-			ctx.save();
-			ctx.translate(t.x, t.y);
-			ctx.scale(t.scale, t.scale);
-
-			// edges
-			drawEdges.forEach((e) => {
-				const n1 = nodes[e.si],
-					n2 = nodes[e.ti];
-				ctx.beginPath();
-				ctx.moveTo(n1.x, n1.y);
-				ctx.lineTo(n2.x, n2.y);
-				ctx.strokeStyle = 'rgba(18,40,60,0.18)';
-				ctx.lineWidth = 1.5;
-				ctx.stroke();
-
-				// edge label
-				if (drawEdges.length <= 22 && e.type) {
-					const mx = (n1.x + n2.x) / 2;
-					const my = (n1.y + n2.y) / 2;
-					const label =
-						e.type.length > 16 ? e.type.slice(0, 14) + '…' : e.type;
-					ctx.font = '600 10px Inter,system-ui,sans-serif';
-					const tw = ctx.measureText(label).width;
-					// pill background
-					const pad = 5;
-					ctx.fillStyle = 'rgba(255,255,255,0.96)';
-					ctx.beginPath();
-					ctx.roundRect(
-						mx - tw / 2 - pad,
-						my - 7,
-						tw + pad * 2,
-						14,
-						4,
-					);
-					ctx.fill();
-					ctx.strokeStyle = 'rgba(18,40,60,0.12)';
-					ctx.lineWidth = 0.5;
-					ctx.stroke();
-					ctx.fillStyle = '#43474c';
-					ctx.textAlign = 'center';
-					ctx.textBaseline = 'middle';
-					ctx.fillText(label, mx, my);
-				}
-			});
-
-			// nodes
-			nodes.forEach((n) => {
-				// drop shadow
-				ctx.shadowColor = 'rgba(25,28,28,0.16)';
-				ctx.shadowBlur = 10;
-				ctx.shadowOffsetY = 3;
-
-				// flat node circle
-				ctx.beginPath();
-				ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2);
-				ctx.fillStyle = n.color;
-				ctx.fill();
-
-				ctx.shadowBlur = 0;
-				ctx.shadowOffsetY = 0;
-
-				// subtle inner highlight ring
-				ctx.strokeStyle = 'rgba(255,255,255,0.35)';
-				ctx.lineWidth = n.isAgent ? 2 : 1.5;
-				ctx.stroke();
-
-				// label below node
-				const fontSize = n.isAgent ? 12 : 11;
-				ctx.font = n.isAgent
-					? `bold ${fontSize}px Inter,system-ui,sans-serif`
-					: `600 ${fontSize}px Inter,system-ui,sans-serif`;
-				ctx.textAlign = 'center';
-				ctx.textBaseline = 'top';
-				const labelY = n.y + n.r + 4;
-				ctx.fillStyle = n.isAgent ? '#12283c' : '#43474c';
-				ctx.fillText(n.label, n.x, labelY);
-			});
-
-			ctx.restore();
-		}
-
-		function onWheel(e) {
-			e.preventDefault();
-			const rect = canvas.getBoundingClientRect();
-			const mx = e.clientX - rect.left;
-			const my = e.clientY - rect.top;
-			const factor = e.deltaY < 0 ? 1.12 : 1 / 1.12;
-			const t = transRef.current;
-			const newScale = Math.max(0.15, Math.min(6, t.scale * factor));
-			const sf = newScale / t.scale;
-			transRef.current = {
-				x: mx - sf * (mx - t.x),
-				y: my - sf * (my - t.y),
-				scale: newScale,
-			};
-		}
-
-		function tick() {
-			if (frame < 620) simulate();
-			draw();
-			frame++;
-			animRef.current = requestAnimationFrame(tick);
-		}
-		animRef.current = requestAnimationFrame(tick);
-		canvas.addEventListener('wheel', onWheel, { passive: false });
-		return () => {
-			cancelAnimationFrame(animRef.current);
-			canvas.removeEventListener('wheel', onWheel);
-		};
-	}, [agents.length, graph]);
-
-	const handleMouseDown = (e) => {
-		if (e.button !== 0) return;
-		const canvas = canvasRef.current;
-		if (!canvas) return;
-		const rect = canvas.getBoundingClientRect();
-		dragRef.current = {
-			startX: e.clientX - rect.left,
-			startY: e.clientY - rect.top,
-			startTx: transRef.current.x,
-			startTy: transRef.current.y,
-		};
-		canvas.style.cursor = 'grabbing';
-	};
-
-	const handleMouseUp = () => {
-		dragRef.current = null;
-		if (canvasRef.current) canvasRef.current.style.cursor = 'grab';
-	};
-
-	const handleMouseMove = (e) => {
-		const canvas = canvasRef.current;
-		if (!canvas) return;
-		const rect = canvas.getBoundingClientRect();
-		const mx = e.clientX - rect.left;
-		const my = e.clientY - rect.top;
-
-		if (dragRef.current) {
-			const dx = mx - dragRef.current.startX;
-			const dy = my - dragRef.current.startY;
-			transRef.current = {
-				...transRef.current,
-				x: dragRef.current.startTx + dx,
-				y: dragRef.current.startTy + dy,
-			};
-			return;
-		}
-
-		// convert to world space for hover detection
-		const t = transRef.current;
-		const wx = (mx - t.x) / t.scale;
-		const wy = (my - t.y) / t.scale;
-		setHovered(
-			nodesRef.current.find(
-				(n) => Math.sqrt((n.x - wx) ** 2 + (n.y - wy) ** 2) <= n.r + 8,
-			) || null,
-		);
-	};
-
-	const zoom = (factor) => {
-		const canvas = canvasRef.current;
-		if (!canvas) return;
-		const t = transRef.current;
-		const cx = canvas.offsetWidth / 2;
-		const cy = canvas.offsetHeight / 2;
-		const newScale = Math.max(0.15, Math.min(6, t.scale * factor));
-		const sf = newScale / t.scale;
-		transRef.current = {
-			x: cx - sf * (cx - t.x),
-			y: cy - sf * (cy - t.y),
-			scale: newScale,
-		};
-	};
-
-	const resetView = () => {
-		transRef.current = { x: 0, y: 0, scale: 1 };
-	};
+function CommentRow({ comment, agentMap }) {
+	const content = getVal(comment, 'content', 'body', 'text', 'message') || '';
+	const userId = getVal(comment, 'user_id', 'agent_id', 'author_id');
+	const agent =
+		comment._agent || agentMap?.[userId] || agentMap?.[String(userId)];
+	const likes = Number(
+		getVal(comment, 'num_likes', 'like_count', 'upvotes', 'likes') ?? 0,
+	);
+	const displayName =
+		agent?.realname || (userId != null ? `Agent ${userId}` : 'Unknown');
+	const username =
+		agent?.username || (userId != null ? `user${userId}` : 'unknown');
+	const initial = displayName.charAt(0).toUpperCase();
+	const agentIdx = agentMap
+		? Object.keys(agentMap).findIndex((k) => agentMap[k] === agent)
+		: -1;
+	const color = feedAvatarColor(agentIdx >= 0 ? agentIdx : (userId ?? 0));
 
 	return (
 		<div
-			ref={containerRef}
 			style={{
-				position: 'relative',
-				borderRadius: '12px',
-				overflow: 'hidden',
-				flex: 1,
-				minHeight: 0,
+				display: 'flex',
+				gap: '0.55rem',
+				padding: '0.65rem 0.9rem 0.65rem 1.25rem',
+				borderBottom: '1px solid var(--outline-variant)',
+				background: 'var(--surface-container-lowest)',
 			}}
 		>
-			<canvas
-				ref={canvasRef}
-				style={{
-					display: 'block',
-					width: '100%',
-					height: '100%',
-					cursor: 'grab',
-				}}
-				onMouseDown={handleMouseDown}
-				onMouseUp={handleMouseUp}
-				onMouseMove={handleMouseMove}
-				onMouseLeave={() => {
-					setHovered(null);
-					dragRef.current = null;
-					if (canvasRef.current)
-						canvasRef.current.style.cursor = 'grab';
-				}}
-				onDoubleClick={resetView}
-			/>
 			<div
 				style={{
-					position: 'absolute',
-					top: 10,
-					right: 10,
-					background: 'rgba(255,255,255,0.96)',
-					border: '1px solid #e7e8e8',
-					borderRadius: '9px',
-					padding: '0.55rem 0.75rem',
-					fontSize: '0.72rem',
+					width: 28,
+					height: 28,
+					borderRadius: '50%',
+					background: color,
+					color: '#fff',
 					display: 'flex',
-					flexDirection: 'column',
-					gap: 5,
-					boxShadow: '0 2px 8px rgba(25,28,28,0.08)',
+					alignItems: 'center',
+					justifyContent: 'center',
+					fontWeight: 700,
+					fontSize: '0.7rem',
+					flexShrink: 0,
 				}}
 			>
-				{[
-					['#12283c', 'Agent'],
-					['#2563eb', 'Person'],
-					['#506071', 'Org'],
-					['#2d6a4f', 'Location'],
-					['#7c3aed', 'Event'],
-				].map(([c, l]) => (
-					<div
-						key={l}
-						style={{
-							display: 'flex',
-							alignItems: 'center',
-							gap: 7,
-							color: '#43474c',
-							fontWeight: 500,
-						}}
-					>
-						<div
-							style={{
-								width: 10,
-								height: 10,
-								borderRadius: '50%',
-								background: c,
-								flexShrink: 0,
-							}}
-						/>
-						{l}
-					</div>
-				))}
+				{initial}
 			</div>
-			{/* ── Zoom / pan controls ── */}
-			<div
-				style={{
-					position: 'absolute',
-					bottom: 10,
-					right: 10,
-					display: 'flex',
-					flexDirection: 'column',
-					gap: 4,
-				}}
-			>
-				{[
-					['+', 'Zoom in', () => zoom(1.25)],
-					['−', 'Zoom out', () => zoom(1 / 1.25)],
-					['⊙', 'Reset view (double-click)', resetView],
-				].map(([label, title, fn]) => (
-					<button
-						key={label}
-						title={title}
-						onClick={fn}
-						style={{
-							width: 28,
-							height: 28,
-							borderRadius: 6,
-							border: '1px solid #e7e8e8',
-							background: 'rgba(255,255,255,0.96)',
-							color: '#12283c',
-							cursor: 'pointer',
-							fontSize: '0.88rem',
-							fontWeight: 700,
-							lineHeight: 1,
-							display: 'flex',
-							alignItems: 'center',
-							justifyContent: 'center',
-							boxShadow: '0 1px 4px rgba(25,28,28,0.08)',
-						}}
-					>
-						{label}
-					</button>
-				))}
-			</div>
-			{hovered && (
+			<div style={{ flex: 1, minWidth: 0 }}>
 				<div
 					style={{
-						position: 'absolute',
-						bottom: 110,
-						left: 10,
-						background: 'rgba(255,255,255,0.97)',
-						border: '1px solid #e7e8e8',
-						borderRadius: '8px',
-						padding: '0.45rem 0.75rem',
-						color: '#191c1c',
-						fontSize: '0.78rem',
-						maxWidth: 210,
-						pointerEvents: 'none',
-						boxShadow: '0 2px 8px rgba(25,28,28,0.10)',
+						display: 'flex',
+						gap: '0.35rem',
+						alignItems: 'baseline',
+						flexWrap: 'wrap',
 					}}
 				>
-					<div style={{ fontWeight: 700, color: hovered.color }}>
-						{hovered.fullLabel}
+					<span style={{ fontWeight: 600, fontSize: '0.78rem' }}>
+						{displayName}
+					</span>
+					<span
+						style={{
+							fontSize: '0.68rem',
+							color: 'var(--text-secondary)',
+						}}
+					>
+						@{username}
+					</span>
+				</div>
+				{content && (
+					<div
+						style={{
+							fontSize: '0.8rem',
+							marginTop: '0.2rem',
+							lineHeight: 1.55,
+							color: 'var(--text-primary)',
+						}}
+					>
+						{content}
 					</div>
-					{hovered.detail && (
-						<div
+				)}
+				{likes > 0 && (
+					<div
+						style={{
+							fontSize: '0.68rem',
+							color: 'var(--text-secondary)',
+							marginTop: '0.25rem',
+							display: 'flex',
+							alignItems: 'center',
+							gap: '0.2rem',
+						}}
+					>
+						<ThumbsUp size={10} />
+						{likes}
+					</div>
+				)}
+			</div>
+		</div>
+	);
+}
+
+function PostCard({ post, comments, agentMap }) {
+	const [showComments, setShowComments] = useState(false);
+
+	const content = getVal(post, 'content', 'body', 'text', 'message') || '';
+	const userId = getVal(post, 'user_id', 'agent_id', 'author_id');
+	const agent =
+		post._agent || agentMap?.[userId] || agentMap?.[String(userId)];
+	const likes = Number(
+		getVal(post, 'num_likes', 'like_count', 'upvotes', 'likes') ?? 0,
+	);
+	const dislikes = Number(
+		getVal(
+			post,
+			'num_dislikes',
+			'dislike_count',
+			'downvotes',
+			'dislikes',
+		) ?? 0,
+	);
+	const createdAt = getVal(
+		post,
+		'created_at',
+		'timestamp',
+		'date',
+		'posted_at',
+	);
+
+	const displayName =
+		agent?.realname || (userId != null ? `Agent ${userId}` : 'Unknown');
+	const username =
+		agent?.username || (userId != null ? `user${userId}` : 'unknown');
+	const profession = agent?.profession || null;
+	const initial = displayName.charAt(0).toUpperCase();
+	const agentIdx = agentMap
+		? Object.keys(agentMap).findIndex((k) => agentMap[k] === agent)
+		: -1;
+	const color = feedAvatarColor(agentIdx >= 0 ? agentIdx : (userId ?? 0));
+
+	return (
+		<div
+			style={{
+				background: 'var(--surface-container-low)',
+				border: '1px solid var(--outline-variant)',
+				borderRadius: '12px',
+				overflow: 'hidden',
+				flexShrink: 0,
+			}}
+		>
+			{/* Header */}
+			<div
+				style={{
+					display: 'flex',
+					gap: '0.65rem',
+					padding: '0.85rem',
+					alignItems: 'flex-start',
+				}}
+			>
+				<div
+					style={{
+						width: 38,
+						height: 38,
+						borderRadius: '50%',
+						background: color,
+						color: '#fff',
+						display: 'flex',
+						alignItems: 'center',
+						justifyContent: 'center',
+						fontWeight: 700,
+						fontSize: '0.88rem',
+						flexShrink: 0,
+					}}
+				>
+					{initial}
+				</div>
+				<div style={{ flex: 1, minWidth: 0 }}>
+					<div
+						style={{
+							display: 'flex',
+							alignItems: 'baseline',
+							gap: '0.35rem',
+							flexWrap: 'wrap',
+						}}
+					>
+						<span style={{ fontWeight: 700, fontSize: '0.85rem' }}>
+							{displayName}
+						</span>
+						<span
 							style={{
-								color: '#506071',
-								marginTop: 2,
-								fontSize: '0.71rem',
+								fontSize: '0.74rem',
+								color: 'var(--text-secondary)',
 							}}
 						>
-							{hovered.detail}
+							@{username}
+						</span>
+						{profession && (
+							<span
+								style={{
+									fontSize: '0.68rem',
+									color: 'var(--text-secondary)',
+									opacity: 0.75,
+								}}
+							>
+								· {profession}
+							</span>
+						)}
+					</div>
+					{createdAt && (
+						<div
+							style={{
+								fontSize: '0.67rem',
+								color: 'var(--text-secondary)',
+								marginTop: '0.1rem',
+							}}
+						>
+							{formatFeedDate(createdAt)}
 						</div>
 					)}
 				</div>
+			</div>
+
+			{/* Content */}
+			{content && (
+				<div
+					style={{
+						padding: '0 0.9rem 0.85rem',
+						fontSize: '0.85rem',
+						lineHeight: 1.65,
+						color: 'var(--text-primary)',
+					}}
+				>
+					{content}
+				</div>
 			)}
+
+			{/* Stats bar */}
+			<div
+				style={{
+					display: 'flex',
+					gap: '1.1rem',
+					padding: '0.55rem 0.9rem',
+					borderTop: '1px solid var(--outline-variant)',
+					background: 'var(--surface-container)',
+					alignItems: 'center',
+					fontSize: '0.75rem',
+					color: 'var(--text-secondary)',
+				}}
+			>
+				<span
+					style={{
+						display: 'flex',
+						alignItems: 'center',
+						gap: '0.3rem',
+					}}
+				>
+					<ThumbsUp size={13} />
+					{likes}
+				</span>
+				<span
+					style={{
+						display: 'flex',
+						alignItems: 'center',
+						gap: '0.3rem',
+					}}
+				>
+					<ThumbsDown size={13} />
+					{dislikes}
+				</span>
+				{comments.length > 0 ? (
+					<button
+						onClick={() => setShowComments((v) => !v)}
+						style={{
+							background: 'none',
+							border: 'none',
+							cursor: 'pointer',
+							fontSize: '0.75rem',
+							color: 'var(--text-secondary)',
+							display: 'flex',
+							alignItems: 'center',
+							gap: '0.3rem',
+							padding: 0,
+							marginLeft: 'auto',
+						}}
+					>
+						<MessageSquare size={13} />
+						{comments.length}{' '}
+						{comments.length === 1 ? 'comment' : 'comments'}
+						{showComments ? (
+							<ChevronUp size={12} />
+						) : (
+							<ChevronDown size={12} />
+						)}
+					</button>
+				) : (
+					<span
+						style={{
+							display: 'flex',
+							alignItems: 'center',
+							gap: '0.3rem',
+							marginLeft: 'auto',
+							opacity: 0.6,
+						}}
+					>
+						<MessageSquare size={13} />0
+					</span>
+				)}
+			</div>
+
+			{/* Comments */}
+			{showComments && comments.length > 0 && (
+				<div style={{ borderTop: '1px solid var(--outline-variant)' }}>
+					{comments.map((c, ci) => (
+						<CommentRow
+							key={getVal(c, 'comment_id', 'id') ?? ci}
+							comment={c}
+							agentMap={agentMap}
+						/>
+					))}
+				</div>
+			)}
+		</div>
+	);
+}
+
+function SocialFeed({ sessionId }) {
+	const [data, setData] = useState(null);
+	const [loading, setLoading] = useState(true);
+
+	useEffect(() => {
+		api.get(`/simulation/feed/${sessionId}`)
+			.then((r) => setData(r.data))
+			.catch(() => setData({ posts: [], comments: [], agents: [] }))
+			.finally(() => setLoading(false));
+	}, [sessionId]);
+
+	if (loading)
+		return (
+			<div
+				style={{
+					textAlign: 'center',
+					color: 'var(--text-secondary)',
+					padding: '3rem',
+					fontSize: '0.85rem',
+				}}
+			>
+				<RefreshCw
+					size={20}
+					style={{
+						animation: 'spin 1.4s linear infinite',
+						marginBottom: '0.5rem',
+						color: 'var(--accent-color)',
+					}}
+				/>
+				<div>Loading feed…</div>
+			</div>
+		);
+
+	const { posts = [], comments = [], agents = [] } = data || {};
+
+	// Build 0-indexed agent map
+	const agentMap = {};
+	agents.forEach((a, i) => {
+		agentMap[i] = a;
+		agentMap[String(i)] = a;
+	});
+
+	// Group comments by post_id
+	const commentsByPost = {};
+	comments.forEach((c) => {
+		const pid = getVal(c, 'post_id');
+		if (pid === undefined || pid === null) return;
+		if (!commentsByPost[pid]) commentsByPost[pid] = [];
+		commentsByPost[pid].push(c);
+	});
+
+	if (posts.length === 0)
+		return (
+			<div
+				style={{
+					textAlign: 'center',
+					color: 'var(--text-secondary)',
+					padding: '3rem 1rem',
+					fontSize: '0.85rem',
+				}}
+			>
+				<Rss
+					size={28}
+					style={{ marginBottom: '0.5rem', opacity: 0.4 }}
+				/>
+				<div style={{ fontWeight: 600 }}>No feed data yet.</div>
+				<div style={{ fontSize: '0.75rem', marginTop: '0.3rem' }}>
+					Posts and interactions will appear here once the simulation
+					completes.
+				</div>
+			</div>
+		);
+
+	return (
+		<div
+			style={{
+				flex: 1,
+				overflowY: 'auto',
+				display: 'flex',
+				flexDirection: 'column',
+				gap: '0.75rem',
+				paddingRight: '0.25rem',
+			}}
+		>
+			<div
+				style={{
+					fontSize: '0.72rem',
+					color: 'var(--text-secondary)',
+					fontWeight: 600,
+					paddingBottom: '0.25rem',
+				}}
+			>
+				{posts.length} post{posts.length !== 1 ? 's' : ''} ·{' '}
+				{comments.length} comment{comments.length !== 1 ? 's' : ''}
+			</div>
+			{posts.map((post, i) => {
+				const postId = getVal(post, 'post_id', 'id') ?? i;
+				return (
+					<PostCard
+						key={postId}
+						post={post}
+						comments={commentsByPost[postId] || []}
+						agentMap={agentMap}
+					/>
+				);
+			})}
 		</div>
 	);
 }
@@ -1126,7 +1112,7 @@ export default function SessionView() {
 		agents: [],
 		graph: { entities: {}, relations: [] },
 	});
-	const [activeTab, setActiveTab] = useState('graph');
+	const [activeTab, setActiveTab] = useState('feed');
 	const [dbEvents, setDbEvents] = useState([]);
 	const [showReportModal, setShowReportModal] = useState(false);
 	const [reportsCount, setReportsCount] = useState(0);
@@ -1449,24 +1435,10 @@ export default function SessionView() {
 								overflow: 'hidden',
 							}}
 						>
-							{/* Graph */}
-							{activeTab === 'graph' &&
-								(agents.length === 0 ? (
-									<div
-										style={{
-											textAlign: 'center',
-											color: 'var(--text-secondary)',
-											padding: '3rem 1rem',
-										}}
-									>
-										No agent or graph data available.
-									</div>
-								) : (
-									<ForceGraph
-										agents={agents}
-										graph={graph}
-									/>
-								))}
+							{/* Feed */}
+							{activeTab === 'feed' && (
+								<SocialFeed sessionId={id} />
+							)}
 
 							{/* Agents */}
 							{activeTab === 'agents' && (

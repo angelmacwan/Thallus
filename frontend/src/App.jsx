@@ -13,11 +13,11 @@ import {
 	FileText,
 	LogOut,
 	ArrowLeft,
-	Network,
 	Users,
 	Link2,
 	Info,
 	PlusSquare,
+	Rss,
 } from 'lucide-react';
 import { SidebarCtx } from './SidebarContext';
 import Auth from './views/Auth';
@@ -73,9 +73,10 @@ function Sidebar() {
 						/>
 						{[
 							{
-								id: 'graph',
-								icon: <Network size={15} />,
-								label: 'Graph',
+								id: 'feed',
+								icon: <Rss size={15} />,
+								label: 'Feed',
+								completedOnly: true,
 							},
 							{
 								id: 'agents',
@@ -97,16 +98,24 @@ function Sidebar() {
 								icon: <FileText size={15} />,
 								label: `Reports${sessionNav.reportsCount ? ` (${sessionNav.reportsCount})` : ''}`,
 							},
-						].map((item) => (
-							<button
-								key={item.id}
-								className={`sidebar-nav-btn${sessionNav.activeTab === item.id ? ' active' : ''}`}
-								onClick={() => sessionNav.setActiveTab(item.id)}
-							>
-								{item.icon}
-								{item.label}
-							</button>
-						))}
+						]
+							.filter(
+								(item) =>
+									!item.completedOnly ||
+									sessionNav.session?.status === 'completed',
+							)
+							.map((item) => (
+								<button
+									key={item.id}
+									className={`sidebar-nav-btn${sessionNav.activeTab === item.id ? ' active' : ''}`}
+									onClick={() =>
+										sessionNav.setActiveTab(item.id)
+									}
+								>
+									{item.icon}
+									{item.label}
+								</button>
+							))}
 						{/* Generate Report button – only for completed sessions */}
 						{sessionNav.onCreateReport && (
 							<>

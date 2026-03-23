@@ -1,6 +1,8 @@
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from .database import engine, Base
+from .deps import get_current_user
+from . import models
 
 from .routers import auth, sessions, simulation, reports
 
@@ -22,6 +24,12 @@ app.include_router(sessions.router)
 app.include_router(simulation.router)
 app.include_router(reports.router)
 
+APP_VERSION = "internal alpha 1"
+
 @app.get("/")
 def read_root():
     return {"message": "MiroFish API is running"}
+
+@app.get("/api/version")
+def get_version(current_user: models.User = Depends(get_current_user)):
+    return {"version": APP_VERSION}

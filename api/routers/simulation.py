@@ -2,6 +2,7 @@ import asyncio
 import json as _json
 import os
 import queue as _queue
+import sqlite3
 import uuid
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, BackgroundTasks, Form
 from fastapi.responses import StreamingResponse
@@ -204,6 +205,75 @@ def chat_with_report_agent(
     crud.log_action(db, current_user.id, "chat_query", f"Session: {session_uuid}")
 
     return agent_msg
+
+@router.get("/feed/{session_uuid}")
+def get_simulation_feed(
+    session_uuid: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """Return social-media feed data (posts, comments) for a completed simulation."""
+    db_session = crud.get_session(db, session_uuid)
+    if not db_session or db_session.user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    outputs_path = db_session.outputs_path
+    sim_db_path = os.path.join(outputs_path, "simulation.db")
+    agents_path = os.path.join(outputs_path, "agents.json")
+
+    agents: list[dict] = []
+    if os.path.exists(agents_path):
+        with open(agents_path, encoding="utf-8") as fh:
+            agents = _json.load(fh)
+
+    # Build 0-indexed lookup; also include 1-indexed alias for OASIS variants
+    agent_by_id: dict = {}
+    for i, a in enumerate(agents):
+        agent_by_id[i] = a
+        agent_by_id[str(i)] = a
+
+    result: dict = {"posts": [], "comments": [], "agents": agents}
+
+    if not os.path.exists(sim_db_path):
+        return result
+
+    try:
+        conn = sqlite3.connect(sim_db_path)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        tables = {row[0].lower() for row in cursor.fetchall()}
+
+        def _read_table(candidates: list[str]) -> list[dict]:
+            for tbl in candidates:
+                if tbl in tables:
+                    cursor.execute(f"SELECT * FROM {tbl}")
+                    cols = [d[0] for d in cursor.description]
+                    rows = []
+                    for row in cursor.fetchall():
+                        entry = dict(zip(cols, row))
+                        # Try to attach agent profile
+                        uid = entry.get("user_id", entry.get("agent_id"))
+                        if uid is not None:
+                            agent = agent_by_id.get(uid) or agent_by_id.get(str(uid))
+                            # Also try 1-indexed offset
+                            if agent is None and isinstance(uid, int):
+                                agent = agent_by_id.get(uid - 1)
+                            if agent:
+                                entry["_agent"] = agent
+                        rows.append(entry)
+                    return rows
+            return []
+
+        result["posts"] = _read_table(["post", "posts"])
+        result["comments"] = _read_table(["comment", "comments"])
+        conn.close()
+    except Exception as exc:
+        print(f"Feed read error: {exc}")
+
+    return result
+
 
 @router.get("/events/{session_uuid}", response_model=list[schemas.SimulationEventResponse])
 def get_simulation_events(
