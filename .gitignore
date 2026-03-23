@@ -2,6 +2,13 @@
 .env
 INPUT/
 OUTPUTS/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
 logs/
 log/
 users_data/
