@@ -96,3 +96,60 @@ def get_reports_for_session(db: Session, session_uuid: str):
 def delete_report(db: Session, report: models.Report):
     db.delete(report)
     db.commit()
+
+
+# ── Scenario operations ────────────────────────────────────────────────────────
+
+def create_scenario(db: Session, session_db_id: int, user_id: int, name: str, description: str, rounds: int = 1) -> models.Scenario:
+    import uuid as _uuid
+    scenario = models.Scenario(
+        scenario_id=str(_uuid.uuid4()),
+        session_id=session_db_id,
+        user_id=user_id,
+        name=name,
+        description=description,
+        rounds=rounds,
+        status="created",
+    )
+    db.add(scenario)
+    db.commit()
+    db.refresh(scenario)
+    return scenario
+
+
+def get_scenario_by_uuid(db: Session, scenario_uuid: str) -> models.Scenario | None:
+    return db.query(models.Scenario).filter(models.Scenario.scenario_id == scenario_uuid).first()
+
+
+def get_scenarios_for_session(db: Session, session_db_id: int) -> list[models.Scenario]:
+    return (
+        db.query(models.Scenario)
+        .filter(models.Scenario.session_id == session_db_id)
+        .order_by(models.Scenario.created_at.asc())
+        .all()
+    )
+
+
+def update_scenario_status(db: Session, scenario: models.Scenario, status: str, outputs_path: str = None):
+    scenario.status = status
+    if outputs_path is not None:
+        scenario.outputs_path = outputs_path
+    db.commit()
+    db.refresh(scenario)
+    return scenario
+
+
+def add_scenario_event(db: Session, scenario_db_id: int, event_type: str, message: str):
+    ev = models.ScenarioEvent(scenario_id=scenario_db_id, type=event_type, message=message)
+    db.add(ev)
+    db.commit()
+    return ev
+
+
+def get_scenario_events(db: Session, scenario_db_id: int):
+    return (
+        db.query(models.ScenarioEvent)
+        .filter(models.ScenarioEvent.scenario_id == scenario_db_id)
+        .order_by(models.ScenarioEvent.id)
+        .all()
+    )

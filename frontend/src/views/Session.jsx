@@ -20,6 +20,10 @@ import {
 	MessageSquare,
 	ChevronDown,
 	ChevronUp,
+	FlaskConical,
+	Play,
+	Plus,
+	Tag,
 } from 'lucide-react';
 
 mermaid.initialize({ startOnLoad: false, theme: 'neutral' });
@@ -566,7 +570,7 @@ function CommentRow({ comment, agentMap }) {
 	);
 }
 
-function PostCard({ post, comments, agentMap }) {
+function PostCard({ post, comments, agentMap, isScenarioPost }) {
 	const [showComments, setShowComments] = useState(false);
 
 	const content = getVal(post, 'content', 'body', 'text', 'message') || '';
@@ -607,13 +611,30 @@ function PostCard({ post, comments, agentMap }) {
 	return (
 		<div
 			style={{
-				background: 'var(--surface-container-low)',
-				border: '1px solid var(--outline-variant)',
+				background: isScenarioPost
+					? 'rgba(124,58,237,0.04)'
+					: 'var(--surface-container-low)',
+				border: `1px solid ${isScenarioPost ? 'rgba(124,58,237,0.35)' : 'var(--outline-variant)'}`,
 				borderRadius: '12px',
 				overflow: 'hidden',
 				flexShrink: 0,
 			}}
 		>
+			{isScenarioPost && (
+				<div
+					style={{
+						background: 'rgba(124,58,237,0.12)',
+						padding: '0.2rem 0.85rem',
+						fontSize: '0.67rem',
+						fontWeight: 700,
+						color: '#7c3aed',
+						letterSpacing: '0.04em',
+						textTransform: 'uppercase',
+					}}
+				>
+					◆ Scenario Post
+				</div>
+			)}
 			{/* Header */}
 			<div
 				style={{
@@ -789,16 +810,21 @@ function PostCard({ post, comments, agentMap }) {
 	);
 }
 
-function SocialFeed({ sessionId }) {
+function SocialFeed({ sessionId, scenarioId }) {
 	const [data, setData] = useState(null);
 	const [loading, setLoading] = useState(true);
 
 	useEffect(() => {
-		api.get(`/simulation/feed/${sessionId}`)
+		setLoading(true);
+		setData(null);
+		const endpoint = scenarioId
+			? `/scenarios/${scenarioId}/feed`
+			: `/simulation/feed/${sessionId}`;
+		api.get(endpoint)
 			.then((r) => setData(r.data))
 			.catch(() => setData({ posts: [], comments: [], agents: [] }))
 			.finally(() => setLoading(false));
-	}, [sessionId]);
+	}, [sessionId, scenarioId]);
 
 	if (loading)
 		return (
@@ -879,10 +905,27 @@ function SocialFeed({ sessionId }) {
 					color: 'var(--text-secondary)',
 					fontWeight: 600,
 					paddingBottom: '0.25rem',
+					display: 'flex',
+					alignItems: 'center',
+					gap: '0.5rem',
+					flexWrap: 'wrap',
 				}}
 			>
 				{posts.length} post{posts.length !== 1 ? 's' : ''} ·{' '}
 				{comments.length} comment{comments.length !== 1 ? 's' : ''}
+				{scenarioId && (
+					<span
+						style={{
+							padding: '0.1rem 0.5rem',
+							borderRadius: '999px',
+							background: 'rgba(124,58,237,0.1)',
+							color: '#7c3aed',
+							fontWeight: 700,
+						}}
+					>
+						◆ scenario posts highlighted
+					</span>
+				)}
 			</div>
 			{posts.map((post, i) => {
 				const postId = getVal(post, 'post_id', 'id') ?? i;
@@ -892,9 +935,464 @@ function SocialFeed({ sessionId }) {
 						post={post}
 						comments={commentsByPost[postId] || []}
 						agentMap={agentMap}
+						isScenarioPost={post._source === 'scenario'}
 					/>
 				);
 			})}
+		</div>
+	);
+}
+
+// ─── Create Scenario Modal ────────────────────────────────────────────────────
+function CreateScenarioModal({ sessionId, onClose, onCreated }) {
+	const [name, setName] = useState('');
+	const [description, setDescription] = useState('');
+	const [rounds, setRounds] = useState(1);
+	const [creating, setCreating] = useState(false);
+	const [error, setError] = useState(null);
+
+	const handleSubmit = async (e) => {
+		e.preventDefault();
+		if (!name.trim() || !description.trim()) return;
+		setCreating(true);
+		setError(null);
+		try {
+			const res = await api.post(`/scenarios/session/${sessionId}`, {
+				name: name.trim(),
+				description: description.trim(),
+				rounds: Number(rounds) || 1,
+			});
+			onCreated(res.data);
+			onClose();
+		} catch (err) {
+			setError(
+				err?.response?.data?.detail || 'Failed to create scenario.',
+			);
+		} finally {
+			setCreating(false);
+		}
+	};
+
+	return (
+		<div
+			style={{
+				position: 'fixed',
+				inset: 0,
+				background: 'rgba(0,0,0,0.45)',
+				display: 'flex',
+				alignItems: 'center',
+				justifyContent: 'center',
+				zIndex: 1000,
+				padding: '1rem',
+			}}
+			onClick={(e) => {
+				if (e.target === e.currentTarget) onClose();
+			}}
+		>
+			<div
+				style={{
+					background: 'var(--surface)',
+					borderRadius: '14px',
+					padding: '2rem',
+					width: '100%',
+					maxWidth: '560px',
+					display: 'flex',
+					flexDirection: 'column',
+					gap: '1.25rem',
+					boxShadow: '0 8px 32px rgba(0,0,0,0.22)',
+					border: '1px solid var(--outline-variant)',
+				}}
+			>
+				<div
+					style={{
+						display: 'flex',
+						alignItems: 'center',
+						justifyContent: 'space-between',
+					}}
+				>
+					<div
+						style={{
+							display: 'flex',
+							alignItems: 'center',
+							gap: '0.6rem',
+						}}
+					>
+						<FlaskConical
+							size={20}
+							color="var(--accent-color)"
+						/>
+						<h3 style={{ margin: 0, fontSize: '1rem' }}>
+							New Scenario
+						</h3>
+					</div>
+					<button
+						onClick={onClose}
+						style={{
+							background: 'none',
+							border: 'none',
+							cursor: 'pointer',
+							color: 'var(--text-secondary)',
+							display: 'flex',
+							padding: '0.25rem',
+							borderRadius: '6px',
+						}}
+					>
+						<X size={18} />
+					</button>
+				</div>
+
+				<p
+					style={{
+						margin: 0,
+						fontSize: '0.85rem',
+						color: 'var(--text-secondary)',
+						lineHeight: 1.6,
+					}}
+				>
+					Define a "what-if" scenario. Agents will react to the new
+					situation — building on the same profiles and knowledge
+					graph.
+				</p>
+
+				<form
+					onSubmit={handleSubmit}
+					style={{
+						display: 'flex',
+						flexDirection: 'column',
+						gap: '1rem',
+					}}
+				>
+					<div>
+						<label
+							style={{
+								fontSize: '0.78rem',
+								fontWeight: 600,
+								color: 'var(--text-secondary)',
+								display: 'block',
+								marginBottom: '0.35rem',
+							}}
+						>
+							Scenario Name
+						</label>
+						<input
+							className="input-field"
+							value={name}
+							onChange={(e) => setName(e.target.value)}
+							placeholder="e.g. USA Wins — China-Russia Alliance"
+							disabled={creating}
+							style={{ width: '100%', boxSizing: 'border-box' }}
+						/>
+					</div>
+					<div>
+						<label
+							style={{
+								fontSize: '0.78rem',
+								fontWeight: 600,
+								color: 'var(--text-secondary)',
+								display: 'block',
+								marginBottom: '0.35rem',
+							}}
+						>
+							Scenario Description
+						</label>
+						<textarea
+							className="input-field"
+							value={description}
+							onChange={(e) => setDescription(e.target.value)}
+							placeholder="e.g. Let's say the USA won the conflict, but China and Russia formed a new strategic alliance in response…"
+							rows={4}
+							disabled={creating}
+							style={{
+								resize: 'vertical',
+								fontFamily: 'inherit',
+								fontSize: '0.88rem',
+								lineHeight: 1.6,
+								width: '100%',
+								boxSizing: 'border-box',
+							}}
+						/>
+					</div>
+					<div>
+						<label
+							style={{
+								fontSize: '0.78rem',
+								fontWeight: 600,
+								color: 'var(--text-secondary)',
+								display: 'block',
+								marginBottom: '0.35rem',
+							}}
+						>
+							Rounds / Iterations
+						</label>
+						<input
+							type="number"
+							className="input-field"
+							value={rounds}
+							onChange={(e) => setRounds(e.target.value)}
+							min={1}
+							max={20}
+							disabled={creating}
+							style={{ width: '120px' }}
+						/>
+					</div>
+
+					{error && (
+						<div
+							style={{
+								padding: '0.65rem 0.85rem',
+								background: 'rgba(220,38,38,0.08)',
+								border: '1px solid rgba(220,38,38,0.2)',
+								borderRadius: '8px',
+								color: 'var(--danger-color)',
+								fontSize: '0.82rem',
+							}}
+						>
+							{error}
+						</div>
+					)}
+
+					<div
+						style={{
+							display: 'flex',
+							gap: '0.75rem',
+							justifyContent: 'flex-end',
+						}}
+					>
+						<button
+							type="button"
+							className="btn btn-secondary"
+							onClick={onClose}
+							disabled={creating}
+						>
+							Cancel
+						</button>
+						<button
+							type="submit"
+							className="btn"
+							disabled={
+								creating || !name.trim() || !description.trim()
+							}
+							style={{
+								display: 'flex',
+								alignItems: 'center',
+								gap: '0.45rem',
+							}}
+						>
+							{creating ? (
+								<>
+									<RefreshCw
+										size={14}
+										style={{
+											animation:
+												'spin 1.4s linear infinite',
+										}}
+									/>{' '}
+									Creating…
+								</>
+							) : (
+								<>
+									<FlaskConical size={14} /> Create Scenario
+								</>
+							)}
+						</button>
+					</div>
+				</form>
+			</div>
+		</div>
+	);
+}
+
+// ─── Scenario Card ────────────────────────────────────────────────────────────
+function ScenarioCard({ scenario, onRun, onGenerateReport, liveLog }) {
+	const [showLog, setShowLog] = useState(false);
+
+	const statusColors = {
+		completed: { bg: '#dcfce7', color: '#16a34a' },
+		running: { bg: '#dbeafe', color: '#2563eb' },
+		error: { bg: '#fee2e2', color: '#dc2626' },
+		created: { bg: '#f3f4f6', color: '#6b7280' },
+	};
+	const pill = statusColors[scenario.status] || statusColors.created;
+
+	return (
+		<div
+			style={{
+				background: 'var(--surface-container-low)',
+				border: '1px solid var(--outline-variant)',
+				borderRadius: '10px',
+				padding: '1rem',
+				display: 'flex',
+				flexDirection: 'column',
+				gap: '0.65rem',
+			}}
+		>
+			{/* Header */}
+			<div
+				style={{
+					display: 'flex',
+					alignItems: 'flex-start',
+					gap: '0.6rem',
+				}}
+			>
+				<FlaskConical
+					size={16}
+					color="var(--accent-color)"
+					style={{ marginTop: '0.15rem', flexShrink: 0 }}
+				/>
+				<div style={{ flex: 1, minWidth: 0 }}>
+					<div
+						style={{
+							fontWeight: 700,
+							fontSize: '0.88rem',
+							display: 'flex',
+							alignItems: 'center',
+							gap: '0.5rem',
+							flexWrap: 'wrap',
+						}}
+					>
+						{scenario.name}
+						<span
+							style={{
+								padding: '0.1rem 0.5rem',
+								borderRadius: '999px',
+								fontSize: '0.65rem',
+								fontWeight: 700,
+								background: pill.bg,
+								color: pill.color,
+								textTransform: 'uppercase',
+								letterSpacing: '0.04em',
+							}}
+						>
+							{scenario.status}
+						</span>
+					</div>
+					<div
+						style={{
+							fontSize: '0.78rem',
+							color: 'var(--text-secondary)',
+							marginTop: '0.2rem',
+							lineHeight: 1.5,
+						}}
+					>
+						{scenario.description}
+					</div>
+					<div
+						style={{
+							fontSize: '0.7rem',
+							color: 'var(--text-secondary)',
+							marginTop: '0.25rem',
+						}}
+					>
+						{scenario.rounds} round
+						{scenario.rounds !== 1 ? 's' : ''} · Created{' '}
+						{new Date(scenario.created_at).toLocaleString()}
+					</div>
+				</div>
+			</div>
+
+			{/* Running log snippet */}
+			{scenario.status === 'running' && (
+				<div>
+					<button
+						onClick={() => setShowLog((v) => !v)}
+						style={{
+							background: 'none',
+							border: 'none',
+							cursor: 'pointer',
+							fontSize: '0.72rem',
+							color: 'var(--text-secondary)',
+							display: 'flex',
+							alignItems: 'center',
+							gap: '0.3rem',
+							padding: 0,
+							marginBottom: '0.35rem',
+						}}
+					>
+						{showLog ? (
+							<ChevronUp size={12} />
+						) : (
+							<ChevronDown size={12} />
+						)}
+						{showLog ? 'Hide' : 'Show'} live log
+					</button>
+					{showLog && (
+						<div
+							style={{
+								background: 'var(--primary)',
+								borderRadius: '6px',
+								padding: '0.6rem 0.75rem',
+								fontFamily: 'monospace',
+								fontSize: '0.72rem',
+								lineHeight: 1.6,
+								color: 'var(--primary-fixed)',
+								maxHeight: '120px',
+								overflowY: 'auto',
+							}}
+						>
+							{(liveLog || []).length === 0 ? (
+								<span style={{ color: '#8c7c6c' }}>
+									Waiting for events…
+								</span>
+							) : (
+								(liveLog || []).map((ev, i) => (
+									<div
+										key={i}
+										style={{
+											color:
+												ev.type === 'error'
+													? '#f87171'
+													: ev.type === 'done'
+														? '#4ade80'
+														: ev.type === 'round'
+															? '#fb923c'
+															: '#d4c8bc',
+										}}
+									>
+										› {ev.message}
+									</div>
+								))
+							)}
+						</div>
+					)}
+				</div>
+			)}
+
+			{/* Actions */}
+			<div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+				{(scenario.status === 'created' ||
+					scenario.status === 'error') && (
+					<button
+						className="btn"
+						onClick={() => onRun(scenario)}
+						style={{
+							display: 'flex',
+							alignItems: 'center',
+							gap: '0.35rem',
+							fontSize: '0.78rem',
+							padding: '0.45rem 0.85rem',
+						}}
+					>
+						<Play size={13} />
+						Run Scenario
+					</button>
+				)}
+				{scenario.status === 'completed' && (
+					<button
+						className="btn btn-secondary"
+						onClick={() => onGenerateReport(scenario)}
+						style={{
+							display: 'flex',
+							alignItems: 'center',
+							gap: '0.35rem',
+							fontSize: '0.78rem',
+							padding: '0.45rem 0.85rem',
+						}}
+					>
+						<FileText size={13} />
+						Generate Scenario Report
+					</button>
+				)}
+			</div>
 		</div>
 	);
 }
@@ -1098,6 +1596,213 @@ function CreateReportModal({ sessionId, onClose, onCreated }) {
 	);
 }
 
+// ─── Scenario Report Modal ────────────────────────────────────────────────────
+function ScenarioReportModal({ scenario, onClose, onCreated }) {
+	const [description, setDescription] = useState('');
+	const [generating, setGenerating] = useState(false);
+	const [error, setError] = useState(null);
+
+	const handleSubmit = async (e) => {
+		e.preventDefault();
+		if (!description.trim()) return;
+		setGenerating(true);
+		setError(null);
+		try {
+			const res = await api.post(
+				`/scenarios/${scenario.scenario_id}/report`,
+				{
+					description: description.trim(),
+				},
+			);
+			onCreated(res.data);
+			onClose();
+		} catch (err) {
+			setError(
+				err?.response?.data?.detail ||
+					'Failed to generate scenario report.',
+			);
+		} finally {
+			setGenerating(false);
+		}
+	};
+
+	return (
+		<div
+			style={{
+				position: 'fixed',
+				inset: 0,
+				background: 'rgba(0,0,0,0.45)',
+				display: 'flex',
+				alignItems: 'center',
+				justifyContent: 'center',
+				zIndex: 1000,
+				padding: '1rem',
+			}}
+			onClick={(e) => {
+				if (e.target === e.currentTarget) onClose();
+			}}
+		>
+			<div
+				style={{
+					background: 'var(--surface)',
+					borderRadius: '14px',
+					padding: '2rem',
+					width: '100%',
+					maxWidth: '560px',
+					display: 'flex',
+					flexDirection: 'column',
+					gap: '1.25rem',
+					boxShadow: '0 8px 32px rgba(0,0,0,0.22)',
+					border: '1px solid var(--outline-variant)',
+				}}
+			>
+				<div
+					style={{
+						display: 'flex',
+						alignItems: 'center',
+						justifyContent: 'space-between',
+					}}
+				>
+					<div
+						style={{
+							display: 'flex',
+							alignItems: 'center',
+							gap: '0.6rem',
+						}}
+					>
+						<FileText
+							size={20}
+							color="var(--accent-color)"
+						/>
+						<h3 style={{ margin: 0, fontSize: '1rem' }}>
+							Generate Scenario Report
+						</h3>
+					</div>
+					<button
+						onClick={onClose}
+						style={{
+							background: 'none',
+							border: 'none',
+							cursor: 'pointer',
+							color: 'var(--text-secondary)',
+							display: 'flex',
+							padding: '0.25rem',
+							borderRadius: '6px',
+						}}
+					>
+						<X size={18} />
+					</button>
+				</div>
+				<div
+					style={{
+						padding: '0.65rem 0.85rem',
+						background: 'rgba(37,99,235,0.06)',
+						border: '1px solid rgba(37,99,235,0.15)',
+						borderRadius: '8px',
+						fontSize: '0.82rem',
+						color: 'var(--accent-color)',
+					}}
+				>
+					<strong>Scenario:</strong> {scenario.name} —{' '}
+					{scenario.description}
+				</div>
+				<p
+					style={{
+						margin: 0,
+						fontSize: '0.85rem',
+						color: 'var(--text-secondary)',
+						lineHeight: 1.6,
+					}}
+				>
+					Describe what you want the report to focus on. The agent
+					will analyse how this scenario changes dynamics, what
+					improved or worsened, and how real-world users might react.
+				</p>
+				<form
+					onSubmit={handleSubmit}
+					style={{
+						display: 'flex',
+						flexDirection: 'column',
+						gap: '1rem',
+					}}
+				>
+					<textarea
+						className="input-field"
+						value={description}
+						onChange={(e) => setDescription(e.target.value)}
+						placeholder="e.g. How does this scenario shift power dynamics? What narratives emerge? How might the public react?"
+						rows={4}
+						disabled={generating}
+						style={{
+							resize: 'vertical',
+							fontFamily: 'inherit',
+							fontSize: '0.88rem',
+							lineHeight: 1.6,
+						}}
+					/>
+					{error && (
+						<div
+							style={{
+								padding: '0.65rem 0.85rem',
+								background: 'rgba(220,38,38,0.08)',
+								border: '1px solid rgba(220,38,38,0.2)',
+								borderRadius: '8px',
+								color: 'var(--danger-color)',
+								fontSize: '0.82rem',
+							}}
+						>
+							{error}
+						</div>
+					)}
+					<div
+						style={{
+							display: 'flex',
+							gap: '0.75rem',
+							justifyContent: 'flex-end',
+						}}
+					>
+						<button
+							type="button"
+							className="btn btn-secondary"
+							onClick={onClose}
+							disabled={generating}
+						>
+							Cancel
+						</button>
+						<button
+							type="submit"
+							className="btn"
+							disabled={generating || !description.trim()}
+							style={{
+								display: 'flex',
+								alignItems: 'center',
+								gap: '0.45rem',
+							}}
+						>
+							{generating ? (
+								<>
+									<RefreshCw
+										size={14}
+										style={{
+											animation:
+												'spin 1.4s linear infinite',
+										}}
+									/>{' '}
+									Generating…
+								</>
+							) : (
+								<>
+									<FileText size={14} /> Generate Report
+								</>
+							)}
+						</button>
+					</div>
+				</form>
+			</div>
+		</div>
+	);
+}
+
 // ─── Main view ────────────────────────────────────────────────────────────────
 export default function SessionView() {
 	const { id } = useParams();
@@ -1116,6 +1821,14 @@ export default function SessionView() {
 	const [dbEvents, setDbEvents] = useState([]);
 	const [showReportModal, setShowReportModal] = useState(false);
 	const [reportsCount, setReportsCount] = useState(0);
+
+	// Scenario state
+	const [scenarios, setScenarios] = useState([]);
+	const [showCreateScenario, setShowCreateScenario] = useState(false);
+	const [selectedPill, setSelectedPill] = useState('main'); // 'main' or scenario_id
+	const [scenarioLiveLogs, setScenarioLiveLogs] = useState({}); // { scenario_uuid: [...events] }
+	const [scenarioReportTarget, setScenarioReportTarget] = useState(null);
+
 	const messagesEndRef = useRef(null);
 	const logEndRef = useRef(null);
 	const { setSessionNav } = useSidebar();
@@ -1129,6 +1842,7 @@ export default function SessionView() {
 			agentCount,
 			relationCount,
 			reportsCount,
+			scenariosCount: scenarios.length,
 			session,
 			onCreateReport:
 				session?.status === 'completed'
@@ -1136,7 +1850,7 @@ export default function SessionView() {
 					: null,
 		});
 		return () => setSessionNav(null);
-	}, [activeTab, artifacts, session, reportsCount]);
+	}, [activeTab, artifacts, session, reportsCount, scenarios]);
 
 	useEffect(() => {
 		fetchData();
@@ -1197,12 +1911,71 @@ export default function SessionView() {
 				} catch {
 					/* non-fatal */
 				}
+				// Fetch scenarios
+				try {
+					const scenRes = await api.get(`/scenarios/session/${id}`);
+					setScenarios(scenRes.data || []);
+				} catch {
+					/* non-fatal */
+				}
 			}
 		} catch (err) {
 			console.error(err);
 		} finally {
 			if (showLoader) setLoading(false);
 		}
+	};
+
+	const fetchScenarios = async () => {
+		try {
+			const res = await api.get(`/scenarios/session/${id}`);
+			setScenarios(res.data || []);
+		} catch {
+			/* noop */
+		}
+	};
+
+	const handleRunScenario = async (scenario) => {
+		try {
+			await api.post(`/scenarios/${scenario.scenario_id}/run`);
+			// Update local state optimistically
+			setScenarios((prev) =>
+				prev.map((s) =>
+					s.scenario_id === scenario.scenario_id
+						? { ...s, status: 'running' }
+						: s,
+				),
+			);
+			// Start SSE stream
+			_startScenarioStream(scenario.scenario_id);
+		} catch (err) {
+			alert(err?.response?.data?.detail || 'Failed to run scenario.');
+		}
+	};
+
+	const _startScenarioStream = (scenarioId) => {
+		const token = localStorage.getItem('token');
+		const base =
+			import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
+		const url = `${base}/scenarios/${scenarioId}/stream?token=${encodeURIComponent(token)}`;
+		const es = new EventSource(url);
+		es.onmessage = (e) => {
+			try {
+				const ev = JSON.parse(e.data);
+				setScenarioLiveLogs((prev) => ({
+					...prev,
+					[scenarioId]: [...(prev[scenarioId] || []), ev],
+				}));
+				if (ev.type === 'done' || ev.type === 'error') {
+					es.close();
+					// Refresh scenarios list to get updated status
+					setTimeout(() => fetchScenarios(), 800);
+				}
+			} catch {
+				/* noop */
+			}
+		};
+		es.onerror = () => es.close();
 	};
 
 	const handleChat = async (e) => {
@@ -1218,11 +1991,27 @@ export default function SessionView() {
 		try {
 			const formData = new URLSearchParams();
 			formData.append('query', userQ);
-			const res = await api.post(`/simulation/chat/${id}`, formData, {
-				headers: {
-					'Content-Type': 'application/x-www-form-urlencoded',
-				},
-			});
+
+			let res;
+			if (selectedPill && selectedPill !== 'main') {
+				// Chat in scenario context
+				res = await api.post(
+					`/scenarios/${selectedPill}/chat`,
+					formData,
+					{
+						headers: {
+							'Content-Type': 'application/x-www-form-urlencoded',
+						},
+					},
+				);
+			} else {
+				// Chat with main simulation
+				res = await api.post(`/simulation/chat/${id}`, formData, {
+					headers: {
+						'Content-Type': 'application/x-www-form-urlencoded',
+					},
+				});
+			}
 			setMessages((prev) => [...prev, res.data]);
 		} catch (err) {
 			console.error(err);
@@ -1282,6 +2071,26 @@ export default function SessionView() {
 					sessionId={id}
 					onClose={() => setShowReportModal(false)}
 					onCreated={() => {}}
+				/>
+			)}
+
+			{showCreateScenario && session && (
+				<CreateScenarioModal
+					sessionId={id}
+					onClose={() => setShowCreateScenario(false)}
+					onCreated={(newScenario) => {
+						setScenarios((prev) => [...prev, newScenario]);
+					}}
+				/>
+			)}
+
+			{scenarioReportTarget && (
+				<ScenarioReportModal
+					scenario={scenarioReportTarget}
+					onClose={() => setScenarioReportTarget(null)}
+					onCreated={() => {
+						setScenarioReportTarget(null);
+					}}
 				/>
 			)}
 
@@ -1435,9 +2244,223 @@ export default function SessionView() {
 								overflow: 'hidden',
 							}}
 						>
+							{/* ── Scenario pill bar (shown on feed tab and always) ── */}
+							{scenarios.length > 0 &&
+								(activeTab === 'feed' ||
+									activeTab === 'scenarios') && (
+									<div
+										style={{
+											display: 'flex',
+											gap: '0.4rem',
+											flexWrap: 'wrap',
+											alignItems: 'center',
+										}}
+									>
+										<Tag
+											size={13}
+											color="var(--text-secondary)"
+											style={{ flexShrink: 0 }}
+										/>
+										{/* Main pill */}
+										<button
+											onClick={() => {
+												setSelectedPill('main');
+												if (activeTab !== 'feed')
+													setActiveTab('feed');
+											}}
+											style={{
+												padding: '0.2rem 0.75rem',
+												borderRadius: '999px',
+												fontSize: '0.72rem',
+												fontWeight: 700,
+												border: `1.5px solid ${selectedPill === 'main' ? 'var(--accent-color)' : 'var(--outline-variant)'}`,
+												background:
+													selectedPill === 'main'
+														? 'var(--accent-color)'
+														: 'transparent',
+												color:
+													selectedPill === 'main'
+														? '#fff'
+														: 'var(--text-secondary)',
+												cursor: 'pointer',
+												transition: 'all 0.15s',
+											}}
+										>
+											Main
+										</button>
+										{/* Scenario pills */}
+										{scenarios.map((s) => (
+											<button
+												key={s.scenario_id}
+												onClick={() => {
+													setSelectedPill(
+														s.scenario_id,
+													);
+													if (activeTab !== 'feed')
+														setActiveTab('feed');
+												}}
+												title={s.description}
+												style={{
+													padding: '0.2rem 0.75rem',
+													borderRadius: '999px',
+													fontSize: '0.72rem',
+													fontWeight: 700,
+													border: `1.5px solid ${selectedPill === s.scenario_id ? '#7c3aed' : 'var(--outline-variant)'}`,
+													background:
+														selectedPill ===
+														s.scenario_id
+															? '#7c3aed'
+															: 'transparent',
+													color:
+														selectedPill ===
+														s.scenario_id
+															? '#fff'
+															: 'var(--text-secondary)',
+													cursor: 'pointer',
+													transition: 'all 0.15s',
+													opacity:
+														s.status !== 'completed'
+															? 0.5
+															: 1,
+												}}
+												disabled={
+													s.status !== 'completed'
+												}
+											>
+												{s.name}
+											</button>
+										))}
+									</div>
+								)}
+
 							{/* Feed */}
 							{activeTab === 'feed' && (
-								<SocialFeed sessionId={id} />
+								<SocialFeed
+									sessionId={id}
+									scenarioId={
+										selectedPill !== 'main'
+											? selectedPill
+											: null
+									}
+								/>
+							)}
+
+							{/* Scenarios panel */}
+							{activeTab === 'scenarios' && (
+								<div
+									style={{
+										display: 'flex',
+										flexDirection: 'column',
+										gap: '0.75rem',
+										flex: 1,
+										overflowY: 'auto',
+										paddingRight: '0.2rem',
+									}}
+								>
+									<div
+										style={{
+											display: 'flex',
+											alignItems: 'center',
+											justifyContent: 'space-between',
+											flexShrink: 0,
+										}}
+									>
+										<div
+											style={{
+												fontWeight: 700,
+												fontSize: '0.9rem',
+												display: 'flex',
+												alignItems: 'center',
+												gap: '0.4rem',
+											}}
+										>
+											<FlaskConical
+												size={16}
+												color="var(--accent-color)"
+											/>
+											Simulate a Scenario
+										</div>
+										<button
+											className="btn"
+											onClick={() =>
+												setShowCreateScenario(true)
+											}
+											style={{
+												display: 'flex',
+												alignItems: 'center',
+												gap: '0.35rem',
+												fontSize: '0.78rem',
+												padding: '0.45rem 0.85rem',
+											}}
+										>
+											<Plus size={13} />
+											New Scenario
+										</button>
+									</div>
+									<p
+										style={{
+											margin: 0,
+											fontSize: '0.8rem',
+											color: 'var(--text-secondary)',
+											lineHeight: 1.6,
+										}}
+									>
+										Create "what-if" scenarios that extend
+										the current simulation from its
+										completed state. Each scenario lets
+										agents react to a new hypothetical
+										situation.
+									</p>
+									{scenarios.length === 0 && (
+										<div
+											style={{
+												textAlign: 'center',
+												color: 'var(--text-secondary)',
+												padding: '2.5rem 1rem',
+											}}
+										>
+											<FlaskConical
+												size={28}
+												style={{
+													marginBottom: '0.5rem',
+													opacity: 0.35,
+												}}
+											/>
+											<div
+												style={{
+													fontWeight: 600,
+													fontSize: '0.85rem',
+												}}
+											>
+												No scenarios yet
+											</div>
+											<div
+												style={{
+													fontSize: '0.75rem',
+													marginTop: '0.25rem',
+												}}
+											>
+												Click "New Scenario" to create
+												your first what-if scenario.
+											</div>
+										</div>
+									)}
+									{scenarios.map((s) => (
+										<ScenarioCard
+											key={s.scenario_id}
+											scenario={s}
+											onRun={handleRunScenario}
+											onGenerateReport={(sc) =>
+												setScenarioReportTarget(sc)
+											}
+											liveLog={
+												scenarioLiveLogs[
+													s.scenario_id
+												] || []
+											}
+										/>
+									))}
+								</div>
 							)}
 
 							{/* Agents */}
@@ -1879,11 +2902,94 @@ export default function SessionView() {
 								flex: 1,
 								minHeight: '480px',
 								background: 'var(--surface-container-lowest)',
-								border: '1px solid var(--outline-variant)',
+								border: `1px solid ${selectedPill && selectedPill !== 'main' ? 'rgba(124,58,237,0.35)' : 'var(--outline-variant)'}`,
 								borderRadius: '12px',
 								overflow: 'hidden',
 							}}
 						>
+							{/* Scenario pill context header */}
+							{scenarios.length > 0 && (
+								<div
+									style={{
+										padding: '0.6rem 1rem',
+										borderBottom:
+											'1px solid var(--outline-variant)',
+										background:
+											'var(--surface-container-low)',
+										display: 'flex',
+										gap: '0.4rem',
+										flexWrap: 'wrap',
+										alignItems: 'center',
+									}}
+								>
+									<span
+										style={{
+											fontSize: '0.7rem',
+											fontWeight: 600,
+											color: 'var(--text-secondary)',
+											marginRight: '0.2rem',
+										}}
+									>
+										Chat context:
+									</span>
+									<button
+										onClick={() => setSelectedPill('main')}
+										style={{
+											padding: '0.15rem 0.6rem',
+											borderRadius: '999px',
+											fontSize: '0.7rem',
+											fontWeight: 700,
+											border: `1.5px solid ${selectedPill === 'main' ? 'var(--accent-color)' : 'var(--outline-variant)'}`,
+											background:
+												selectedPill === 'main'
+													? 'var(--accent-color)'
+													: 'transparent',
+											color:
+												selectedPill === 'main'
+													? '#fff'
+													: 'var(--text-secondary)',
+											cursor: 'pointer',
+											transition: 'all 0.15s',
+										}}
+									>
+										Main
+									</button>
+									{scenarios
+										.filter((s) => s.status === 'completed')
+										.map((s) => (
+											<button
+												key={s.scenario_id}
+												onClick={() =>
+													setSelectedPill(
+														s.scenario_id,
+													)
+												}
+												title={s.description}
+												style={{
+													padding: '0.15rem 0.6rem',
+													borderRadius: '999px',
+													fontSize: '0.7rem',
+													fontWeight: 700,
+													border: `1.5px solid ${selectedPill === s.scenario_id ? '#7c3aed' : 'var(--outline-variant)'}`,
+													background:
+														selectedPill ===
+														s.scenario_id
+															? '#7c3aed'
+															: 'transparent',
+													color:
+														selectedPill ===
+														s.scenario_id
+															? '#fff'
+															: 'var(--text-secondary)',
+													cursor: 'pointer',
+													transition: 'all 0.15s',
+												}}
+											>
+												{s.name}
+											</button>
+										))}
+								</div>
+							)}
 							<div
 								style={{
 									flex: 1,
@@ -1964,7 +3070,11 @@ export default function SessionView() {
 									className="input-field"
 									value={query}
 									onChange={(e) => setQuery(e.target.value)}
-									placeholder="Ask a question about the simulation…"
+									placeholder={
+										selectedPill && selectedPill !== 'main'
+											? `Ask about scenario: ${scenarios.find((s) => s.scenario_id === selectedPill)?.name || ''}…`
+											: 'Ask a question about the simulation…'
+									}
 									disabled={chatLoading}
 									style={{ flex: 1 }}
 								/>
@@ -1972,7 +3082,15 @@ export default function SessionView() {
 									type="submit"
 									className="btn"
 									disabled={chatLoading}
-									style={{ padding: '0.7rem', flexShrink: 0 }}
+									style={{
+										padding: '0.7rem',
+										flexShrink: 0,
+										background:
+											selectedPill &&
+											selectedPill !== 'main'
+												? '#7c3aed'
+												: undefined,
+									}}
 								>
 									<Send size={18} />
 								</button>

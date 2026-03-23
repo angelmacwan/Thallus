@@ -67,6 +67,50 @@ class ReportResponse(BaseModel):
     created_at: datetime
     session_title: Optional[str] = None
     session_uuid: Optional[str] = None
+    is_scenario_report: bool = False
+    scenario_id: Optional[str] = None
+    scenario_name: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+class ScenarioCreate(BaseModel):
+    name: str
+    description: str
+    rounds: int = 1
+
+
+class ScenarioResponse(BaseModel):
+    id: int
+    scenario_id: str
+    session_id: int
+    name: str
+    description: str
+    rounds: int
+    status: str
+    outputs_path: Optional[str] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class ScenarioChatMessageResponse(BaseModel):
+    id: int
+    is_user: bool
+    text: str
+    timestamp: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class ScenarioEventResponse(BaseModel):
+    id: int
+    type: str
+    message: str
+    timestamp: datetime
 
     class Config:
         from_attributes = True

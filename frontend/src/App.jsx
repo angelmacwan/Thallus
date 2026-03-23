@@ -18,6 +18,7 @@ import {
 	Info,
 	PlusSquare,
 	Rss,
+	FlaskConical,
 } from 'lucide-react';
 import { SidebarCtx } from './SidebarContext';
 import Auth from './views/Auth';
@@ -76,6 +77,12 @@ function Sidebar() {
 								id: 'feed',
 								icon: <Rss size={15} />,
 								label: 'Feed',
+								completedOnly: true,
+							},
+							{
+								id: 'scenarios',
+								icon: <FlaskConical size={15} />,
+								label: `Scenarios${sessionNav.scenariosCount ? ` (${sessionNav.scenariosCount})` : ''}`,
 								completedOnly: true,
 							},
 							{
