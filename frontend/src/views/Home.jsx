@@ -552,7 +552,7 @@ export default function Home() {
 							style={{ margin: 0 }}
 						>
 							<label className="form-label">
-							Force Add Agents
+								Force Add Agents
 							</label>
 							<div style={{ paddingTop: '0.5rem' }}>
 								<input
@@ -600,7 +600,9 @@ export default function Home() {
 										color: 'var(--accent-color)',
 									}}
 								>
-									{agentSlider === 0 ? 'Generate naturally from input' : `Force inflate to ${getAgentCount(agentSlider)} agents`}
+									{agentSlider === 0
+										? 'Generate naturally from input'
+										: `Force inflate to ${getAgentCount(agentSlider)} agents`}
 								</div>
 							</div>
 						</div>
