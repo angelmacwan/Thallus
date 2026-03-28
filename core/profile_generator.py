@@ -95,28 +95,55 @@ class ProfileGenerator:
     # ------------------------------------------------------------------
     def _extract_topics_from_graph(self) -> list[str]:
         """
-        Extract key topics and themes from the graph to inform synthetic agent creation.
-        Returns a list of topic strings.
+        Use an LLM to generate meaningful topic phrases from the graph,
+        suitable for creating synthetic agent personas that will actively engage
+        with simulation content.
         """
-        topics = set()
-        
-        # Collect entity types as topics
-        for name, ent_data in self.graph.entities.items():
-            ent_type = ent_data.get("type", "")
-            if ent_type:
-                topics.add(ent_type.lower())
-        
-        # Collect concepts from entity names
-        for name in self.graph.entities.keys():
-            # Split multi-word entity names
-            words = name.lower().split()
-            for word in words:
-                if len(word) > 3:  # Filter out short words
-                    topics.add(word)
-        
-        # Limit to reasonable number of topics
-        topics_list = list(topics)[:20]
-        return topics_list if topics_list else ["technology", "politics", "science", "business"]
+        # Build context from full entity names and relationships
+        entity_lines = [
+            f"{name} ({data.get('type', 'entity')})"
+            for name, data in list(self.graph.entities.items())[:20]
+        ]
+        relation_lines = [
+            f"{r['source']} {r['type']} {r['target']}"
+            for r in self.graph.relations[:15]
+        ]
+        context = "Entities: " + ", ".join(entity_lines)
+        if relation_lines:
+            context += "\nRelationships: " + "; ".join(relation_lines)
+
+        prompt = (
+            "Based on this knowledge graph, generate 12 meaningful topic phrases that describe "
+            "the key themes and subject areas that people might be interested in and discuss on social media.\n\n"
+            f"Context:\n{context}\n\n"
+            "Requirements:\n"
+            "- Each topic must be a meaningful phrase of 2-5 words, NOT a single generic word or entity type\n"
+            "- Topics should represent specific interests that would motivate someone to engage with this content\n"
+            "- GOOD examples: 'enterprise cloud migration', 'AI-driven business transformation', "
+            "'strategic consulting partnerships'\n"
+            "- BAD examples: 'organization', 'ibm', 'concept' (too vague or just raw tokens)\n"
+            "- Return ONLY a JSON array of 12 strings"
+        )
+
+        try:
+            response = self.client.models.generate_content(
+                model=MODEL_NAME,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                    temperature=0.6,
+                ),
+            )
+            topics = json.loads(response.text)
+            if isinstance(topics, list) and topics and all(isinstance(t, str) for t in topics):
+                print(f"LLM generated {len(topics)} topic phrase(s) for synthetic agents.")
+                return topics[:20]
+        except Exception as exc:
+            print(f"Warning: LLM topic extraction failed ({exc}); falling back to entity names.")
+
+        # Fallback: use full entity names as topics (not split word tokens)
+        entity_names = list(self.graph.entities.keys())[:20]
+        return entity_names if entity_names else ["technology", "politics", "science", "business"]
 
     def _generate_synthetic_agents(self, count: int, topics: list[str], start_index: int) -> list[dict]:
         """

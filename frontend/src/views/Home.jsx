@@ -16,6 +16,7 @@ export default function Home() {
 	const [sessions, setSessions] = useState([]);
 	const [loading, setLoading] = useState(true);
 	const [title, setTitle] = useState('');
+	const [objective, setObjective] = useState('');
 	const [files, setFiles] = useState([]);
 	const [rounds, setRounds] = useState(3);
 	const [agentSlider, setAgentSlider] = useState(0); // 0-4, default 0 (natural agent generation)
@@ -30,7 +31,7 @@ export default function Home() {
 		fetchSessions();
 		api.get('/version')
 			.then((res) => setAppVersion(res.data.version))
-			.catch(() => { });
+			.catch(() => {});
 	}, []);
 
 	// Map slider position (0-4) to agent count
@@ -65,6 +66,8 @@ export default function Home() {
 				formData.append('agent_count', agentCount);
 			}
 			if (title.trim()) formData.append('title', title.trim());
+			if (objective.trim())
+				formData.append('objective', objective.trim());
 			Array.from(files).forEach((file) => {
 				formData.append('files', file);
 			});
@@ -446,6 +449,49 @@ export default function Home() {
 								value={title}
 								onChange={(e) => setTitle(e.target.value)}
 							/>
+						</div>
+
+						{/* Objective */}
+						<div
+							className="form-group"
+							style={{ margin: 0 }}
+						>
+							<label className="form-label">
+								Investigation Objective{' '}
+								<span
+									style={{
+										fontWeight: 400,
+										color: 'var(--text-secondary)',
+										fontSize: '0.78rem',
+									}}
+								>
+									(optional)
+								</span>
+							</label>
+							<textarea
+								className="input-field"
+								placeholder="e.g. Understand how employees react to a 20% salary cut"
+								value={objective}
+								onChange={(e) => setObjective(e.target.value)}
+								rows={2}
+								style={{
+									resize: 'vertical',
+									fontFamily: 'inherit',
+									lineHeight: 1.5,
+								}}
+							/>
+							<p
+								style={{
+									fontSize: '0.72rem',
+									color: 'var(--text-secondary)',
+									margin: '0.3rem 0 0',
+									lineHeight: 1.4,
+								}}
+							>
+								The AI will generate targeted questions from
+								this objective and answer them after the
+								simulation.
+							</p>
 						</div>
 
 						{/* Drop zone */}

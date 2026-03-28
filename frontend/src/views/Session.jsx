@@ -1398,6 +1398,564 @@ function ScenarioCard({ scenario, onRun, onGenerateReport, liveLog }) {
 	);
 }
 
+// ─── Resimulate Modal ─────────────────────────────────────────────────────────
+function ResimulateModal({ sessionUuid, session, onClose, onSuccess }) {
+	const [seedInfo, setSeedInfo] = useState(null);
+	const [loadingInfo, setLoadingInfo] = useState(true);
+	const [rounds, setRounds] = useState(3);
+	const [agentSlider, setAgentSlider] = useState(0);
+	const [objective, setObjective] = useState('');
+	const [existingFiles, setExistingFiles] = useState([]);
+	const [filesToRemove, setFilesToRemove] = useState(new Set());
+	const [newFiles, setNewFiles] = useState([]);
+	const [submitting, setSubmitting] = useState(false);
+	const [error, setError] = useState(null);
+	const [dragging, setDragging] = useState(false);
+	const fileInputRef = useRef(null);
+
+	const getAgentCount = (v) => [0, 50, 150, 300, 500][v];
+	const isFailed = session?.status === 'error';
+
+	useEffect(() => {
+		api.get(`/simulation/seed-info/${sessionUuid}`)
+			.then((res) => {
+				setSeedInfo(res.data);
+				setRounds(res.data.rounds || 3);
+				setObjective(res.data.objective || '');
+				setExistingFiles(res.data.files || []);
+			})
+			.catch(() => {})
+			.finally(() => setLoadingInfo(false));
+	}, [sessionUuid]);
+
+	const toggleRemove = (fname) => {
+		setFilesToRemove((prev) => {
+			const next = new Set(prev);
+			next.has(fname) ? next.delete(fname) : next.add(fname);
+			return next;
+		});
+	};
+
+	const keptCount =
+		existingFiles.filter((f) => !filesToRemove.has(f)).length +
+		newFiles.length;
+
+	const handleDrop = (e) => {
+		e.preventDefault();
+		setDragging(false);
+		const dropped = Array.from(e.dataTransfer.files);
+		if (dropped.length) setNewFiles((prev) => [...prev, ...dropped]);
+	};
+
+	const handleSubmit = async () => {
+		if (keptCount === 0) {
+			setError('At least one seed file is required.');
+			return;
+		}
+		setSubmitting(true);
+		setError(null);
+		try {
+			const formData = new FormData();
+			formData.append('rounds', rounds);
+			const agentCount = getAgentCount(agentSlider);
+			if (agentCount > 0) formData.append('agent_count', agentCount);
+			if (objective.trim())
+				formData.append('objective', objective.trim());
+			if (filesToRemove.size > 0)
+				formData.append(
+					'remove_files',
+					JSON.stringify(Array.from(filesToRemove)),
+				);
+			newFiles.forEach((f) => formData.append('add_files', f));
+			await api.post(`/simulation/resimulate/${sessionUuid}`, formData, {
+				headers: { 'Content-Type': 'multipart/form-data' },
+			});
+			onSuccess();
+		} catch (err) {
+			setError(
+				err?.response?.data?.detail ||
+					'Resimulate failed. See console.',
+			);
+			console.error(err);
+		} finally {
+			setSubmitting(false);
+		}
+	};
+
+	return (
+		<div
+			style={{
+				position: 'fixed',
+				inset: 0,
+				background: 'rgba(0,0,0,0.50)',
+				display: 'flex',
+				alignItems: 'center',
+				justifyContent: 'center',
+				zIndex: 1000,
+				padding: '1rem',
+			}}
+			onClick={(e) => {
+				if (e.target === e.currentTarget) onClose();
+			}}
+		>
+			<div
+				style={{
+					background: 'var(--surface)',
+					borderRadius: '14px',
+					padding: '2rem',
+					width: '100%',
+					maxWidth: '600px',
+					maxHeight: '90vh',
+					overflowY: 'auto',
+					display: 'flex',
+					flexDirection: 'column',
+					gap: '1.25rem',
+					boxShadow: '0 8px 32px rgba(0,0,0,0.25)',
+					border: '1px solid var(--outline-variant)',
+				}}
+			>
+				{/* Header */}
+				<div
+					style={{
+						display: 'flex',
+						alignItems: 'center',
+						justifyContent: 'space-between',
+					}}
+				>
+					<div
+						style={{
+							display: 'flex',
+							alignItems: 'center',
+							gap: '0.6rem',
+						}}
+					>
+						<RefreshCw
+							size={20}
+							color={isFailed ? '#d97706' : 'var(--accent-color)'}
+						/>
+						<h3 style={{ margin: 0, fontSize: '1rem' }}>
+							Resimulate
+						</h3>
+					</div>
+					<button
+						onClick={onClose}
+						style={{
+							background: 'none',
+							border: 'none',
+							cursor: 'pointer',
+							color: 'var(--text-secondary)',
+							display: 'flex',
+							alignItems: 'center',
+							padding: '0.25rem',
+							borderRadius: '6px',
+						}}
+					>
+						<X size={18} />
+					</button>
+				</div>
+
+				{/* Warning banner */}
+				<div
+					style={{
+						background: isFailed ? '#fef3c7' : '#eff6ff',
+						border: `1px solid ${isFailed ? '#fcd34d' : '#bfdbfe'}`,
+						borderRadius: '10px',
+						padding: '0.85rem 1rem',
+						fontSize: '0.82rem',
+						color: isFailed ? '#92400e' : '#1e40af',
+						lineHeight: 1.5,
+					}}
+				>
+					{isFailed
+						? '⚠️ The previous simulation failed. This will clear all generated data and retry with the settings below.'
+						: 'This will permanently clear all posts, reports, scenarios, and generated data for this simulation and re-run it from scratch. Your seed files will be preserved unless you change them below.'}
+				</div>
+
+				{loadingInfo ? (
+					<p
+						style={{
+							color: 'var(--text-secondary)',
+							fontSize: '0.85rem',
+						}}
+					>
+						Loading current configuration…
+					</p>
+				) : (
+					<>
+						{/* Seed files */}
+						<div
+							style={{
+								display: 'flex',
+								flexDirection: 'column',
+								gap: '0.5rem',
+							}}
+						>
+							<label
+								style={{
+									fontSize: '0.78rem',
+									fontWeight: 600,
+									color: 'var(--text-secondary)',
+									textTransform: 'uppercase',
+									letterSpacing: '0.05em',
+								}}
+							>
+								Seed Files
+							</label>
+
+							{existingFiles.length > 0 && (
+								<div
+									style={{
+										display: 'flex',
+										flexDirection: 'column',
+										gap: '0.3rem',
+									}}
+								>
+									{existingFiles.map((fname) => (
+										<div
+											key={fname}
+											style={{
+												display: 'flex',
+												alignItems: 'center',
+												justifyContent: 'space-between',
+												padding: '0.45rem 0.65rem',
+												background: filesToRemove.has(
+													fname,
+												)
+													? '#fee2e2'
+													: 'var(--surface-container-high)',
+												borderRadius: '8px',
+												fontSize: '0.82rem',
+												textDecoration:
+													filesToRemove.has(fname)
+														? 'line-through'
+														: 'none',
+												color: filesToRemove.has(fname)
+													? '#dc2626'
+													: 'var(--text-primary)',
+												transition: 'all 0.15s',
+											}}
+										>
+											<span
+												style={{
+													wordBreak: 'break-all',
+												}}
+											>
+												{fname}
+											</span>
+											<button
+												onClick={() =>
+													toggleRemove(fname)
+												}
+												title={
+													filesToRemove.has(fname)
+														? 'Keep this file'
+														: 'Remove this file'
+												}
+												style={{
+													background: 'none',
+													border: 'none',
+													cursor: 'pointer',
+													color: filesToRemove.has(
+														fname,
+													)
+														? '#16a34a'
+														: '#dc2626',
+													display: 'flex',
+													alignItems: 'center',
+													flexShrink: 0,
+													marginLeft: '0.5rem',
+													padding: '0.15rem',
+												}}
+											>
+												{filesToRemove.has(fname) ? (
+													<Plus size={14} />
+												) : (
+													<X size={14} />
+												)}
+											</button>
+										</div>
+									))}
+								</div>
+							)}
+
+							{/* Drop zone for adding new files */}
+							<div
+								onDrop={handleDrop}
+								onDragOver={(e) => {
+									e.preventDefault();
+									setDragging(true);
+								}}
+								onDragLeave={() => setDragging(false)}
+								onClick={() => fileInputRef.current?.click()}
+								style={{
+									border: `2px dashed ${dragging ? 'var(--accent-color)' : 'var(--outline-variant)'}`,
+									borderRadius: '10px',
+									padding: '1rem',
+									textAlign: 'center',
+									cursor: 'pointer',
+									background: dragging
+										? 'var(--surface-container-low)'
+										: 'transparent',
+									transition: 'all 0.15s ease',
+									fontSize: '0.8rem',
+									color: 'var(--text-secondary)',
+								}}
+							>
+								{newFiles.length > 0 ? (
+									<span
+										style={{
+											fontWeight: 500,
+											color: 'var(--on-surface)',
+										}}
+									>
+										+ {newFiles.length} new file
+										{newFiles.length > 1 ? 's' : ''} to add
+									</span>
+								) : (
+									'Drop files here or click to add more seed files'
+								)}
+								<input
+									ref={fileInputRef}
+									type="file"
+									multiple
+									style={{ display: 'none' }}
+									onChange={(e) =>
+										setNewFiles((prev) => [
+											...prev,
+											...Array.from(e.target.files),
+										])
+									}
+								/>
+							</div>
+
+							{keptCount === 0 && (
+								<p
+									style={{
+										fontSize: '0.75rem',
+										color: '#dc2626',
+										margin: 0,
+									}}
+								>
+									At least one seed file is required.
+								</p>
+							)}
+						</div>
+
+						{/* Rounds */}
+						<div
+							style={{
+								display: 'flex',
+								flexDirection: 'column',
+								gap: '0.4rem',
+							}}
+						>
+							<label
+								style={{
+									fontSize: '0.78rem',
+									fontWeight: 600,
+									color: 'var(--text-secondary)',
+									textTransform: 'uppercase',
+									letterSpacing: '0.05em',
+								}}
+							>
+								Iterations / Rounds
+							</label>
+							<input
+								type="number"
+								min="1"
+								max="100"
+								className="input-field"
+								value={rounds}
+								onChange={(e) =>
+									setRounds(Number(e.target.value))
+								}
+							/>
+						</div>
+
+						{/* Agent slider */}
+						<div
+							style={{
+								display: 'flex',
+								flexDirection: 'column',
+								gap: '0.4rem',
+							}}
+						>
+							<label
+								style={{
+									fontSize: '0.78rem',
+									fontWeight: 600,
+									color: 'var(--text-secondary)',
+									textTransform: 'uppercase',
+									letterSpacing: '0.05em',
+								}}
+							>
+								Force Add Agents
+							</label>
+							<input
+								type="range"
+								min="0"
+								max="4"
+								step="1"
+								value={agentSlider}
+								onChange={(e) =>
+									setAgentSlider(Number(e.target.value))
+								}
+								style={{ width: '100%', cursor: 'pointer' }}
+							/>
+							<div
+								style={{
+									display: 'flex',
+									justifyContent: 'space-between',
+									fontSize: '0.7rem',
+									color: 'var(--text-secondary)',
+								}}
+							>
+								{['Natural', '50', '150', '300', '500'].map(
+									(label, i) => (
+										<span
+											key={label}
+											style={{
+												fontWeight:
+													agentSlider === i
+														? 600
+														: 400,
+											}}
+										>
+											{label}
+										</span>
+									),
+								)}
+							</div>
+							<div
+								style={{
+									textAlign: 'center',
+									fontSize: '0.8rem',
+									fontWeight: 600,
+									color: 'var(--accent-color)',
+								}}
+							>
+								{agentSlider === 0
+									? 'Generate naturally from input'
+									: `Force inflate to ${getAgentCount(agentSlider)} agents`}
+							</div>
+						</div>
+
+						{/* Objective */}
+						<div
+							style={{
+								display: 'flex',
+								flexDirection: 'column',
+								gap: '0.4rem',
+							}}
+						>
+							<label
+								style={{
+									fontSize: '0.78rem',
+									fontWeight: 600,
+									color: 'var(--text-secondary)',
+									textTransform: 'uppercase',
+									letterSpacing: '0.05em',
+								}}
+							>
+								Investigation Objective{' '}
+								<span
+									style={{
+										fontWeight: 400,
+										textTransform: 'none',
+									}}
+								>
+									(optional)
+								</span>
+							</label>
+							<textarea
+								className="input-field"
+								placeholder="e.g. Understand how employees react to a 20% salary cut"
+								value={objective}
+								onChange={(e) => setObjective(e.target.value)}
+								rows={2}
+								style={{
+									resize: 'vertical',
+									fontFamily: 'inherit',
+									lineHeight: 1.5,
+								}}
+							/>
+						</div>
+					</>
+				)}
+
+				{error && (
+					<p
+						style={{
+							margin: 0,
+							fontSize: '0.82rem',
+							color: '#dc2626',
+							background: '#fee2e2',
+							padding: '0.6rem 0.85rem',
+							borderRadius: '8px',
+						}}
+					>
+						{error}
+					</p>
+				)}
+
+				{/* Actions */}
+				<div
+					style={{
+						display: 'flex',
+						gap: '0.75rem',
+						justifyContent: 'flex-end',
+					}}
+				>
+					<button
+						onClick={onClose}
+						disabled={submitting}
+						style={{
+							padding: '0.55rem 1.1rem',
+							borderRadius: '8px',
+							border: '1px solid var(--outline-variant)',
+							background: 'transparent',
+							cursor: 'pointer',
+							fontSize: '0.85rem',
+							color: 'var(--text-secondary)',
+						}}
+					>
+						Cancel
+					</button>
+					<button
+						onClick={handleSubmit}
+						disabled={submitting || loadingInfo || keptCount === 0}
+						style={{
+							padding: '0.55rem 1.25rem',
+							borderRadius: '8px',
+							border: 'none',
+							background: isFailed
+								? '#d97706'
+								: 'var(--accent-color)',
+							color: '#fff',
+							fontWeight: 700,
+							cursor:
+								submitting || loadingInfo || keptCount === 0
+									? 'not-allowed'
+									: 'pointer',
+							fontSize: '0.85rem',
+							display: 'flex',
+							alignItems: 'center',
+							gap: '0.4rem',
+							opacity:
+								submitting || loadingInfo || keptCount === 0
+									? 0.65
+									: 1,
+						}}
+					>
+						<RefreshCw size={14} />
+						{submitting ? 'Starting…' : 'Resimulate'}
+					</button>
+				</div>
+			</div>
+		</div>
+	);
+}
+
 // ─── Create Report Modal ──────────────────────────────────────────────────────
 function CreateReportModal({ sessionId, onClose, onCreated }) {
 	const [description, setDescription] = useState('');
@@ -1821,6 +2379,7 @@ export default function SessionView() {
 	const [activeTab, setActiveTab] = useState('feed');
 	const [dbEvents, setDbEvents] = useState([]);
 	const [showReportModal, setShowReportModal] = useState(false);
+	const [showResimulateModal, setShowResimulateModal] = useState(false);
 	const [reportsCount, setReportsCount] = useState(0);
 
 	// Scenario state
@@ -1848,6 +2407,10 @@ export default function SessionView() {
 			onCreateReport:
 				session?.status === 'completed'
 					? () => setShowReportModal(true)
+					: null,
+			onResimulate:
+				session?.status === 'completed' || session?.status === 'error'
+					? () => setShowResimulateModal(true)
 					: null,
 		});
 		return () => setSessionNav(null);
@@ -2072,6 +2635,18 @@ export default function SessionView() {
 					sessionId={id}
 					onClose={() => setShowReportModal(false)}
 					onCreated={() => {}}
+				/>
+			)}
+
+			{showResimulateModal && session && (
+				<ResimulateModal
+					sessionUuid={id}
+					session={session}
+					onClose={() => setShowResimulateModal(false)}
+					onSuccess={() => {
+						setShowResimulateModal(false);
+						fetchData();
+					}}
 				/>
 			)}
 
@@ -2855,14 +3430,23 @@ export default function SessionView() {
 							)}
 
 							{activeTab === 'metrics' && (
-								<MetricsDashboard
-									sessionId={
-										selectedPill !== 'main'
-											? selectedPill
-											: id
-									}
-									isScenario={selectedPill !== 'main'}
-								/>
+								<div
+									style={{
+										flex: 1,
+										minHeight: 0,
+										overflowY: 'auto',
+										paddingRight: '0.2rem',
+									}}
+								>
+									<MetricsDashboard
+										sessionId={
+											selectedPill !== 'main'
+												? selectedPill
+												: id
+										}
+										isScenario={selectedPill !== 'main'}
+									/>
+								</div>
 							)}
 						</div>
 					)}

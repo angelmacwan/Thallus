@@ -139,6 +139,11 @@ def _run_scenario_task(
 
         os.makedirs(scenario_outputs_path, exist_ok=True)
 
+        # Store the scenario description as the investigation objective
+        objective_path = os.path.join(scenario_outputs_path, "objective.txt")
+        with open(objective_path, "w", encoding="utf-8") as _f:
+            _f.write(description.strip() if description else "")
+
         graph = LocalGraphMemory(
             storage_path=os.path.join(session_outputs_path, "graph.json")
         )

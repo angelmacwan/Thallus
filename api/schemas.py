@@ -222,3 +222,34 @@ class MetricsFullResponse(BaseModel):
     summary: Optional[dict] = None  # MetricsSummaryResponse structure
 
 
+# ── Question-Based Metrics (Idea #2) ─────────────────────────────────────────
+
+class EvidenceResponse(BaseModel):
+    agent_id: str
+    agent_name: str
+    action_description: str
+    relevance_to_answer: str
+    weight: float  # 0.0–1.0
+
+
+class QuestionAnswerResponse(BaseModel):
+    question_id: str
+    question: str
+    answer: str           # "YES" | "NO" | "MAYBE"
+    confidence: float     # 0.0–1.0
+    reasoning: str
+    evidence: List[EvidenceResponse]
+    caveats: str
+
+
+class QAMetricsFullResponse(BaseModel):
+    """Complete question-based metrics payload returned by the unified endpoint."""
+    available: bool
+    generated_at: Optional[str] = None
+    objective: Optional[str] = None
+    questions: List[str] = []
+    answers: List[QuestionAnswerResponse] = []
+    aggregate: Optional[dict] = None
+    error: Optional[str] = None
+
+

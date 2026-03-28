@@ -174,19 +174,65 @@ class SimulationRunner:
         )
 
     def _build_seed_posts(self) -> list[str]:
-        """Compose short factual posts from graph entities and relations."""
-        posts = []
+        """Use an LLM to generate natural, contextual seed posts from the knowledge graph."""
+        from google import genai as _genai
+        from google.genai import types as _gtypes
+        from core.config import MODEL_NAME
 
-        for name, data in list(self.graph.entities.items())[:5]:
-            etype = data.get("type", "entity")
-            posts.append(f"Notable {etype}: {name}")
+        # Build a brief context summary
+        entity_lines = [
+            f"- {name} ({data.get('type', 'entity')})"
+            for name, data in list(self.graph.entities.items())[:15]
+        ]
+        relation_lines = [
+            f"- {r['source']} → {r['type']} → {r['target']}"
+            for r in self.graph.relations[:10]
+        ]
+        context = "Entities:\n" + "\n".join(entity_lines)
+        if relation_lines:
+            context += "\n\nRelationships:\n" + "\n".join(relation_lines)
 
-        for rel in self.graph.relations[:5]:
-            posts.append(
-                f"{rel['source']} {rel['type']} {rel['target']}"
+        prompt = (
+            "You are seeding a social media simulation platform with opening posts.\n"
+            "Based on the following knowledge graph context, write 4 natural, engaging "
+            "social media posts that reflect the key themes and topics. "
+            "These will be the first posts users see and react to.\n\n"
+            f"Context:\n{context}\n\n"
+            "Requirements:\n"
+            "- Each post should be 1-3 sentences, written naturally as if by a real social media user\n"
+            "- Do NOT use label prefixes like 'Notable ORGANIZATION:' or 'Key CONCEPT:'\n"
+            "- Focus on the most interesting or significant aspects of the context\n"
+            "- Vary the angle (analytical, curious, opinionated, etc.)\n"
+            "- Return ONLY a JSON array of 4 strings, nothing else"
+        )
+
+        try:
+            client = _genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+            response = client.models.generate_content(
+                model=MODEL_NAME,
+                contents=prompt,
+                config=_gtypes.GenerateContentConfig(
+                    response_mime_type="application/json",
+                    temperature=0.7,
+                ),
             )
+            posts = json.loads(response.text)
+            if isinstance(posts, list) and posts and all(isinstance(p, str) for p in posts):
+                print(f"LLM generated {len(posts)} contextual seed post(s).")
+                return posts[:6]
+        except Exception as exc:
+            print(f"Warning: LLM seed post generation failed ({exc}); using fallback.")
 
-        return posts[:6]  # keep seed brief
+        # Fallback: natural-language summaries (no raw label templates)
+        posts = []
+        for name, data in list(self.graph.entities.items())[:4]:
+            etype = data.get("type", "entity").lower()
+            posts.append(f"{name} is a significant {etype} shaping this situation.")
+        for rel in self.graph.relations[:2]:
+            posts.append(
+                f"{rel['source']} has a {rel['type'].lower()} relationship with {rel['target']}."
+            )
+        return posts[:6]
 
     def _export_db_to_log(self):
         """

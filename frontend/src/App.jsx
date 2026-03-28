@@ -20,6 +20,8 @@ import {
 	Rss,
 	FlaskConical,
 	BarChart2,
+	RefreshCw,
+	AlertTriangle,
 } from 'lucide-react';
 import { SidebarCtx } from './SidebarContext';
 import Auth from './views/Auth';
@@ -153,6 +155,47 @@ function Sidebar() {
 								</button>
 							</>
 						)}
+						{/* Resimulate button – for completed or failed sessions */}
+						{sessionNav.onResimulate &&
+							(() => {
+								const isFailed =
+									sessionNav.session?.status === 'error';
+								return (
+									<>
+										{!sessionNav.onCreateReport && (
+											<div
+												style={{
+													height: '1px',
+													background:
+														'var(--outline-variant)',
+													margin: '0.5rem 0.85rem',
+												}}
+											/>
+										)}
+										<button
+											className="sidebar-nav-btn"
+											onClick={sessionNav.onResimulate}
+											style={{
+												color: isFailed
+													? '#d97706'
+													: 'var(--text-secondary)',
+												fontWeight: isFailed
+													? 700
+													: 500,
+											}}
+										>
+											{isFailed ? (
+												<AlertTriangle size={15} />
+											) : (
+												<RefreshCw size={15} />
+											)}
+											{isFailed
+												? 'Retry Simulation'
+												: 'Resimulate'}
+										</button>
+									</>
+								);
+							})()}
 						{sessionNav.session &&
 							(() => {
 								const status =
@@ -197,9 +240,9 @@ function Sidebar() {
 												value: sessionNav.session
 													.created_at
 													? new Date(
-														sessionNav.session
-															.created_at,
-													).toLocaleString()
+															sessionNav.session
+																.created_at,
+														).toLocaleString()
 													: '—',
 											},
 										].map(({ label, value }) => (
