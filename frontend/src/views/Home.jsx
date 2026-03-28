@@ -30,7 +30,7 @@ export default function Home() {
 		fetchSessions();
 		api.get('/version')
 			.then((res) => setAppVersion(res.data.version))
-			.catch(() => {});
+			.catch(() => { });
 	}, []);
 
 	// Map slider position (0-4) to agent count
