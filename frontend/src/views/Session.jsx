@@ -4,6 +4,7 @@ import remarkGfm from 'remark-gfm';
 import mermaid from 'mermaid';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../api';
+import MetricsDashboard from '../components/MetricsDashboard';
 import { useSidebar } from '../SidebarContext';
 import {
 	RefreshCw,
@@ -2108,7 +2109,8 @@ export default function SessionView() {
 				{/* LEFT PANEL */}
 				<div
 					style={{
-						width: '42%',
+						width: activeTab === 'metrics' ? '70%' : '42%',
+						transition: 'width 0.3s ease',
 						flexShrink: 0,
 						display: 'flex',
 						flexDirection: 'column',
@@ -2849,6 +2851,17 @@ export default function SessionView() {
 								<SessionReportsList
 									sessionId={id}
 									onCountChange={setReportsCount}
+								/>
+							)}
+
+							{activeTab === 'metrics' && (
+								<MetricsDashboard
+									sessionId={
+										selectedPill !== 'main'
+											? selectedPill
+											: id
+									}
+									isScenario={selectedPill !== 'main'}
 								/>
 							)}
 						</div>

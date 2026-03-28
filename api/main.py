@@ -6,7 +6,7 @@ from .deps import get_current_user
 from . import models
 
 from .routers import auth, sessions, simulation, reports
-from .routers import scenarios
+from .routers import scenarios, metrics
 
 # Create database tables
 Base.metadata.create_all(bind=engine)
@@ -41,6 +41,7 @@ app.include_router(sessions.router)
 app.include_router(simulation.router)
 app.include_router(reports.router)
 app.include_router(scenarios.router)
+app.include_router(metrics.router)
 
 APP_VERSION = "internal alpha 1.3"
 

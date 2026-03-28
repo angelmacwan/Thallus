@@ -114,3 +114,97 @@ class ScenarioEventResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class MetricsStatusResponse(BaseModel):
+    available: bool
+    generated_at: Optional[str] = None
+    num_rounds: Optional[int] = None
+
+
+class InfluenceDetails(BaseModel):
+    total_influence: float
+    amplification_factor: float
+    growth_rate: float
+    reach: int
+    top_post_ids: List[int]
+
+
+class AgentMetricsResponse(BaseModel):
+    influence: dict
+    dominance: dict
+    drift: dict
+    influence_details: Optional[dict] = None  # Maps agent -> InfluenceDetails
+
+
+class EngagementMetrics(BaseModel):
+    avg_engagement_rate: float
+    max_engagement_rate: float
+    consistency: float
+
+
+class EngagementMetricsResponse(BaseModel):
+    engagement: dict  # Maps agent -> EngagementMetrics
+
+
+class NetworkMetricsResponse(BaseModel):
+    pagerank: dict
+    density: float
+    density_by_round: Optional[dict] = None
+    echo_chamber_index: float
+    homophily_score: Optional[float] = None
+
+
+class SpreadMetricsResponse(BaseModel):
+    adoption_curves: dict
+    half_life: dict
+    co_occurrence: list
+
+
+class NarrativeTransition(BaseModel):
+    from_concept: str = None
+    to_concept: str = None
+    count: int
+    
+    class Config:
+        # Allow field names with 'from' keyword
+        populate_by_name = True
+        
+    def __init__(self, **data):
+        # Handle 'from' field mapping
+        if 'from' in data:
+            data['from_concept'] = data.pop('from')
+        if 'to' in data:
+            data['to_concept'] = data.pop('to')
+        super().__init__(**data)
+
+
+class NarrativeMetricsResponse(BaseModel):
+    top_transitions: List[dict]
+    total_chains: int
+
+
+class TemporalMetricPoint(BaseModel):
+    round: int
+    value: float
+
+
+class TemporalMetricsResponse(BaseModel):
+    metric_name: str
+    agent_id: Optional[str] = None
+    data: List[TemporalMetricPoint]
+
+
+class InsightItem(BaseModel):
+    type: str  # 'agent_growth', 'echo_chamber', 'concept_momentum', etc.
+    title: str
+    description: str
+    severity: str  # 'info', 'warning', 'critical'
+    related_entities: Optional[dict] = None  # agent_ids, concept names, etc.
+
+
+class MetricsSummaryResponse(BaseModel):
+    insights: List[InsightItem]
+    key_metrics: dict  # Top-level KPIs
+
+

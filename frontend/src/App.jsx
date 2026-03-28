@@ -19,6 +19,7 @@ import {
 	PlusSquare,
 	Rss,
 	FlaskConical,
+	BarChart2,
 } from 'lucide-react';
 import { SidebarCtx } from './SidebarContext';
 import Auth from './views/Auth';
@@ -105,6 +106,12 @@ function Sidebar() {
 								icon: <FileText size={15} />,
 								label: `Reports${sessionNav.reportsCount ? ` (${sessionNav.reportsCount})` : ''}`,
 							},
+							{
+								id: 'metrics',
+								icon: <BarChart2 size={15} />,
+								label: 'Metrics',
+								completedOnly: true,
+							},
 						]
 							.filter(
 								(item) =>
@@ -190,9 +197,9 @@ function Sidebar() {
 												value: sessionNav.session
 													.created_at
 													? new Date(
-															sessionNav.session
-																.created_at,
-														).toLocaleString()
+														sessionNav.session
+															.created_at,
+													).toLocaleString()
 													: '—',
 											},
 										].map(({ label, value }) => (

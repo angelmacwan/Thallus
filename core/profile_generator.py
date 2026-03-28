@@ -10,7 +10,7 @@ from core.config import MODEL_NAME
 
 # Entity types that should become social-media simulation agents
 _AGENT_TYPES = {
-    "person", "student", "expert", "journalist", "ceo", "researcher",
+    "person", "people", "student", "expert", "journalist", "ceo", "researcher",
     "politician", "activist", "scientist", "engineer", "executive",
     "artist", "athlete", "author", "teacher", "doctor",
 }
@@ -51,6 +51,19 @@ class ProfileGenerator:
             if not isinstance(ent_type, str) or ent_type.lower() not in _AGENT_TYPES:
                 continue
 
+            # For generic "People" entities, infer specific role from context
+            if ent_type.lower() == "people":
+                inferred_role = self._infer_role(name)
+                if inferred_role:
+                    print(f"  Inferred role for {name}: {inferred_role}")
+                    ent_type = inferred_role
+                else:
+                    # Skip generic group entities like "American troops", "Indian nationals"
+                    if any(word in name.lower() for word in ["troops", "nationals", "members", "forces"]):
+                        print(f"  Skipping group entity: {name}")
+                        continue
+                    ent_type = "person"  # Default fallback
+
             profile = self._generate_one(name, ent_type)
             if profile:
                 agents.append(profile)
@@ -63,6 +76,84 @@ class ProfileGenerator:
 
         print(f"Saved {len(agents)} OASIS agent profile(s) → {output_path}")
         return agents
+
+    # ------------------------------------------------------------------
+    def _infer_role(self, name: str) -> str | None:
+        """
+        Infer a person's role/profession from their graph context.
+        
+        Returns a specific role (e.g., "politician", "journalist", "diplomat")
+        or None if the role cannot be confidently inferred.
+        """
+        # Gather context from graph relations
+        context_parts = []
+        
+        # Get relations where this person is involved
+        for rel in self.graph.relations:
+            if rel["source"] == name:
+                context_parts.append(f"{name} {rel['type']} {rel['target']}")
+            elif rel["target"] == name:
+                context_parts.append(f"{rel['source']} {rel['type']} {name}")
+        
+        if not context_parts:
+            # No relations found - try to infer from name alone
+            return self._infer_role_from_name(name)
+        
+        context = ". ".join(context_parts[:10])  # Limit context to avoid token limits
+        
+        # Use LLM to infer the professional role
+        prompt = f"""Based on the following information about {name}, infer their most likely professional role or occupation.
+
+Context:
+{context}
+
+Respond with ONLY ONE of these roles (choose the best fit):
+politician, diplomat, ambassador, journalist, reporter, military_officer, spokesperson, analyst, activist, researcher, scientist, engineer, executive, ceo, official, advisor, expert, doctor, teacher, author, artist, athlete, lawyer, judge
+
+If none fit well, respond with: person
+
+Role:"""
+        
+        try:
+            response = self.client.models.generate_content(
+                model=MODEL_NAME,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    temperature=0.3,
+                ),
+            )
+            inferred_role = response.text.strip().lower()
+            
+            # Validate the response
+            if inferred_role in _AGENT_TYPES:
+                return inferred_role
+            elif inferred_role == "person":
+                return None
+            else:
+                # Try to extract a valid role from the response
+                for role in _AGENT_TYPES:
+                    if role in inferred_role:
+                        return role
+                return None
+                
+        except Exception as exc:
+            print(f"  Warning: Role inference failed for {name}: {exc}")
+            return None
+    
+    def _infer_role_from_name(self, name: str) -> str | None:
+        """Fallback: infer role from name patterns (e.g., 'Dr.', 'President')."""
+        name_lower = name.lower()
+        
+        if any(title in name_lower for title in ["dr.", "doctor"]):
+            return "doctor"
+        elif any(title in name_lower for title in ["prof.", "professor"]):
+            return "teacher"
+        elif any(title in name_lower for title in ["president", "prime minister", "senator", "governor"]):
+            return "politician"
+        elif any(title in name_lower for title in ["ambassador", "diplomat"]):
+            return "diplomat"
+        
+        return None
 
     # ------------------------------------------------------------------
     def _generate_one(self, name: str, ent_type: str) -> dict | None:

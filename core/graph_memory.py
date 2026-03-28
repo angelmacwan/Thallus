@@ -11,12 +11,32 @@ class LocalGraphMemory:
         self._load()
 
     def _load(self):
+        """Load graph data from storage with error handling."""
         if os.path.exists(self.storage_path):
-            with open(self.storage_path, 'r') as f:
-                data = json.load(f)
-                self.entities = data.get("entities", {})
-                self.relations = data.get("relations", [])
-                self.facts = data.get("facts", [])
+            try:
+                with open(self.storage_path, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    self.entities = data.get("entities", {})
+                    self.relations = data.get("relations", [])
+                    self.facts = data.get("facts", [])
+            except json.JSONDecodeError as e:
+                print(f"Warning: Failed to load graph from {self.storage_path}: {e}")
+                print("Starting with empty graph. Corrupted file will be backed up.")
+                # Back up the corrupted file
+                backup_path = f"{self.storage_path}.corrupted"
+                try:
+                    os.rename(self.storage_path, backup_path)
+                    print(f"Backed up corrupted file to: {backup_path}")
+                except:
+                    pass
+                self.entities = {}
+                self.relations = []
+                self.facts = []
+            except Exception as e:
+                print(f"Warning: Unexpected error loading graph from {self.storage_path}: {e}")
+                self.entities = {}
+                self.relations = []
+                self.facts = []
 
     def _save(self):
         dir_name = os.path.dirname(self.storage_path)
