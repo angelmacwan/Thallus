@@ -10,6 +10,44 @@ from sklearn.cluster import KMeans
 from sklearn.metrics.pairwise import cosine_similarity
 import community as community_louvain
 
+# Generic terms that should not be tracked as concepts (same as in text_processor.py)
+_CONCEPT_STOPWORDS = {
+    # Template/context words
+    'background', 'notable', 'context', 'update', 'information', 'data', 'content',
+    'description', 'details', 'summary', 'overview', 'general', 'specific', 'various',
+    'multiple', 'several', 'many', 'some', 'other', 'thing', 'things', 'item', 'items',
+    'new', 'old', 'current', 'previous', 'next', 'first', 'last', 'major', 'minor',
+    
+    # Pronouns and demonstratives
+    'this', 'that', 'these', 'those', 'it', 'its', "it's", 'they', 'them', 'their',
+    'he', 'she', 'him', 'her', 'his', 'hers', 'we', 'us', 'our', 'ours', 'you', 'your',
+    'yours', 'i', 'me', 'my', 'mine',
+    
+    # Common verbs/auxiliaries
+    "let's", 'lets', 'let', 'get', 'got', 'getting', 'do', 'does', 'did', 'doing',
+    'be', 'am', 'is', 'are', 'was', 'were', 'been', 'being', 'have', 'has', 'had',
+    'having', 'will', 'would', 'could', 'should', 'may', 'might', 'must', 'can',
+    
+    # Generic descriptors
+    'good', 'bad', 'better', 'worse', 'best', 'worst', 'great', 'small', 'large',
+    'big', 'little', 'more', 'less', 'most', 'least', 'very', 'much', 'quite',
+    'interesting', 'important', 'significant', 'relevant', 'true', 'false',
+    
+    # Articles, conjunctions, and adverbs
+    'the', 'a', 'an', 'and', 'or', 'but', 'if', 'then', 'than', 'as', 'at', 'by',
+    'for', 'from', 'in', 'into', 'of', 'on', 'to', 'with', 'about', 'between',
+    'while', 'when', 'where', 'who', 'what', 'why', 'how', 'which', 'whose',
+    'until', 'unless', 'since', 'because', 'although', 'though', 'while',
+    
+    # Common nouns
+    'people', 'person', 'place', 'time', 'way', 'year', 'day', 'work', 'part',
+    
+    # Template artifacts
+    'nothing', 'something', 'anything', 'everything', 'scenario', '[scenario',
+    'update]', '[update]', 'ignoring', 'location:', 'people:', 'type:', 'entity:',
+    'organization:', 'concept:',
+}
+
 class MetricsReport:
     def __init__(self, outputs_path: str):
         self.outputs_path = outputs_path
@@ -18,6 +56,59 @@ class MetricsReport:
         self.db_file = os.path.join(outputs_path, "metrics.db")
         self.json_file = os.path.join(outputs_path, "metrics.json")
         self.agents_file = os.path.join(outputs_path, "agents.json")
+    
+    def _normalize_entity_name(self, name: str) -> str:
+        """Normalize entity names to avoid case duplicates, possessives, and punctuation."""
+        if not name:
+            return name
+        
+        # Trim whitespace
+        name = name.strip()
+        
+        # Strip trailing punctuation (but keep internal punctuation like U.S.)
+        name = name.rstrip('.,!?;:\'"[]{}()')
+        
+        # Strip possessive 's (India's -> India)
+        if name.endswith("'s"):
+            name = name[:-2]
+        elif name.endswith("s'"):
+            name = name[:-1]
+        
+        # Skip normalization for acronyms (all caps, 2-5 chars)
+        if name.isupper() and 2 <= len(name) <= 5:
+            return name
+        
+        # Title case for normal names (each word capitalized)
+        # This makes "america", "America", "AMERICA" all become "America"
+        return name.title()
+    
+    def _is_valid_concept(self, name: str) -> bool:
+        """Check if an entity name should be tracked as a concept."""
+        if not name or len(name) < 2:
+            return False
+        
+        # Filter out generic stopwords
+        name_lower = name.lower().strip()
+        if name_lower in _CONCEPT_STOPWORDS:
+            return False
+        
+        # Filter out single letters
+        if len(name) == 1:
+            return False
+        
+        # Filter out pure numbers
+        if name.isdigit():
+            return False
+        
+        # Filter out very short words (likely not meaningful concepts)
+        if len(name) <= 2 and not name.isupper():
+            return False
+        
+        # Filter out words that are just punctuation or special chars
+        if not any(c.isalnum() for c in name):
+            return False
+        
+        return True
     
     def _load_agent_mapping(self):
         """Load agent profiles and create mapping from user_id to username"""
@@ -35,14 +126,22 @@ class MetricsReport:
         return agent_map
 
     def _load_concepts_from_graph(self):
-        """Load concepts/entities from graph.json"""
+        """Load concepts/entities from graph.json, normalized and filtered.
+        
+        IMPORTANT: This loads data into memory and normalizes it WITHOUT modifying
+        the source graph.json file. Normalization happens only for metrics calculation.
+        """
         concepts = set()
         if os.path.exists(self.graph_file):
             try:
                 with open(self.graph_file, 'r', encoding='utf-8') as f:
                     graph_data = json.load(f)
                     if "entities" in graph_data:
-                        concepts = set(graph_data["entities"].keys())
+                        # Normalize and filter each concept IN MEMORY ONLY
+                        for concept in graph_data["entities"].keys():
+                            normalized = self._normalize_entity_name(concept)
+                            if self._is_valid_concept(normalized):
+                                concepts.add(normalized)
             except:
                 pass
         return concepts
@@ -83,12 +182,38 @@ class MetricsReport:
             return {1: sorted_actions}, 1
 
     def _extract_concepts_from_content(self, content, known_concepts):
-        """Extract concepts mentioned in content"""
+        """Extract concepts mentioned in content with case-insensitive matching.
+        
+        Creates a canonical mapping to avoid duplicates like America/AMERICA/India's.
+        Filters out generic stopwords and normalizes possessives/punctuation.
+        """
+        # Build a mapping from lowercase to canonical (normalized) form
+        concept_map = {}
+        for concept in known_concepts:
+            # Normalize the concept
+            normalized = self._normalize_entity_name(concept)
+            
+            # Filter out invalid concepts
+            if not self._is_valid_concept(normalized):
+                continue
+            
+            normalized_lower = normalized.lower()
+            
+            # Keep first occurrence as canonical (or prefer non-uppercase)
+            if normalized_lower not in concept_map:
+                concept_map[normalized_lower] = normalized
+            elif not normalized.isupper():  # Prefer non-all-caps versions
+                concept_map[normalized_lower] = normalized
+        
+        # Now match against content (also check variations in content)
         mentioned = set()
         content_lower = content.lower()
-        for concept in known_concepts:
-            if concept.lower() in content_lower:
-                mentioned.add(concept)
+        
+        for concept_lower, canonical in concept_map.items():
+            # Check if concept appears in content
+            if concept_lower in content_lower:
+                mentioned.add(canonical)
+        
         return mentioned
 
     def _calculate_engagement_rate(self, post):
@@ -108,7 +233,15 @@ class MetricsReport:
         # Simple virality: share_rate with exponential bonus for cascades
         return num_shares * (1.1 ** num_shares) if num_shares > 0 else 0.0
 
-    def run(self, concepts=None, embedder=None) -> dict:
+    def run(self, concepts=None, embedder=None, actual_rounds: int = None) -> dict:
+        """Generate comprehensive metrics from simulation actions.
+        
+        Args:
+            concepts: Known concepts to track for spread analysis
+            embedder: Optional embedding model for semantic similarity
+            actual_rounds: Actual number of simulation rounds. If provided, uses this
+                          instead of calculating from action timestamps.
+        """
         # Load actions
         actions = []
         if os.path.exists(self.actions_file):
@@ -138,6 +271,15 @@ class MetricsReport:
         
         # Parse actions into rounds
         rounds_actions, num_rounds = self._parse_rounds(actions)
+        
+        # Use actual configured rounds if provided (more accurate than timestamp calculation)
+        if actual_rounds is not None and actual_rounds > 0:
+            num_rounds = actual_rounds
+        
+        # Ensure num_rounds covers all rounds in rounds_actions
+        if rounds_actions:
+            max_round_in_actions = max(rounds_actions.keys())
+            num_rounds = max(num_rounds, max_round_in_actions)
         
         # Initialize data structures
         all_agents = set()

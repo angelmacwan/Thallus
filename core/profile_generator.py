@@ -43,7 +43,8 @@ class ProfileGenerator:
         self.graph = graph
         self.client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 
-    def generate_profiles(self, output_path: str = "data/agents.json") -> list:
+    def generate_profiles(self, output_path: str = "data/agents.json", target_count: int = None) -> list:
+        # Generate core agents from graph entities
         agents = []
 
         for name, ent_data in self.graph.entities.items():
@@ -68,6 +69,20 @@ class ProfileGenerator:
             if profile:
                 agents.append(profile)
 
+        core_count = len(agents)
+        print(f"Generated {core_count} core agent(s) from graph entities")
+
+        # Generate additional synthetic agents if target_count is specified
+        if target_count and target_count > core_count:
+            additional_needed = target_count - core_count
+            print(f"Generating {additional_needed} additional synthetic agents to reach target of {target_count}...")
+            
+            # Extract topics from graph entities to create diverse agents
+            topics = self._extract_topics_from_graph()
+            synthetic_agents = self._generate_synthetic_agents(additional_needed, topics, core_count)
+            agents.extend(synthetic_agents)
+            print(f"Generated {len(synthetic_agents)} synthetic agent(s)")
+
         dir_name = os.path.dirname(output_path)
         if dir_name:
             os.makedirs(dir_name, exist_ok=True)
@@ -76,6 +91,137 @@ class ProfileGenerator:
 
         print(f"Saved {len(agents)} OASIS agent profile(s) → {output_path}")
         return agents
+
+    # ------------------------------------------------------------------
+    def _extract_topics_from_graph(self) -> list[str]:
+        """
+        Extract key topics and themes from the graph to inform synthetic agent creation.
+        Returns a list of topic strings.
+        """
+        topics = set()
+        
+        # Collect entity types as topics
+        for name, ent_data in self.graph.entities.items():
+            ent_type = ent_data.get("type", "")
+            if ent_type:
+                topics.add(ent_type.lower())
+        
+        # Collect concepts from entity names
+        for name in self.graph.entities.keys():
+            # Split multi-word entity names
+            words = name.lower().split()
+            for word in words:
+                if len(word) > 3:  # Filter out short words
+                    topics.add(word)
+        
+        # Limit to reasonable number of topics
+        topics_list = list(topics)[:20]
+        return topics_list if topics_list else ["technology", "politics", "science", "business"]
+
+    def _generate_synthetic_agents(self, count: int, topics: list[str], start_index: int) -> list[dict]:
+        """
+        Generate synthetic agents with diverse profiles based on graph topics.
+        
+        Args:
+            count: Number of synthetic agents to generate
+            topics: List of topics to use for agent diversity
+            start_index: Starting index for naming synthetic agents
+        
+        Returns:
+            List of agent profile dictionaries
+        """
+        synthetic_agents = []
+        
+        # Define agent archetypes for diversity
+        professions = [
+            "journalist", "researcher", "student", "teacher", "engineer",
+            "scientist", "activist", "politician", "entrepreneur", "analyst",
+            "consultant", "executive", "artist", "writer", "developer"
+        ]
+        
+        countries = ["US", "UK", "Canada", "Germany", "France", "Japan", "India", "Brazil", "Australia"]
+        genders = ["male", "female", "non-binary"]
+        mbti_types = ["INTJ", "ENTP", "INFP", "ESTJ", "ISFJ", "ENFJ", "ISTP", "ESFP"]
+        
+        # Generate agents in batches using LLM
+        batch_size = 10
+        for i in range(0, count, batch_size):
+            batch_count = min(batch_size, count - i)
+            
+            prompt = f"""Generate {batch_count} diverse social media user profiles for a simulation.
+
+Base these profiles on the following context topics: {', '.join(topics[:10])}
+
+Return ONLY a JSON array of {batch_count} objects, each with these exact keys:
+  "realname"         – unique full name (string)
+  "username"         – unique social-media handle: lowercase letters, digits, underscores only
+  "bio"              – 1-2 sentence social-media bio (string)
+  "persona"          – 2-3 sentence character/personality description (string)
+  "age"              – integer between 18-75
+  "gender"           – "male" | "female" | "non-binary"
+  "mbti"             – Myers-Briggs type code, e.g. "INTJ"
+  "country"          – country of origin
+  "profession"       – professional field relevant to the topics
+  "interested_topics" – list of 2-4 interest topics from the context
+
+Make each profile unique and diverse. Vary the professions, ages, countries, and perspectives.
+"""
+            
+            try:
+                response = self.client.models.generate_content(
+                    model=MODEL_NAME,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
+                        response_mime_type="application/json",
+                        temperature=0.9,  # Higher temperature for more diversity
+                    ),
+                )
+                batch_profiles = json.loads(response.text)
+                
+                # Validate and add default values
+                for idx, profile in enumerate(batch_profiles):
+                    # Ensure all required fields exist
+                    profile.setdefault("realname", f"Agent {start_index + i + idx + 1}")
+                    profile.setdefault("username", f"agent_{start_index + i + idx + 1}")
+                    profile.setdefault("bio", "Interested observer and commentator.")
+                    profile.setdefault("persona", profile["bio"])
+                    profile.setdefault("age", 30)
+                    profile.setdefault("gender", genders[(i + idx) % len(genders)])
+                    profile.setdefault("mbti", mbti_types[(i + idx) % len(mbti_types)])
+                    profile.setdefault("country", countries[(i + idx) % len(countries)])
+                    profile.setdefault("profession", professions[(i + idx) % len(professions)])
+                    profile.setdefault("interested_topics", topics[:3])
+                    
+                    # Coerce age to int
+                    try:
+                        profile["age"] = int(profile["age"])
+                    except (TypeError, ValueError):
+                        profile["age"] = 30
+                    
+                    synthetic_agents.append(profile)
+                    
+                print(f"  Generated synthetic batch {i // batch_size + 1}: {len(batch_profiles)} profiles")
+                
+            except Exception as exc:
+                print(f"  Warning: Batch generation failed: {exc}")
+                # Fallback: create simple profiles
+                for idx in range(batch_count):
+                    agent_num = start_index + i + idx + 1
+                    fallback_profile = {
+                        "realname": f"Agent {agent_num}",
+                        "username": f"agent_{agent_num}",
+                        "bio": f"Interested in {', '.join(topics[:2])}.",
+                        "persona": f"A curious individual following developments in {topics[0] if topics else 'various fields'}.",
+                        "age": 25 + ((i + idx) % 50),
+                        "gender": genders[(i + idx) % len(genders)],
+                        "mbti": mbti_types[(i + idx) % len(mbti_types)],
+                        "country": countries[(i + idx) % len(countries)],
+                        "profession": professions[(i + idx) % len(professions)],
+                        "interested_topics": topics[:3] if topics else ["general"]
+                    }
+                    synthetic_agents.append(fallback_profile)
+        
+        return synthetic_agents[:count]  # Ensure we return exactly the requested count
 
     # ------------------------------------------------------------------
     def _infer_role(self, name: str) -> str | None:

@@ -39,7 +39,7 @@ def _get_current_user_query(
     return user
 
 
-def run_simulation_task(session_id: int, session_uuid: str, inputs_path: str, outputs_path: str, rounds: int, emit):
+def run_simulation_task(session_id: int, session_uuid: str, inputs_path: str, outputs_path: str, rounds: int, agent_count: int, emit):
     # Runs in background task thread
     from ..database import SessionLocal
     db = SessionLocal()
@@ -74,7 +74,7 @@ def run_simulation_task(session_id: int, session_uuid: str, inputs_path: str, ou
         emit("stage", "Generating agent profiles…")
         agents_path = os.path.join(outputs_path, "agents.json")
         pg = ProfileGenerator(graph)
-        profiles = pg.generate_profiles(output_path=agents_path)
+        profiles = pg.generate_profiles(output_path=agents_path, target_count=agent_count)
         n_agents = len(profiles) if isinstance(profiles, list) else "?"
         emit("stage", f"{n_agents} agent profile(s) generated")
 
@@ -107,6 +107,7 @@ def run_simulation_task(session_id: int, session_uuid: str, inputs_path: str, ou
 async def upload_and_simulate(
     background_tasks: BackgroundTasks,
     rounds: int = Form(...),
+    agent_count: int = Form(None),  # Optional: only force inflate if specified
     title: str = Form(None),
     files: List[UploadFile] = File(...),
     db: Session = Depends(get_db),
@@ -158,6 +159,7 @@ async def upload_and_simulate(
         inputs_path,
         outputs_path,
         rounds,
+        agent_count,
         emit,
     )
 

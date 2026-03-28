@@ -199,12 +199,26 @@ class InsightItem(BaseModel):
     type: str  # 'agent_growth', 'echo_chamber', 'concept_momentum', etc.
     title: str
     description: str
-    severity: str  # 'info', 'warning', 'critical'
+    severity: str  # 'info', 'warning', 'critical', 'success'
+    key_finding: Optional[str] = None  # One sentence summary/takeaway
     related_entities: Optional[dict] = None  # agent_ids, concept names, etc.
 
 
 class MetricsSummaryResponse(BaseModel):
     insights: List[InsightItem]
     key_metrics: dict  # Top-level KPIs
+
+
+class MetricsFullResponse(BaseModel):
+    """Unified response containing all metrics data plus status"""
+    available: bool
+    generated_at: Optional[str] = None
+    num_rounds: Optional[int] = None
+    agents: Optional[dict] = None  # AgentMetricsResponse structure
+    network: Optional[dict] = None  # NetworkMetricsResponse structure
+    spread: Optional[dict] = None  # SpreadMetricsResponse structure
+    engagement: Optional[dict] = None  # EngagementMetricsResponse structure
+    narratives: Optional[dict] = None  # NarrativeMetricsResponse structure
+    summary: Optional[dict] = None  # MetricsSummaryResponse structure
 
 

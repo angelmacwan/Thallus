@@ -26,6 +26,8 @@ import {
 	ArrowDown,
 	Minus,
 } from 'lucide-react';
+import ConceptCooccurrenceGraph from './ConceptCooccurrenceGraph';
+import NarrativeTransitionsGraph from './NarrativeTransitionsGraph';
 
 export default function MetricsDashboard({ sessionId, isScenario }) {
 	const [loading, setLoading] = useState(true);
@@ -38,6 +40,7 @@ export default function MetricsDashboard({ sessionId, isScenario }) {
 	const [narrativeData, setNarrativeData] = useState(null);
 	const [summaryData, setSummaryData] = useState(null);
 	const [error, setError] = useState(null);
+	const [activeConcept, setActiveConcept] = useState(null);
 
 	const basePath = isScenario
 		? `/metrics/scenario/${sessionId}`
@@ -66,32 +69,23 @@ export default function MetricsDashboard({ sessionId, isScenario }) {
 
 	const fetchAllMetrics = async () => {
 		try {
-			const [
-				networkRes,
-				spreadRes,
-				engagementRes,
-				narrativeRes,
-				summaryRes,
-			] = await Promise.all([
-				api.get(`${basePath}/network`),
-				api.get(`${basePath}/spread`),
-				api
-					.get(`${basePath}/engagement`)
-					.catch(() => ({ data: { engagement: {} } })),
-				api
-					.get(`${basePath}/narratives`)
-					.catch(() => ({
-						data: { top_transitions: [], total_chains: 0 },
-					})),
-				api
-					.get(`${basePath}/summary`)
-					.catch(() => ({ data: { insights: [], key_metrics: {} } })),
-			]);
-			setNetworkData(networkRes.data);
-			setSpreadData(spreadRes.data);
-			setEngagementData(engagementRes.data);
-			setNarrativeData(narrativeRes.data);
-			setSummaryData(summaryRes.data);
+			// Use unified endpoint that returns all metrics at once
+			const response = await api.get(basePath);
+			const data = response.data;
+
+			if (!data.available) {
+				setStatus({ available: false });
+				return;
+			}
+
+			// Populate all state from unified response
+			setNetworkData(data.network || {});
+			setSpreadData(data.spread || {});
+			setEngagementData(data.engagement || { engagement: {} });
+			setNarrativeData(
+				data.narratives || { top_transitions: [], total_chains: 0 },
+			);
+			setSummaryData(data.summary || { insights: [], key_metrics: {} });
 		} catch (err) {
 			setError('Failed to fetch metrics data.');
 		} finally {
@@ -108,6 +102,14 @@ export default function MetricsDashboard({ sessionId, isScenario }) {
 	const handleGenerate = async () => {
 		setGenerating(true);
 		setError(null);
+
+		// Clear all existing metrics data to avoid showing stale data
+		setNetworkData(null);
+		setSpreadData(null);
+		setEngagementData(null);
+		setNarrativeData(null);
+		setSummaryData(null);
+
 		try {
 			await api.post(`${basePath}/generate`);
 			// Poll for status
@@ -230,8 +232,6 @@ export default function MetricsDashboard({ sessionId, isScenario }) {
 		);
 	}
 
-
-
 	const renderOverviewTab = () => {
 		if (!summaryData) return null;
 
@@ -245,16 +245,6 @@ export default function MetricsDashboard({ sessionId, isScenario }) {
 		} else if (eci >= 0.4) {
 			eciColor = '#f59e0b';
 			eciLabel = 'Moderate Clustering';
-		}
-
-		let densityOverTimeData = [];
-		if (networkData?.density_by_round) {
-			densityOverTimeData = Object.entries(networkData.density_by_round)
-				.map(([round, density]) => ({
-					round: parseInt(round),
-					density,
-				}))
-				.sort((a, b) => a.round - b.round);
 		}
 
 		const getSeverityIcon = (severity) => {
@@ -273,6 +263,13 @@ export default function MetricsDashboard({ sessionId, isScenario }) {
 							color="#ef4444"
 						/>
 					);
+				case 'success':
+					return (
+						<CheckCircle
+							size={18}
+							color="#10b981"
+						/>
+					);
 				default:
 					return (
 						<Info
@@ -289,6 +286,8 @@ export default function MetricsDashboard({ sessionId, isScenario }) {
 					return 'rgba(245, 158, 11, 0.1)';
 				case 'critical':
 					return 'rgba(239, 68, 68, 0.1)';
+				case 'success':
+					return 'rgba(16, 185, 129, 0.1)';
 				default:
 					return 'rgba(37, 99, 235, 0.1)';
 			}
@@ -342,83 +341,47 @@ export default function MetricsDashboard({ sessionId, isScenario }) {
 					)}
 					{summaryData.key_metrics?.echo_chamber_level !==
 						undefined && (
-							<>
+						<>
+							<div
+								style={{
+									background: 'var(--surface-container-low)',
+									padding: '1.5rem',
+									borderRadius: '12px',
+									textAlign: 'center',
+									borderBottom: `4px solid ${eciColor}`,
+								}}
+							>
 								<div
 									style={{
-										background: 'var(--surface-container-low)',
-										padding: '1.5rem',
-										borderRadius: '12px',
-										textAlign: 'center',
-										borderBottom: `4px solid ${eciColor}`,
+										fontSize: '0.85rem',
+										color: 'var(--text-secondary)',
+										marginBottom: '0.5rem',
+										textTransform: 'uppercase',
+										letterSpacing: '0.05em',
 									}}
 								>
-									<div
-										style={{
-											fontSize: '0.85rem',
-											color: 'var(--text-secondary)',
-											marginBottom: '0.5rem',
-											textTransform: 'uppercase',
-											letterSpacing: '0.05em',
-										}}
-									>
-										Echo Chamber Index
-									</div>
-									<div
-										style={{
-											fontSize: '1.8rem',
-											fontWeight: 700,
-											color: eciColor,
-										}}
-									>
-										{eci.toFixed(2)}
-									</div>
-									<div
-										style={{
-											fontSize: '0.75rem',
-											marginTop: '0.5rem',
-											color: eciColor,
-											fontWeight: 600,
-										}}
-									>
-										{eciLabel}
-									</div>
+									Echo Chamber Index
 								</div>
 								<div
 									style={{
-										background: 'var(--surface-container-low)',
-										padding: '1.5rem',
-										borderRadius: '12px',
-										textAlign: 'center',
+										fontSize: '1.8rem',
+										fontWeight: 700,
+										color: eciColor,
 									}}
 								>
-									<div
-										style={{
-											fontSize: '0.85rem',
-											color: 'var(--text-secondary)',
-											marginBottom: '0.5rem',
-											textTransform: 'uppercase',
-											letterSpacing: '0.05em',
-										}}
-									>
-										Homophily Score
-									</div>
-									<div style={{ fontSize: '1.8rem', fontWeight: 700 }}>
-										{homophily.toFixed(2)}
-									</div>
-									<div
-										style={{
-											fontSize: '0.75rem',
-											marginTop: '0.5rem',
-											color: 'var(--text-secondary)',
-										}}
-									>
-										Same-belief clustering
-									</div>
+									{eci.toFixed(2)}
 								</div>
-							</>
-						)}
-					{summaryData.key_metrics?.narrative_chains !==
-						undefined && (
+								<div
+									style={{
+										fontSize: '0.75rem',
+										marginTop: '0.5rem',
+										color: eciColor,
+										fontWeight: 600,
+									}}
+								>
+									{eciLabel}
+								</div>
+							</div>
 							<div
 								style={{
 									background: 'var(--surface-container-low)',
@@ -436,16 +399,30 @@ export default function MetricsDashboard({ sessionId, isScenario }) {
 										letterSpacing: '0.05em',
 									}}
 								>
-									Narrative Chains
+									Homophily Score
 								</div>
 								<div
-									style={{ fontSize: '1.8rem', fontWeight: 700 }}
+									style={{
+										fontSize: '1.8rem',
+										fontWeight: 700,
+									}}
 								>
-									{summaryData.key_metrics.narrative_chains}
+									{homophily.toFixed(2)}
+								</div>
+								<div
+									style={{
+										fontSize: '0.75rem',
+										marginTop: '0.5rem',
+										color: 'var(--text-secondary)',
+									}}
+								>
+									Same-belief clustering
 								</div>
 							</div>
-						)}
-					{status?.num_rounds && (
+						</>
+					)}
+					{summaryData.key_metrics?.narrative_chains !==
+						undefined && (
 						<div
 							style={{
 								background: 'var(--surface-container-low)',
@@ -463,86 +440,16 @@ export default function MetricsDashboard({ sessionId, isScenario }) {
 									letterSpacing: '0.05em',
 								}}
 							>
-								Simulation Rounds
+								Narrative Chains
 							</div>
 							<div
 								style={{ fontSize: '1.8rem', fontWeight: 700 }}
 							>
-								{status.num_rounds}
+								{summaryData.key_metrics.narrative_chains}
 							</div>
 						</div>
 					)}
 				</div>
-
-				{densityOverTimeData.length > 1 && (
-					<div
-						style={{
-							background: 'var(--surface-container-low)',
-							padding: '1.5rem',
-							borderRadius: '12px',
-						}}
-					>
-						<h4 style={{ marginBottom: '1rem', fontSize: '1rem' }}>
-							Network Density Evolution
-						</h4>
-						<p
-							style={{
-								fontSize: '0.85rem',
-								color: 'var(--text-secondary)',
-								marginBottom: '1rem',
-							}}
-						>
-							How network connectivity changed across simulation
-							rounds
-						</p>
-						<div style={{ height: 300 }}>
-							<ResponsiveContainer
-								width="100%"
-								height="100%"
-							>
-								<LineChart
-									data={densityOverTimeData}
-									margin={{
-										top: 5,
-										right: 30,
-										left: 20,
-										bottom: 5,
-									}}
-								>
-									<CartesianGrid
-										strokeDasharray="3 3"
-										vertical={false}
-									/>
-									<XAxis
-										dataKey="round"
-										label={{
-											value: 'Round',
-											position: 'insideBottom',
-											offset: -10,
-										}}
-									/>
-									<YAxis domain={[0, 'auto']} />
-									<RechartsTooltip
-										contentStyle={{
-											background:
-												'var(--surface-container)',
-											border: 'none',
-											borderRadius: '8px',
-										}}
-									/>
-									<Line
-										type="monotone"
-										dataKey="density"
-										stroke="#2563eb"
-										strokeWidth={3}
-										dot={{ r: 4, fill: '#2563eb' }}
-										activeDot={{ r: 6 }}
-									/>
-								</LineChart>
-							</ResponsiveContainer>
-						</div>
-					</div>
-				)}
 
 				{/* Actionable Insights */}
 				{summaryData.insights && summaryData.insights.length > 0 && (
@@ -560,7 +467,7 @@ export default function MetricsDashboard({ sessionId, isScenario }) {
 								fontWeight: 600,
 							}}
 						>
-							Actionable Insights
+							Insights
 						</h4>
 						<div
 							style={{
@@ -600,10 +507,29 @@ export default function MetricsDashboard({ sessionId, isScenario }) {
 											style={{
 												fontSize: '0.85rem',
 												color: 'var(--text-secondary)',
+												marginBottom: '0.5rem',
 											}}
 										>
 											{insight.description}
 										</div>
+										{insight.key_finding && (
+											<div
+												style={{
+													fontSize: '0.8rem',
+													color: 'var(--accent-color)',
+													fontWeight: 500,
+													fontStyle: 'italic',
+													padding: '0.5rem',
+													background:
+														'rgba(37, 99, 235, 0.05)',
+													borderRadius: '4px',
+													borderLeft:
+														'3px solid var(--accent-color)',
+												}}
+											>
+												💡 {insight.key_finding}
+											</div>
+										)}
 									</div>
 								</div>
 							))}
@@ -672,7 +598,7 @@ export default function MetricsDashboard({ sessionId, isScenario }) {
 							}}
 						>
 							Percentage of agents mentioning each concept per
-							round
+							round. Click a concept in the legend to filter.
 						</p>
 						<div style={{ height: 350 }}>
 							<ResponsiveContainer
@@ -719,30 +645,63 @@ export default function MetricsDashboard({ sessionId, isScenario }) {
 										}}
 									/>
 									<Legend
-										wrapperStyle={{ paddingTop: '20px' }}
+										wrapperStyle={{
+											paddingTop: '20px',
+											cursor: 'pointer',
+										}}
+										onClick={(e) => {
+											if (e && e.dataKey) {
+												setActiveConcept((prev) =>
+													prev === e.dataKey
+														? null
+														: e.dataKey,
+												);
+											}
+										}}
 									/>
 									{Object.keys(
 										spreadData.adoption_curves || {},
 									)
 										.slice(0, 8)
-										.map((concept, i) => (
-											<Line
-												key={concept}
-												type="monotone"
-												dataKey={concept}
-												stroke={
-													colors[i % colors.length]
-												}
-												strokeWidth={3}
-												dot={{
-													r: 4,
-													fill: colors[
-														i % colors.length
-													],
-												}}
-												activeDot={{ r: 6 }}
-											/>
-										))}
+										.map((concept, i) => {
+											const isHidden =
+												activeConcept &&
+												activeConcept !== concept;
+											return (
+												<Line
+													key={concept}
+													type="monotone"
+													dataKey={concept}
+													stroke={
+														colors[
+															i % colors.length
+														]
+													}
+													strokeWidth={
+														isHidden ? 1 : 3
+													}
+													strokeOpacity={
+														isHidden ? 0.2 : 1
+													}
+													dot={
+														isHidden
+															? false
+															: {
+																	r: 4,
+																	fill: colors[
+																		i %
+																			colors.length
+																	],
+																}
+													}
+													activeDot={
+														isHidden
+															? false
+															: { r: 6 }
+													}
+												/>
+											);
+										})}
 								</LineChart>
 							</ResponsiveContainer>
 						</div>
@@ -760,7 +719,7 @@ export default function MetricsDashboard({ sessionId, isScenario }) {
 						>
 							<h4
 								style={{
-									marginBottom: '1rem',
+									marginBottom: '0.5rem',
 									fontSize: '1rem',
 								}}
 							>
@@ -773,8 +732,11 @@ export default function MetricsDashboard({ sessionId, isScenario }) {
 									marginBottom: '1rem',
 								}}
 							>
-								Jaccard similarity of agents mentioning concept
-								pairs
+								Jaccard similarity measures how often agent
+								communities mention concept pairs together. High
+								values (0.8-1.0) indicate concepts are tightly
+								coupled in narratives. Low values (0.2-0.4)
+								suggest concepts appeal to different audiences.
 							</p>
 							<div
 								style={{
@@ -785,61 +747,83 @@ export default function MetricsDashboard({ sessionId, isScenario }) {
 							>
 								{spreadData.co_occurrence
 									.slice(0, 20)
-									.map((item, i) => (
-										<div
-											key={i}
-											style={{
-												display: 'flex',
-												alignItems: 'center',
-												background:
-													'var(--surface-container)',
-												padding: '0.5rem 0.75rem',
-												borderRadius: '8px',
-												border: '1px solid var(--outline-variant)',
-											}}
-										>
-											<span
+									.map((item, i) => {
+										const jaccard = item.jaccard;
+										// Color code based on strength
+										let badgeColor = '#2563eb'; // default blue
+										let bgColor = 'rgba(37, 99, 235, 0.1)';
+										if (jaccard >= 0.8) {
+											badgeColor = '#10b981'; // green for strong
+											bgColor = 'rgba(16, 185, 129, 0.1)';
+										} else if (jaccard <= 0.3) {
+											badgeColor = '#f59e0b'; // orange for weak
+											bgColor = 'rgba(245, 158, 11, 0.1)';
+										}
+
+										return (
+											<div
+												key={i}
 												style={{
-													fontWeight: 500,
-													fontSize: '0.85rem',
-												}}
-											>
-												{item.pair[0]}
-											</span>
-											<span
-												style={{
-													margin: '0 0.5rem',
-													color: 'var(--text-secondary)',
-												}}
-											>
-												&
-											</span>
-											<span
-												style={{
-													fontWeight: 500,
-													fontSize: '0.85rem',
-												}}
-											>
-												{item.pair[1]}
-											</span>
-											<span
-												style={{
+													display: 'flex',
+													alignItems: 'center',
 													background:
-														'rgba(37, 99, 235, 0.1)',
-													color: 'var(--accent-color)',
-													padding: '0.2rem 0.5rem',
-													borderRadius: '4px',
-													fontSize: '0.75rem',
-													marginLeft: '0.75rem',
-													fontWeight: 600,
+														'var(--surface-container)',
+													padding: '0.5rem 0.75rem',
+													borderRadius: '8px',
+													border: '1px solid var(--outline-variant)',
 												}}
 											>
-												{item.jaccard.toFixed(2)}
-											</span>
-										</div>
-									))}
+												<span
+													style={{
+														fontWeight: 500,
+														fontSize: '0.85rem',
+													}}
+												>
+													{item.pair[0]}
+												</span>
+												<span
+													style={{
+														margin: '0 0.5rem',
+														color: 'var(--text-secondary)',
+													}}
+												>
+													&
+												</span>
+												<span
+													style={{
+														fontWeight: 500,
+														fontSize: '0.85rem',
+													}}
+												>
+													{item.pair[1]}
+												</span>
+												<span
+													style={{
+														background: bgColor,
+														color: badgeColor,
+														padding:
+															'0.2rem 0.5rem',
+														borderRadius: '4px',
+														fontSize: '0.75rem',
+														marginLeft: '0.75rem',
+														fontWeight: 600,
+													}}
+												>
+													{jaccard.toFixed(2)}
+												</span>
+											</div>
+										);
+									})}
 							</div>
 						</div>
+					)}
+
+				{/* Concept Co-occurrence Graph */}
+				{spreadData?.co_occurrence &&
+					spreadData.co_occurrence.length > 0 && (
+						<ConceptCooccurrenceGraph
+							cooccurrenceData={spreadData.co_occurrence}
+						/>
 					)}
 
 				{narrativeData &&
@@ -854,7 +838,7 @@ export default function MetricsDashboard({ sessionId, isScenario }) {
 						>
 							<h4
 								style={{
-									marginBottom: '1rem',
+									marginBottom: '0.5rem',
 									fontSize: '1rem',
 								}}
 							>
@@ -867,8 +851,10 @@ export default function MetricsDashboard({ sessionId, isScenario }) {
 									marginBottom: '1rem',
 								}}
 							>
-								How concepts transition in agent communications
-								(from → to)
+								Sequential concept flow in agent communications
+								(from → to). High-frequency transitions reveal
+								persuasion pathways, framing strategies, and
+								logical bridges agents use to connect ideas.
 							</p>
 							<div
 								style={{
@@ -879,82 +865,118 @@ export default function MetricsDashboard({ sessionId, isScenario }) {
 								}}
 							>
 								{narrativeData.top_transitions.map(
-									(trans, i) => (
-										<div
-											key={i}
-											style={{
-												display: 'flex',
-												alignItems: 'center',
-												justifyContent: 'space-between',
-												background:
-													'var(--surface-container)',
-												padding: '0.75rem',
-												borderRadius: '8px',
-												border: '1px solid var(--outline-variant)',
-											}}
-										>
+									(trans, i) => {
+										// Color code based on frequency
+										let intensity = Math.min(
+											trans.count / 5,
+											1,
+										); // normalize
+										let hue = 220; // blue hue
+										let bgOpacity = 0.05 + intensity * 0.15;
+
+										return (
 											<div
+												key={i}
 												style={{
 													display: 'flex',
 													alignItems: 'center',
-													gap: '0.5rem',
-													flex: 1,
-													minWidth: 0,
+													justifyContent:
+														'space-between',
+													background:
+														'var(--surface-container)',
+													padding: '0.75rem',
+													borderRadius: '8px',
+													border: `1px solid var(--outline-variant)`,
+													position: 'relative',
+													overflow: 'hidden',
 												}}
 											>
-												<span
+												<div
 													style={{
-														fontWeight: 600,
-														fontSize: '0.85rem',
-														color: 'var(--accent-color)',
-														whiteSpace: 'nowrap',
-														overflow: 'hidden',
-														textOverflow:
-															'ellipsis',
+														position: 'absolute',
+														top: 0,
+														left: 0,
+														right: 0,
+														bottom: 0,
+														background: `hsla(${hue}, 70%, 50%, ${bgOpacity})`,
+														pointerEvents: 'none',
+													}}
+												/>
+												<div
+													style={{
+														display: 'flex',
+														alignItems: 'center',
+														gap: '0.5rem',
+														flex: 1,
+														minWidth: 0,
+														position: 'relative',
 													}}
 												>
-													{trans.from}
-												</span>
+													<span
+														style={{
+															fontWeight: 600,
+															fontSize: '0.85rem',
+															color: 'var(--accent-color)',
+															whiteSpace:
+																'nowrap',
+															overflow: 'hidden',
+															textOverflow:
+																'ellipsis',
+														}}
+													>
+														{trans.from}
+													</span>
+													<span
+														style={{
+															color: 'var(--text-secondary)',
+														}}
+													>
+														→
+													</span>
+													<span
+														style={{
+															fontWeight: 600,
+															fontSize: '0.85rem',
+															color: '#7c3aed',
+															whiteSpace:
+																'nowrap',
+															overflow: 'hidden',
+															textOverflow:
+																'ellipsis',
+														}}
+													>
+														{trans.to}
+													</span>
+												</div>
 												<span
 													style={{
-														color: 'var(--text-secondary)',
-													}}
-												>
-													→
-												</span>
-												<span
-													style={{
-														fontWeight: 600,
-														fontSize: '0.85rem',
+														background:
+															'rgba(124, 58, 237, 0.1)',
 														color: '#7c3aed',
-														whiteSpace: 'nowrap',
-														overflow: 'hidden',
-														textOverflow:
-															'ellipsis',
+														padding:
+															'0.2rem 0.5rem',
+														borderRadius: '4px',
+														fontSize: '0.75rem',
+														fontWeight: 600,
+														marginLeft: '0.5rem',
 													}}
 												>
-													{trans.to}
+													×{trans.count}
 												</span>
 											</div>
-											<span
-												style={{
-													background:
-														'rgba(124, 58, 237, 0.1)',
-													color: '#7c3aed',
-													padding: '0.2rem 0.5rem',
-													borderRadius: '4px',
-													fontSize: '0.75rem',
-													fontWeight: 600,
-													marginLeft: '0.5rem',
-												}}
-											>
-												×{trans.count}
-											</span>
-										</div>
-									),
+										);
+									},
 								)}
 							</div>
 						</div>
+					)}
+
+				{/* Narrative Transitions Graph */}
+				{narrativeData?.top_transitions &&
+					narrativeData.top_transitions.length > 0 && (
+						<NarrativeTransitionsGraph
+							narrativeData={narrativeData}
+						/>
 					)}
 			</div>
 		);
@@ -968,8 +990,66 @@ export default function MetricsDashboard({ sessionId, isScenario }) {
 				height: '100%',
 				padding: '1.5rem',
 				overflowY: 'auto',
+				position: 'relative',
 			}}
 		>
+			{/* Loading overlay when generating metrics */}
+			{generating && (
+				<div
+					style={{
+						position: 'absolute',
+						top: 0,
+						left: 0,
+						right: 0,
+						bottom: 0,
+						background: 'rgba(0, 0, 0, 0.75)',
+						backdropFilter: 'blur(4px)',
+						display: 'flex',
+						flexDirection: 'column',
+						alignItems: 'center',
+						justifyContent: 'center',
+						zIndex: 1000,
+						borderRadius: '12px',
+					}}
+				>
+					<div
+						style={{
+							background: 'var(--surface-container-low)',
+							padding: '2rem 3rem',
+							borderRadius: '12px',
+							textAlign: 'center',
+							boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)',
+						}}
+					>
+						<RefreshCw
+							size={48}
+							color="var(--accent-color)"
+							className="animate-spin"
+							style={{ marginBottom: '1rem' }}
+						/>
+						<h3
+							style={{
+								fontSize: '1.3rem',
+								fontWeight: 700,
+								margin: '0 0 0.5rem 0',
+							}}
+						>
+							Generating Metrics...
+						</h3>
+						<p
+							style={{
+								color: 'var(--text-secondary)',
+								margin: 0,
+								fontSize: '0.9rem',
+							}}
+						>
+							Analyzing behavioral patterns and network
+							dynamics...
+						</p>
+					</div>
+				</div>
+			)}
+
 			<div
 				style={{
 					display: 'flex',
@@ -1043,18 +1123,31 @@ export default function MetricsDashboard({ sessionId, isScenario }) {
 				</div>
 			)}
 
-			<div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', gap: '3rem', paddingBottom: '2rem' }}>
+			<div
+				style={{
+					flex: 1,
+					minHeight: 0,
+					display: 'flex',
+					flexDirection: 'column',
+					gap: '3rem',
+					paddingBottom: '2rem',
+				}}
+			>
 				<div>
-					<h3 style={{ fontSize: '1.2rem', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+					<h3
+						style={{
+							fontSize: '1.2rem',
+							marginBottom: '1.5rem',
+							display: 'flex',
+							alignItems: 'center',
+							gap: '0.5rem',
+						}}
+					>
 						<Info size={20} /> Overview
 					</h3>
 					{renderOverviewTab()}
 				</div>
-				{spreadData && (
-					<div>
-						{renderContentTab()}
-					</div>
-				)}
+				{spreadData && <div>{renderContentTab()}</div>}
 			</div>
 		</div>
 	);

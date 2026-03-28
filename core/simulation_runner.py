@@ -4,10 +4,7 @@ SimulationRunner – drives an OASIS social-media simulation.
 Uses the ``camel-oasis`` library (pip install camel-oasis).
 Requires Python >=3.10, <3.12.
 
-Model priority:
-  1. GEMINI_API_KEY  →  camel-ai Google provider (gemini-1.5-flash by default)
-  2. OPENAI_API_KEY  →  camel-ai OpenAI provider (gpt-4o-mini)
-
+Requires GEMINI_API_KEY for the camel-ai Google provider (gemini-1.5-flash by default).
 The CAMEL model type can be changed via core/config.py (CAMEL_MODEL_TYPE).
 """
 
@@ -21,15 +18,6 @@ load_dotenv()
 
 from core.config import CAMEL_MODEL_TYPE
 from core.graph_memory import LocalGraphMemory
-
-
-def _bridge_google_api_key():
-    """
-    CAMEL's Google provider looks for GOOGLE_API_KEY.
-    If the project uses GEMINI_API_KEY, copy it across so CAMEL finds it.
-    """
-    if not os.getenv("GOOGLE_API_KEY") and os.getenv("GEMINI_API_KEY"):
-        os.environ["GOOGLE_API_KEY"] = os.getenv("GEMINI_API_KEY")
 
 
 class SimulationRunner:
@@ -167,9 +155,7 @@ class SimulationRunner:
         from camel.models import ModelFactory
         from camel.types import ModelPlatformType
 
-        _bridge_google_api_key()
-
-        if os.getenv("GOOGLE_API_KEY"):
+        if os.getenv("GEMINI_API_KEY"):
             # Resolve model type – fall back gracefully if the string is not
             # a recognised enum value in the installed camel-ai version.
             from camel.types import ModelType as MT
@@ -183,16 +169,8 @@ class SimulationRunner:
                 model_type=model_type,
             )
 
-        if os.getenv("OPENAI_API_KEY"):
-            from camel.types import ModelType as MT
-            print("Using OpenAI model: gpt-4o-mini")
-            return ModelFactory.create(
-                model_platform=ModelPlatformType.OPENAI,
-                model_type=MT.GPT_4O_MINI,
-            )
-
         raise EnvironmentError(
-            "No LLM API key found. Set GEMINI_API_KEY or OPENAI_API_KEY."
+            "No LLM API key found. Set GEMINI_API_KEY in your .env file."
         )
 
     def _build_seed_posts(self) -> list[str]:

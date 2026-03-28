@@ -18,11 +18,6 @@ from core.config import CAMEL_MODEL_TYPE
 from core.graph_memory import LocalGraphMemory
 
 
-def _bridge_google_api_key():
-    if not os.getenv("GOOGLE_API_KEY") and os.getenv("GEMINI_API_KEY"):
-        os.environ["GOOGLE_API_KEY"] = os.getenv("GEMINI_API_KEY")
-
-
 class ScenarioRunner:
     def __init__(
         self,
@@ -156,11 +151,12 @@ class ScenarioRunner:
 
         for name, data in list(self.graph.entities.items())[:3]:
             etype = data.get("type", "entity")
-            posts.append(f"Background context — Notable {etype}: {name}")
+            # Simplified post template to avoid "Background" and "Notable" as concepts
+            posts.append(f"Key {etype}: {name}")
 
         for rel in self.graph.relations[:2]:
             posts.append(
-                f"Context: {rel['source']} {rel['type']} {rel['target']}"
+                f"Relationship: {rel['source']} {rel['type']} {rel['target']}"
             )
 
         return posts[:6]
@@ -169,9 +165,7 @@ class ScenarioRunner:
         from camel.models import ModelFactory
         from camel.types import ModelPlatformType
 
-        _bridge_google_api_key()
-
-        if os.getenv("GOOGLE_API_KEY"):
+        if os.getenv("GEMINI_API_KEY"):
             from camel.types import ModelType as MT
             try:
                 model_type = MT(CAMEL_MODEL_TYPE)
@@ -182,15 +176,8 @@ class ScenarioRunner:
                 model_type=model_type,
             )
 
-        if os.getenv("OPENAI_API_KEY"):
-            from camel.types import ModelType as MT
-            return ModelFactory.create(
-                model_platform=ModelPlatformType.OPENAI,
-                model_type=MT.GPT_4O_MINI,
-            )
-
         raise EnvironmentError(
-            "No LLM API key found. Set GEMINI_API_KEY or OPENAI_API_KEY."
+            "No LLM API key found. Set GEMINI_API_KEY in your .env file."
         )
 
     def _export_db_to_log(self):
