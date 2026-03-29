@@ -19,7 +19,7 @@ import {
 	PlusSquare,
 	Rss,
 	FlaskConical,
-	BarChart2,
+	Sparkles,
 	RefreshCw,
 	AlertTriangle,
 } from 'lucide-react';
@@ -109,9 +109,9 @@ function Sidebar() {
 								label: `Reports${sessionNav.reportsCount ? ` (${sessionNav.reportsCount})` : ''}`,
 							},
 							{
-								id: 'metrics',
-								icon: <BarChart2 size={15} />,
-								label: 'Metrics',
+								id: 'insights',
+								icon: <Sparkles size={15} />,
+								label: 'Insights',
 								completedOnly: true,
 							},
 						]

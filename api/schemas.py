@@ -198,8 +198,73 @@ class TemporalMetricsResponse(BaseModel):
 class InsightItem(BaseModel):
     type: str  # 'agent_growth', 'echo_chamber', 'concept_momentum', etc.
     title: str
-    description: str
-    severity: str  # 'info', 'warning', 'critical', 'success'
+
+
+# ── Insights / Agent Debate schemas ──────────────────────────────────────────
+
+class InsightsGenerateRequest(BaseModel):
+    query: str
+    debate_rounds: int = 3
+
+
+class InsightObservation(BaseModel):
+    id: str
+    text: str
+    answer_text: str
+
+
+class AgentRoundPosition(BaseModel):
+    round: int
+    position: str
+    reasoning: str
+
+
+class AgentDebateRecord(BaseModel):
+    agent_id: str
+    agent_name: str
+    influence_score: float
+    position_history: List[AgentRoundPosition]
+    final_position: str
+    final_reasoning: str
+
+
+class AnswerGroup(BaseModel):
+    group_id: str
+    label: str
+    summary: str
+    agent_ids: List[str]
+    agent_count: int
+    percentage: float
+
+
+class InsightsScore(BaseModel):
+    agree: float
+    disagree: float
+    other: float
+
+
+class InsightsStatusResponse(BaseModel):
+    available: bool
+    generated_at: Optional[str] = None
+    status: str = "pending"
+    stage: Optional[str] = None
+    error: Optional[str] = None
+
+
+class InsightsFullResponse(BaseModel):
+    available: bool
+    generated_at: Optional[str] = None
+    query: Optional[str] = None
+    debate_rounds: Optional[int] = None
+    insights: List[InsightObservation] = []
+    overall_verdict: Optional[str] = None
+    score: Optional[InsightsScore] = None
+    answer_groups: List[AnswerGroup] = []
+    agents: List[AgentDebateRecord] = []
+    aggregate: Optional[dict] = None
+    error: Optional[str] = None
+    description: Optional[str] = None
+    severity: Optional[str] = None  # 'info', 'warning', 'critical', 'success'
     key_finding: Optional[str] = None  # One sentence summary/takeaway
     related_entities: Optional[dict] = None  # agent_ids, concept names, etc.
 

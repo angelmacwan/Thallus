@@ -4,7 +4,7 @@ import remarkGfm from 'remark-gfm';
 import mermaid from 'mermaid';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../api';
-import MetricsDashboard from '../components/MetricsDashboard';
+import InsightsDashboard from '../components/InsightsDashboard';
 import { useSidebar } from '../SidebarContext';
 import {
 	RefreshCw,
@@ -2684,7 +2684,10 @@ export default function SessionView() {
 				{/* LEFT PANEL */}
 				<div
 					style={{
-						width: activeTab === 'metrics' ? '70%' : '42%',
+						width:
+							activeTab === 'insights' || activeTab === 'reports'
+								? '70%'
+								: '42%',
 						transition: 'width 0.3s ease',
 						flexShrink: 0,
 						display: 'flex',
@@ -3429,7 +3432,7 @@ export default function SessionView() {
 								/>
 							)}
 
-							{activeTab === 'metrics' && (
+							{activeTab === 'insights' && (
 								<div
 									style={{
 										flex: 1,
@@ -3438,7 +3441,7 @@ export default function SessionView() {
 										paddingRight: '0.2rem',
 									}}
 								>
-									<MetricsDashboard
+									<InsightsDashboard
 										sessionId={
 											selectedPill !== 'main'
 												? selectedPill

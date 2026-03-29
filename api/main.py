@@ -1,3 +1,6 @@
+from dotenv import load_dotenv
+load_dotenv()
+
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
@@ -6,7 +9,7 @@ from .deps import get_current_user
 from . import models
 
 from .routers import auth, sessions, simulation, reports
-from .routers import scenarios, metrics
+from .routers import scenarios, insights
 
 # Create database tables
 Base.metadata.create_all(bind=engine)
@@ -41,7 +44,7 @@ app.include_router(sessions.router)
 app.include_router(simulation.router)
 app.include_router(reports.router)
 app.include_router(scenarios.router)
-app.include_router(metrics.router)
+app.include_router(insights.router)
 
 APP_VERSION = "internal alpha 1.3"
 
