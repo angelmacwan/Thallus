@@ -139,6 +139,63 @@ def update_scenario_status(db: Session, scenario: models.Scenario, status: str, 
     return scenario
 
 
+# ── Insight operations ─────────────────────────────────────────────────────────
+
+def create_insight_record(
+    db: Session,
+    session_db_id: int | None,
+    scenario_db_id: int | None,
+    user_id: int,
+    query: str,
+    debate_rounds: int,
+    file_path: str,
+    insight_id: str,
+) -> models.InsightRecord:
+    record = models.InsightRecord(
+        insight_id=insight_id,
+        session_id=session_db_id,
+        scenario_id=scenario_db_id,
+        user_id=user_id,
+        query=query,
+        debate_rounds=debate_rounds,
+        status="pending",
+        file_path=file_path,
+    )
+    db.add(record)
+    db.commit()
+    db.refresh(record)
+    return record
+
+
+def get_insights_for_session(db: Session, session_db_id: int) -> list[models.InsightRecord]:
+    return (
+        db.query(models.InsightRecord)
+        .filter(models.InsightRecord.session_id == session_db_id)
+        .order_by(models.InsightRecord.created_at.desc())
+        .all()
+    )
+
+
+def get_insights_for_scenario(db: Session, scenario_db_id: int) -> list[models.InsightRecord]:
+    return (
+        db.query(models.InsightRecord)
+        .filter(models.InsightRecord.scenario_id == scenario_db_id)
+        .order_by(models.InsightRecord.created_at.desc())
+        .all()
+    )
+
+
+def get_insight_by_uuid(db: Session, insight_uuid: str) -> models.InsightRecord | None:
+    return db.query(models.InsightRecord).filter(models.InsightRecord.insight_id == insight_uuid).first()
+
+
+def update_insight_status(db: Session, insight: models.InsightRecord, status: str) -> models.InsightRecord:
+    insight.status = status
+    db.commit()
+    db.refresh(insight)
+    return insight
+
+
 def add_scenario_event(db: Session, scenario_db_id: int, event_type: str, message: str):
     ev = models.ScenarioEvent(scenario_id=scenario_db_id, type=event_type, message=message)
     db.add(ev)

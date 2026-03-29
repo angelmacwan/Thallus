@@ -26,11 +26,11 @@ except ImportError:
 
 
 class InsightsEngine:
-    def __init__(self, outputs_path: str):
+    def __init__(self, outputs_path: str, result_file: str = None):
         self.outputs_path = outputs_path
         self.actions_file = os.path.join(outputs_path, "actions.jsonl")
         self.agents_file = os.path.join(outputs_path, "agents.json")
-        self.result_file = os.path.join(outputs_path, "insights.json")
+        self.result_file = result_file or os.path.join(outputs_path, "insights.json")
 
     # ── Persist helpers ───────────────────────────────────────────────────────
 

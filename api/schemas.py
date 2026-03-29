@@ -207,6 +207,17 @@ class InsightsGenerateRequest(BaseModel):
     debate_rounds: int = 3
 
 
+class InsightSummary(BaseModel):
+    insight_id: str
+    query: str
+    debate_rounds: int
+    status: str
+    created_at: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
 class InsightObservation(BaseModel):
     id: str
     text: str

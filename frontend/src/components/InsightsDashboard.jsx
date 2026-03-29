@@ -533,57 +533,174 @@ function StatChip({ icon: Icon, label, value }) {
 	);
 }
 
+// ── Insight list card (for the list view) ─────────────────────────────────────
+const STATUS_CONFIG = {
+	complete: {
+		label: 'Complete',
+		color: '#10b981',
+		bg: 'rgba(16,185,129,0.1)',
+	},
+	running: { label: 'Running', color: '#f59e0b', bg: 'rgba(245,158,11,0.1)' },
+	pending: {
+		label: 'Pending',
+		color: '#94a3b8',
+		bg: 'rgba(148,163,184,0.1)',
+	},
+	error: { label: 'Error', color: '#ef4444', bg: 'rgba(239,68,68,0.1)' },
+};
+
+function InsightListCard({ record, onClick }) {
+	const cfg = STATUS_CONFIG[record.status] || STATUS_CONFIG.pending;
+	const date = record.created_at
+		? new Date(record.created_at).toLocaleString(undefined, {
+				dateStyle: 'medium',
+				timeStyle: 'short',
+			})
+		: '';
+	const preview =
+		record.query.length > 120
+			? record.query.slice(0, 117) + '…'
+			: record.query;
+
+	return (
+		<div
+			onClick={onClick}
+			style={{
+				...CARD_STYLE,
+				cursor: 'pointer',
+				padding: '0.9rem 1.1rem',
+				display: 'flex',
+				alignItems: 'flex-start',
+				gap: '0.85rem',
+				transition: 'border-color 0.15s ease',
+			}}
+			onMouseEnter={(e) =>
+				(e.currentTarget.style.borderColor = 'var(--accent-color)')
+			}
+			onMouseLeave={(e) =>
+				(e.currentTarget.style.borderColor = 'var(--outline-variant)')
+			}
+		>
+			<Sparkles
+				size={16}
+				style={{
+					color: 'var(--accent-color)',
+					flexShrink: 0,
+					marginTop: '2px',
+				}}
+			/>
+			<div style={{ flex: 1, minWidth: 0 }}>
+				<p
+					style={{
+						margin: '0 0 0.35rem 0',
+						fontSize: '0.88rem',
+						fontWeight: 600,
+						lineHeight: 1.4,
+					}}
+				>
+					{preview}
+				</p>
+				<div
+					style={{
+						display: 'flex',
+						alignItems: 'center',
+						gap: '0.75rem',
+						flexWrap: 'wrap',
+					}}
+				>
+					<span
+						style={{
+							fontSize: '0.68rem',
+							fontWeight: 700,
+							textTransform: 'uppercase',
+							letterSpacing: '0.06em',
+							padding: '0.15rem 0.5rem',
+							borderRadius: '20px',
+							color: cfg.color,
+							background: cfg.bg,
+						}}
+					>
+						{cfg.label}
+					</span>
+					<span
+						style={{
+							fontSize: '0.75rem',
+							color: 'var(--text-secondary)',
+						}}
+					>
+						{record.debate_rounds} debate{' '}
+						{record.debate_rounds === 1 ? 'round' : 'rounds'}
+					</span>
+					{date && (
+						<span
+							style={{
+								fontSize: '0.75rem',
+								color: 'var(--text-secondary)',
+							}}
+						>
+							{date}
+						</span>
+					)}
+				</div>
+			</div>
+			<ChevronDown
+				size={14}
+				style={{
+					color: 'var(--text-secondary)',
+					flexShrink: 0,
+					transform: 'rotate(-90deg)',
+					marginTop: '2px',
+				}}
+			/>
+		</div>
+	);
+}
+
 // ── Main component ─────────────────────────────────────────────────────────────
 export default function InsightsDashboard({ sessionId, isScenario }) {
 	const basePath = isScenario
 		? `/insights/scenario/${sessionId}`
 		: `/insights/${sessionId}`;
 
-	// ui states: 'form' | 'loading' | 'results' | 'error'
-	const [uiState, setUiState] = useState('form');
+	// view: 'list' | 'form' | 'loading' | 'detail'
+	const [view, setView] = useState('list');
+	const [insightsList, setInsightsList] = useState([]);
+	const [listLoading, setListLoading] = useState(true);
 	const [query, setQuery] = useState('');
 	const [debateRounds, setDebateRounds] = useState(3);
 	const [loadingStage, setLoadingStage] = useState('Starting...');
+	const [activeInsightId, setActiveInsightId] = useState(null);
 	const [results, setResults] = useState(null);
 	const [errorMsg, setErrorMsg] = useState(null);
 	const pollingRef = useRef(null);
 
-	// Check for existing results on mount or when sessionId changes
-	useEffect(() => {
-		let cancelled = false;
-		async function checkInitial() {
-			try {
-				const { data } = await api.get(`${basePath}/status`);
-				if (cancelled) return;
-				if (data.status === 'complete') {
-					const res = await api.get(basePath);
-					if (!cancelled) {
-						setResults(res.data);
-						setQuery(res.data.query || '');
-						setDebateRounds(res.data.debate_rounds || 3);
-						setUiState('results');
-					}
-				} else if (data.status === 'running') {
-					setLoadingStage(data.stage || 'Processing...');
-					setUiState('loading');
-					startPolling();
-				} else if (data.status === 'error') {
-					setErrorMsg(data.error || 'An error occurred.');
-					setUiState('error');
-				}
-				// 'pending' → stay on form
-			} catch {
-				// no results yet — show form
-			}
+	// Fetch list of all insights
+	async function fetchList() {
+		setListLoading(true);
+		try {
+			const { data } = await api.get(`${basePath}/`);
+			setInsightsList(data);
+		} catch {
+			setInsightsList([]);
+		} finally {
+			setListLoading(false);
 		}
-		checkInitial();
-		return () => {
-			cancelled = true;
-		};
+	}
+
+	useEffect(() => {
+		fetchList();
+		return () => stopPolling();
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [sessionId]);
 
-	function startPolling() {
+	function stopPolling() {
+		if (pollingRef.current) {
+			clearInterval(pollingRef.current);
+			pollingRef.current = null;
+		}
+	}
+
+	function startPolling(insightId) {
 		if (pollingRef.current) return;
 		let elapsed = 0;
 		pollingRef.current = setInterval(async () => {
@@ -593,20 +710,24 @@ export default function InsightsDashboard({ sessionId, isScenario }) {
 				setErrorMsg(
 					'Timed out waiting for insights. Please try again.',
 				);
-				setUiState('error');
+				setView('form');
 				return;
 			}
 			try {
-				const { data } = await api.get(`${basePath}/status`);
+				const { data } = await api.get(
+					`${basePath}/${insightId}/status`,
+				);
 				if (data.status === 'complete') {
 					stopPolling();
-					const res = await api.get(basePath);
+					const res = await api.get(`${basePath}/${insightId}`);
 					setResults(res.data);
-					setUiState('results');
+					setView('detail');
+					fetchList();
 				} else if (data.status === 'error') {
 					stopPolling();
 					setErrorMsg(data.error || 'An error occurred.');
-					setUiState('error');
+					setView('form');
+					fetchList();
 				} else if (data.stage) {
 					setLoadingStage(data.stage);
 				}
@@ -616,42 +737,57 @@ export default function InsightsDashboard({ sessionId, isScenario }) {
 		}, 2500);
 	}
 
-	function stopPolling() {
-		if (pollingRef.current) {
-			clearInterval(pollingRef.current);
-			pollingRef.current = null;
+	async function openInsight(record) {
+		if (record.status === 'complete') {
+			try {
+				const res = await api.get(`${basePath}/${record.insight_id}`);
+				setResults(res.data);
+				setActiveInsightId(record.insight_id);
+				setView('detail');
+			} catch {
+				setErrorMsg('Failed to load insight.');
+			}
+		} else if (record.status === 'running' || record.status === 'pending') {
+			setActiveInsightId(record.insight_id);
+			setLoadingStage('Processing...');
+			setView('loading');
+			startPolling(record.insight_id);
+		} else if (record.status === 'error') {
+			setErrorMsg('This insight encountered an error during generation.');
+			setActiveInsightId(record.insight_id);
+			setView('form');
 		}
 	}
-
-	// Clean up on unmount
-	useEffect(() => () => stopPolling(), []);
 
 	async function handleSubmit(e) {
 		e.preventDefault();
 		const trimmed = query.trim();
 		if (!trimmed) return;
 
-		setUiState('loading');
+		setView('loading');
 		setLoadingStage('Submitting...');
 		setErrorMsg(null);
 
 		try {
-			await api.post(`${basePath}/generate`, {
+			const { data } = await api.post(`${basePath}/generate`, {
 				query: trimmed,
 				debate_rounds: debateRounds,
 			});
-			startPolling();
+			const newInsightId = data.insight_id;
+			setActiveInsightId(newInsightId);
+			fetchList();
+			startPolling(newInsightId);
 		} catch (err) {
 			const detail =
 				err?.response?.data?.detail ||
 				'Failed to start insights generation.';
 			setErrorMsg(detail);
-			setUiState('error');
+			setView('form');
 		}
 	}
 
-	// ── Form ────────────────────────────────────────────────────────────────
-	if (uiState === 'form' || uiState === 'error') {
+	// ── List view ───────────────────────────────────────────────────────────
+	if (view === 'list') {
 		return (
 			<div
 				style={{
@@ -666,25 +802,197 @@ export default function InsightsDashboard({ sessionId, isScenario }) {
 					style={{
 						display: 'flex',
 						alignItems: 'center',
+						justifyContent: 'space-between',
 						gap: '0.6rem',
 					}}
 				>
-					<Sparkles
-						size={18}
-						style={{ color: 'var(--accent-color)' }}
-					/>
-					<h2
+					<div
 						style={{
-							margin: 0,
-							fontSize: '1.05rem',
+							display: 'flex',
+							alignItems: 'center',
+							gap: '0.6rem',
+						}}
+					>
+						<Sparkles
+							size={18}
+							style={{ color: 'var(--accent-color)' }}
+						/>
+						<h2
+							style={{
+								margin: 0,
+								fontSize: '1.05rem',
+								fontWeight: 700,
+							}}
+						>
+							Insights
+						</h2>
+					</div>
+					<button
+						onClick={() => {
+							setErrorMsg(null);
+							setQuery('');
+							setDebateRounds(3);
+							setView('form');
+						}}
+						style={{
+							display: 'flex',
+							alignItems: 'center',
+							gap: '0.4rem',
+							background: 'var(--accent-color)',
+							color: '#fff',
+							border: 'none',
+							borderRadius: '8px',
+							padding: '0.35rem 0.85rem',
+							cursor: 'pointer',
+							fontSize: '0.78rem',
 							fontWeight: 700,
 						}}
 					>
-						Insights
-					</h2>
+						<Sparkles size={12} />
+						New Insight
+					</button>
 				</div>
 
-				{uiState === 'error' && (
+				{listLoading ? (
+					<div
+						style={{
+							display: 'flex',
+							alignItems: 'center',
+							gap: '0.5rem',
+							color: 'var(--text-secondary)',
+							fontSize: '0.85rem',
+						}}
+					>
+						<Loader
+							size={14}
+							style={{ animation: 'spin 1s linear infinite' }}
+						/>
+						Loading...
+						<style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+					</div>
+				) : insightsList.length === 0 ? (
+					<div
+						style={{
+							background: 'var(--surface-container)',
+							border: '1px dashed var(--outline-variant)',
+							borderRadius: '12px',
+							padding: '2.5rem 1.5rem',
+							textAlign: 'center',
+						}}
+					>
+						<Sparkles
+							size={28}
+							style={{
+								color: 'var(--accent-color)',
+								opacity: 0.5,
+								marginBottom: '0.75rem',
+							}}
+						/>
+						<p
+							style={{
+								margin: '0 0 0.4rem 0',
+								fontWeight: 600,
+								fontSize: '0.95rem',
+							}}
+						>
+							No insights yet
+						</p>
+						<p
+							style={{
+								margin: 0,
+								fontSize: '0.82rem',
+								color: 'var(--text-secondary)',
+							}}
+						>
+							Ask a question about your simulation to generate
+							your first insight dashboard.
+						</p>
+					</div>
+				) : (
+					<div
+						style={{
+							display: 'flex',
+							flexDirection: 'column',
+							gap: '0.6rem',
+						}}
+					>
+						{insightsList.map((record) => (
+							<InsightListCard
+								key={record.insight_id}
+								record={record}
+								onClick={() => openInsight(record)}
+							/>
+						))}
+					</div>
+				)}
+			</div>
+		);
+	}
+
+	// ── Form view ────────────────────────────────────────────────────────────
+	if (view === 'form') {
+		return (
+			<div
+				style={{
+					display: 'flex',
+					flexDirection: 'column',
+					gap: '1.2rem',
+					padding: '0.25rem 0',
+				}}
+			>
+				{/* Header */}
+				<div
+					style={{
+						display: 'flex',
+						alignItems: 'center',
+						justifyContent: 'space-between',
+						gap: '0.6rem',
+					}}
+				>
+					<div
+						style={{
+							display: 'flex',
+							alignItems: 'center',
+							gap: '0.6rem',
+						}}
+					>
+						<Sparkles
+							size={18}
+							style={{ color: 'var(--accent-color)' }}
+						/>
+						<h2
+							style={{
+								margin: 0,
+								fontSize: '1.05rem',
+								fontWeight: 700,
+							}}
+						>
+							New Insight
+						</h2>
+					</div>
+					<button
+						onClick={() => {
+							setErrorMsg(null);
+							setView('list');
+						}}
+						style={{
+							display: 'flex',
+							alignItems: 'center',
+							gap: '0.4rem',
+							background: 'transparent',
+							border: '1px solid var(--outline-variant)',
+							borderRadius: '8px',
+							padding: '0.35rem 0.75rem',
+							cursor: 'pointer',
+							fontSize: '0.78rem',
+							color: 'var(--text-secondary)',
+						}}
+					>
+						← All Insights
+					</button>
+				</div>
+
+				{errorMsg && (
 					<div
 						style={{
 							display: 'flex',
@@ -724,7 +1032,6 @@ export default function InsightsDashboard({ sessionId, isScenario }) {
 						gap: '1rem',
 					}}
 				>
-					{/* Query input */}
 					<div>
 						<label
 							style={{
@@ -765,7 +1072,6 @@ export default function InsightsDashboard({ sessionId, isScenario }) {
 						/>
 					</div>
 
-					{/* Debate rounds */}
 					<div>
 						<label
 							style={{
@@ -849,7 +1155,7 @@ export default function InsightsDashboard({ sessionId, isScenario }) {
 	}
 
 	// ── Loading ─────────────────────────────────────────────────────────────
-	if (uiState === 'loading') {
+	if (view === 'loading') {
 		return (
 			<div
 				style={{
@@ -894,8 +1200,8 @@ export default function InsightsDashboard({ sessionId, isScenario }) {
 		);
 	}
 
-	// ── Results ─────────────────────────────────────────────────────────────
-	if (uiState === 'results' && results) {
+	// ── Detail / Results ─────────────────────────────────────────────────────
+	if (view === 'detail' && results) {
 		const {
 			insights,
 			overall_verdict,
@@ -947,7 +1253,8 @@ export default function InsightsDashboard({ sessionId, isScenario }) {
 					<button
 						onClick={() => {
 							setResults(null);
-							setUiState('form');
+							setActiveInsightId(null);
+							setView('list');
 						}}
 						style={{
 							display: 'flex',
@@ -962,8 +1269,7 @@ export default function InsightsDashboard({ sessionId, isScenario }) {
 							color: 'var(--text-secondary)',
 						}}
 					>
-						<RefreshCw size={12} />
-						Re-run
+						← All Insights
 					</button>
 				</div>
 

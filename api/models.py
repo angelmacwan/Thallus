@@ -17,6 +17,7 @@ class User(Base):
     logs = relationship("ActionLog", back_populates="user")
     reports = relationship("Report", back_populates="owner")
     scenarios = relationship("Scenario", back_populates="owner")
+    insights = relationship("InsightRecord", back_populates="owner")
 
 
 class Session(Base):
@@ -37,6 +38,7 @@ class Session(Base):
     events = relationship("SimulationEvent", back_populates="session", order_by="SimulationEvent.id")
     reports = relationship("Report", back_populates="session")
     scenarios = relationship("Scenario", back_populates="session")
+    insights = relationship("InsightRecord", back_populates="session", foreign_keys="InsightRecord.session_id")
 
 
 class ActionLog(Base):
@@ -123,6 +125,7 @@ class Scenario(Base):
     chat_messages = relationship("ScenarioChatMessage", back_populates="scenario")
     events = relationship("ScenarioEvent", back_populates="scenario", order_by="ScenarioEvent.id")
     reports = relationship("Report", back_populates="scenario", foreign_keys="Report.scenario_id")
+    insights = relationship("InsightRecord", back_populates="scenario", foreign_keys="InsightRecord.scenario_id")
 
 
 class ScenarioChatMessage(Base):
@@ -147,3 +150,22 @@ class ScenarioEvent(Base):
     timestamp = Column(DateTime, default=datetime.utcnow)
 
     scenario = relationship("Scenario", back_populates="events")
+
+
+class InsightRecord(Base):
+    __tablename__ = "insight_records"
+
+    id = Column(Integer, primary_key=True, index=True)
+    insight_id = Column(String, unique=True, index=True, default=lambda: str(uuid.uuid4()))
+    session_id = Column(Integer, ForeignKey("sessions.id"), nullable=True)
+    scenario_id = Column(Integer, ForeignKey("scenarios.id"), nullable=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    query = Column(Text)
+    debate_rounds = Column(Integer, default=3)
+    status = Column(String, default="pending")  # pending, running, complete, error
+    file_path = Column(String)  # absolute path to insight_{insight_id}.json
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    session = relationship("Session", back_populates="insights", foreign_keys=[session_id])
+    scenario = relationship("Scenario", back_populates="insights", foreign_keys=[scenario_id])
+    owner = relationship("User", back_populates="insights")
