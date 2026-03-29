@@ -62,9 +62,13 @@ class InsightsEngine:
         return actions
 
     def _load_agents(self) -> list[dict]:
-        if os.path.exists(self.agents_file):
+        # scenario_agents.json has the correct index order (user at 0, then sim
+        # agents) plus is_seed_user markers — prefer it when present.
+        scenario_agents = os.path.join(self.outputs_path, "scenario_agents.json")
+        path = scenario_agents if os.path.exists(scenario_agents) else self.agents_file
+        if os.path.exists(path):
             try:
-                with open(self.agents_file, "r", encoding="utf-8") as f:
+                with open(path, "r", encoding="utf-8") as f:
                     return json.load(f)
             except Exception:
                 pass
@@ -462,17 +466,35 @@ Return ONLY the JSON object. No other text."""
             actions = self._load_actions()
             agents = self._load_agents()
 
+            # Agents with is_seed_user=True posted the scenario premise —
+            # they are context, not debaters. Collect their ids before building
+            # summaries so we can exclude them from phases C–E.
+            seed_user_ids = {
+                str(i) for i, a in enumerate(agents) if a.get("is_seed_user")
+            }
+
             self._write_status("Analyzing agent behaviors...")
             behavior_summary = self._summarize_behaviors(actions, agents)
-            agent_summaries = behavior_summary["agent_summaries"]
+            all_summaries = behavior_summary["agent_summaries"]
             post_shares = behavior_summary["post_shares"]
             aggregate = behavior_summary["aggregate"]
 
-            self._write_status("Generating insights from your query...")
-            insights = self._generate_insights(query, behavior_summary)
+            # Debate summaries: real sim agents only (seed user excluded)
+            debate_summaries = [
+                s for s in all_summaries if s["agent_id"] not in seed_user_ids
+            ]
+            # Correct total_agents to reflect only real debating agents
+            aggregate = {**aggregate, "total_agents": len(debate_summaries)}
 
+            # Phase B uses all_summaries so the seed post appears as context
+            self._write_status("Generating insights from your query...")
+            insights = self._generate_insights(
+                query, {**behavior_summary, "agent_summaries": all_summaries}
+            )
+
+            # Phases C–E use debate_summaries only
             self._write_status("Collecting initial agent positions...")
-            initial_positions = self._initial_agent_votes(query, agent_summaries)
+            initial_positions = self._initial_agent_votes(query, debate_summaries)
 
             # round_histories[0] = initial (round 0), [1..K] = debate rounds
             round_histories: list[list[dict]] = [initial_positions]
