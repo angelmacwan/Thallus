@@ -22,12 +22,14 @@ import {
 	Sparkles,
 	RefreshCw,
 	AlertTriangle,
+	PlusCircle,
 } from 'lucide-react';
 import { SidebarCtx } from './SidebarContext';
 import Auth from './views/Auth';
 import Home from './views/Home';
 import SessionView from './views/Session';
 import Reports from './views/Reports';
+import NewSimulationModal from './components/NewSimulationModal';
 
 const PrivateRoute = ({ children }) => {
 	const token = localStorage.getItem('token');
@@ -37,7 +39,7 @@ const PrivateRoute = ({ children }) => {
 function Sidebar() {
 	const navigate = useNavigate();
 	const location = useLocation();
-	const { sessionNav } = React.useContext(SidebarCtx);
+	const { sessionNav, setNewSimOpen } = React.useContext(SidebarCtx);
 
 	const logout = () => {
 		localStorage.removeItem('token');
@@ -315,6 +317,24 @@ function Sidebar() {
 				) : (
 					<>
 						<button
+							className="sidebar-nav-btn"
+							onClick={() => setNewSimOpen(true)}
+							style={{
+								color: 'var(--accent-color)',
+								fontWeight: 700,
+							}}
+						>
+							<PlusCircle size={15} />
+							New Simulation
+						</button>
+						<div
+							style={{
+								height: '1px',
+								background: 'var(--outline-variant)',
+								margin: '0.5rem 0.85rem',
+							}}
+						/>
+						<button
 							className={`sidebar-nav-btn${location.pathname === '/' ? ' active' : ''}`}
 							onClick={() => navigate('/')}
 						>
@@ -352,9 +372,12 @@ function AppLayout() {
 	const token = localStorage.getItem('token');
 	const showSidebar = !!token && !isAuth;
 	const [sessionNav, setSessionNav] = useState(null);
+	const [newSimOpen, setNewSimOpen] = useState(false);
 
 	return (
-		<SidebarCtx.Provider value={{ sessionNav, setSessionNav }}>
+		<SidebarCtx.Provider
+			value={{ sessionNav, setSessionNav, newSimOpen, setNewSimOpen }}
+		>
 			<div
 				style={{
 					display: 'flex',
@@ -363,6 +386,10 @@ function AppLayout() {
 				}}
 			>
 				{showSidebar && <Sidebar />}
+				<NewSimulationModal
+					open={newSimOpen}
+					onClose={() => setNewSimOpen(false)}
+				/>
 				<main
 					className="main-content"
 					style={!showSidebar ? { padding: 0 } : undefined}
