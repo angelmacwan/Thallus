@@ -13,11 +13,15 @@ import {
 	FileText,
 	LogOut,
 	ArrowLeft,
-	Network,
 	Users,
 	Link2,
 	Info,
 	PlusSquare,
+	Rss,
+	FlaskConical,
+	Sparkles,
+	RefreshCw,
+	AlertTriangle,
 } from 'lucide-react';
 import { SidebarCtx } from './SidebarContext';
 import Auth from './views/Auth';
@@ -73,9 +77,16 @@ function Sidebar() {
 						/>
 						{[
 							{
-								id: 'graph',
-								icon: <Network size={15} />,
-								label: 'Graph',
+								id: 'feed',
+								icon: <Rss size={15} />,
+								label: 'Feed',
+								completedOnly: true,
+							},
+							{
+								id: 'scenarios',
+								icon: <FlaskConical size={15} />,
+								label: `Scenarios${sessionNav.scenariosCount ? ` (${sessionNav.scenariosCount})` : ''}`,
+								completedOnly: true,
 							},
 							{
 								id: 'agents',
@@ -97,16 +108,30 @@ function Sidebar() {
 								icon: <FileText size={15} />,
 								label: `Reports${sessionNav.reportsCount ? ` (${sessionNav.reportsCount})` : ''}`,
 							},
-						].map((item) => (
-							<button
-								key={item.id}
-								className={`sidebar-nav-btn${sessionNav.activeTab === item.id ? ' active' : ''}`}
-								onClick={() => sessionNav.setActiveTab(item.id)}
-							>
-								{item.icon}
-								{item.label}
-							</button>
-						))}
+							{
+								id: 'insights',
+								icon: <Sparkles size={15} />,
+								label: 'Insights',
+								completedOnly: true,
+							},
+						]
+							.filter(
+								(item) =>
+									!item.completedOnly ||
+									sessionNav.session?.status === 'completed',
+							)
+							.map((item) => (
+								<button
+									key={item.id}
+									className={`sidebar-nav-btn${sessionNav.activeTab === item.id ? ' active' : ''}`}
+									onClick={() =>
+										sessionNav.setActiveTab(item.id)
+									}
+								>
+									{item.icon}
+									{item.label}
+								</button>
+							))}
 						{/* Generate Report button – only for completed sessions */}
 						{sessionNav.onCreateReport && (
 							<>
@@ -130,6 +155,47 @@ function Sidebar() {
 								</button>
 							</>
 						)}
+						{/* Resimulate button – for completed or failed sessions */}
+						{sessionNav.onResimulate &&
+							(() => {
+								const isFailed =
+									sessionNav.session?.status === 'error';
+								return (
+									<>
+										{!sessionNav.onCreateReport && (
+											<div
+												style={{
+													height: '1px',
+													background:
+														'var(--outline-variant)',
+													margin: '0.5rem 0.85rem',
+												}}
+											/>
+										)}
+										<button
+											className="sidebar-nav-btn"
+											onClick={sessionNav.onResimulate}
+											style={{
+												color: isFailed
+													? '#d97706'
+													: 'var(--text-secondary)',
+												fontWeight: isFailed
+													? 700
+													: 500,
+											}}
+										>
+											{isFailed ? (
+												<AlertTriangle size={15} />
+											) : (
+												<RefreshCw size={15} />
+											)}
+											{isFailed
+												? 'Retry Simulation'
+												: 'Resimulate'}
+										</button>
+									</>
+								);
+							})()}
 						{sessionNav.session &&
 							(() => {
 								const status =

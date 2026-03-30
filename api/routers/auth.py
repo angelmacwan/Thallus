@@ -5,10 +5,24 @@ from sqlalchemy.orm import Session
 from .. import crud, schemas, auth, models
 from ..deps import get_db
 
+ALLOWED_EMAILS = {
+    "armacwan@gmail.com",
+    "angel.macwan@staticalabs.com",
+    "angelmacwan@staticalabs.com",
+    "saskia.oditt@staticalabs.com",
+    "saskia.oditt@test.com",
+}
+
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 @router.post("/register", response_model=schemas.UserResponse)
 def register(user: schemas.UserCreate, db: Session = Depends(get_db)):
+    if user.email.lower() not in ALLOWED_EMAILS:
+        crud.log_unauthorized_register(db, email=user.email)
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This email is not authorised to create an account.",
+        )
     db_user = crud.get_user_by_email(db, email=user.email)
     if db_user:
         raise HTTPException(status_code=400, detail="Email already registered")

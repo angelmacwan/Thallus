@@ -2,6 +2,13 @@
 .env
 INPUT/
 OUTPUTS/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
 logs/
 log/
 users_data/
@@ -32,3 +39,5 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+DEPLOY.md

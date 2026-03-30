@@ -4,17 +4,27 @@ import remarkGfm from 'remark-gfm';
 import mermaid from 'mermaid';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../api';
+import InsightsDashboard from '../components/InsightsDashboard';
 import { useSidebar } from '../SidebarContext';
 import {
 	RefreshCw,
 	Send,
-	Network,
 	Users,
 	Link2,
 	Info,
 	FileText,
 	X,
 	Trash2,
+	Rss,
+	ThumbsUp,
+	ThumbsDown,
+	MessageSquare,
+	ChevronDown,
+	ChevronUp,
+	FlaskConical,
+	Play,
+	Plus,
+	Tag,
 } from 'lucide-react';
 
 mermaid.initialize({ startOnLoad: false, theme: 'neutral' });
@@ -374,14 +384,6 @@ const EVENT_ICONS = {
 	done: '✅',
 };
 
-// ─── Graph node colours by entity type ───────────────────────────────────────
-const TYPE_COLOR = {
-	PERSON: '#2563eb',
-	ORGANIZATION: '#506071',
-	LOCATION: '#2d6a4f',
-	EVENT: '#7c3aed',
-};
-
 // ─── Tab bar ──────────────────────────────────────────────────────────────────
 function Tabs({ tabs, active, onChange }) {
 	return (
@@ -430,485 +432,1526 @@ function Tabs({ tabs, active, onChange }) {
 	);
 }
 
-// ─── Force-directed graph ─────────────────────────────────────────────────────
-function ForceGraph({ agents, graph }) {
-	const canvasRef = useRef(null);
-	const containerRef = useRef(null);
-	const animRef = useRef(null);
-	const nodesRef = useRef([]);
-	const transRef = useRef({ x: 0, y: 0, scale: 1 });
-	const dragRef = useRef(null);
-	const [hovered, setHovered] = useState(null);
+// ─── Social Feed
+
+// ─── Social Feed ─────────────────────────────────────────────────────────────
+const FEED_AVATAR_COLORS = [
+	'#2563eb',
+	'#7c3aed',
+	'#db2777',
+	'#d97706',
+	'#059669',
+	'#0891b2',
+	'#4f46e5',
+	'#dc2626',
+	'#9d174d',
+	'#065f46',
+];
+const feedAvatarColor = (idx) =>
+	FEED_AVATAR_COLORS[
+		(((idx ?? 0) % FEED_AVATAR_COLORS.length) + FEED_AVATAR_COLORS.length) %
+			FEED_AVATAR_COLORS.length
+	];
+
+function getVal(obj, ...keys) {
+	for (const k of keys) {
+		if (obj[k] !== undefined && obj[k] !== null) return obj[k];
+	}
+	return null;
+}
+
+function formatFeedDate(val) {
+	if (!val) return null;
+	try {
+		if (typeof val === 'number') {
+			// Heuristic: if < 1e10 it's seconds, otherwise milliseconds
+			return new Date(val < 1e10 ? val * 1000 : val).toLocaleString();
+		}
+		return new Date(val).toLocaleString();
+	} catch {
+		return String(val);
+	}
+}
+
+function CommentRow({ comment, agentMap }) {
+	const content = getVal(comment, 'content', 'body', 'text', 'message') || '';
+	const userId = getVal(comment, 'user_id', 'agent_id', 'author_id');
+	const agent =
+		comment._agent || agentMap?.[userId] || agentMap?.[String(userId)];
+	const likes = Number(
+		getVal(comment, 'num_likes', 'like_count', 'upvotes', 'likes') ?? 0,
+	);
+	const displayName =
+		agent?.realname || (userId != null ? `Agent ${userId}` : 'Unknown');
+	const username =
+		agent?.username || (userId != null ? `user${userId}` : 'unknown');
+	const initial = displayName.charAt(0).toUpperCase();
+	const agentIdx = agentMap
+		? Object.keys(agentMap).findIndex((k) => agentMap[k] === agent)
+		: -1;
+	const color = feedAvatarColor(agentIdx >= 0 ? agentIdx : (userId ?? 0));
+
+	return (
+		<div
+			style={{
+				display: 'flex',
+				gap: '0.55rem',
+				padding: '0.65rem 0.9rem 0.65rem 1.25rem',
+				borderBottom: '1px solid var(--outline-variant)',
+				background: 'var(--surface-container-lowest)',
+			}}
+		>
+			<div
+				style={{
+					width: 28,
+					height: 28,
+					borderRadius: '50%',
+					background: color,
+					color: '#fff',
+					display: 'flex',
+					alignItems: 'center',
+					justifyContent: 'center',
+					fontWeight: 700,
+					fontSize: '0.7rem',
+					flexShrink: 0,
+				}}
+			>
+				{initial}
+			</div>
+			<div style={{ flex: 1, minWidth: 0 }}>
+				<div
+					style={{
+						display: 'flex',
+						gap: '0.35rem',
+						alignItems: 'baseline',
+						flexWrap: 'wrap',
+					}}
+				>
+					<span style={{ fontWeight: 600, fontSize: '0.78rem' }}>
+						{displayName}
+					</span>
+					<span
+						style={{
+							fontSize: '0.68rem',
+							color: 'var(--text-secondary)',
+						}}
+					>
+						@{username}
+					</span>
+				</div>
+				{content && (
+					<div
+						style={{
+							fontSize: '0.8rem',
+							marginTop: '0.2rem',
+							lineHeight: 1.55,
+							color: 'var(--text-primary)',
+						}}
+					>
+						{content}
+					</div>
+				)}
+				{likes > 0 && (
+					<div
+						style={{
+							fontSize: '0.68rem',
+							color: 'var(--text-secondary)',
+							marginTop: '0.25rem',
+							display: 'flex',
+							alignItems: 'center',
+							gap: '0.2rem',
+						}}
+					>
+						<ThumbsUp size={10} />
+						{likes}
+					</div>
+				)}
+			</div>
+		</div>
+	);
+}
+
+function PostCard({ post, comments, agentMap, isScenarioPost }) {
+	const [showComments, setShowComments] = useState(false);
+
+	const content = getVal(post, 'content', 'body', 'text', 'message') || '';
+	const userId = getVal(post, 'user_id', 'agent_id', 'author_id');
+	const agent =
+		post._agent || agentMap?.[userId] || agentMap?.[String(userId)];
+	const likes = Number(
+		getVal(post, 'num_likes', 'like_count', 'upvotes', 'likes') ?? 0,
+	);
+	const dislikes = Number(
+		getVal(
+			post,
+			'num_dislikes',
+			'dislike_count',
+			'downvotes',
+			'dislikes',
+		) ?? 0,
+	);
+	const createdAt = getVal(
+		post,
+		'created_at',
+		'timestamp',
+		'date',
+		'posted_at',
+	);
+
+	const displayName =
+		agent?.realname || (userId != null ? `Agent ${userId}` : 'Unknown');
+	const username =
+		agent?.username || (userId != null ? `user${userId}` : 'unknown');
+	const profession = agent?.profession || null;
+	const initial = displayName.charAt(0).toUpperCase();
+	const agentIdx = agentMap
+		? Object.keys(agentMap).findIndex((k) => agentMap[k] === agent)
+		: -1;
+	const color = feedAvatarColor(agentIdx >= 0 ? agentIdx : (userId ?? 0));
+
+	return (
+		<div
+			style={{
+				background: isScenarioPost
+					? 'rgba(124,58,237,0.04)'
+					: 'var(--surface-container-low)',
+				border: `1px solid ${isScenarioPost ? 'rgba(124,58,237,0.35)' : 'var(--outline-variant)'}`,
+				borderRadius: '12px',
+				overflow: 'hidden',
+				flexShrink: 0,
+			}}
+		>
+			{isScenarioPost && (
+				<div
+					style={{
+						background: 'rgba(124,58,237,0.12)',
+						padding: '0.2rem 0.85rem',
+						fontSize: '0.67rem',
+						fontWeight: 700,
+						color: '#7c3aed',
+						letterSpacing: '0.04em',
+						textTransform: 'uppercase',
+					}}
+				>
+					◆ Scenario Post
+				</div>
+			)}
+			{/* Header */}
+			<div
+				style={{
+					display: 'flex',
+					gap: '0.65rem',
+					padding: '0.85rem',
+					alignItems: 'flex-start',
+				}}
+			>
+				<div
+					style={{
+						width: 38,
+						height: 38,
+						borderRadius: '50%',
+						background: color,
+						color: '#fff',
+						display: 'flex',
+						alignItems: 'center',
+						justifyContent: 'center',
+						fontWeight: 700,
+						fontSize: '0.88rem',
+						flexShrink: 0,
+					}}
+				>
+					{initial}
+				</div>
+				<div style={{ flex: 1, minWidth: 0 }}>
+					<div
+						style={{
+							display: 'flex',
+							alignItems: 'baseline',
+							gap: '0.35rem',
+							flexWrap: 'wrap',
+						}}
+					>
+						<span style={{ fontWeight: 700, fontSize: '0.85rem' }}>
+							{displayName}
+						</span>
+						<span
+							style={{
+								fontSize: '0.74rem',
+								color: 'var(--text-secondary)',
+							}}
+						>
+							@{username}
+						</span>
+						{profession && (
+							<span
+								style={{
+									fontSize: '0.68rem',
+									color: 'var(--text-secondary)',
+									opacity: 0.75,
+								}}
+							>
+								· {profession}
+							</span>
+						)}
+					</div>
+					{createdAt && (
+						<div
+							style={{
+								fontSize: '0.67rem',
+								color: 'var(--text-secondary)',
+								marginTop: '0.1rem',
+							}}
+						>
+							{formatFeedDate(createdAt)}
+						</div>
+					)}
+				</div>
+			</div>
+
+			{/* Content */}
+			{content && (
+				<div
+					style={{
+						padding: '0 0.9rem 0.85rem',
+						fontSize: '0.85rem',
+						lineHeight: 1.65,
+						color: 'var(--text-primary)',
+					}}
+				>
+					{content}
+				</div>
+			)}
+
+			{/* Stats bar */}
+			<div
+				style={{
+					display: 'flex',
+					gap: '1.1rem',
+					padding: '0.55rem 0.9rem',
+					borderTop: '1px solid var(--outline-variant)',
+					background: 'var(--surface-container)',
+					alignItems: 'center',
+					fontSize: '0.75rem',
+					color: 'var(--text-secondary)',
+				}}
+			>
+				<span
+					style={{
+						display: 'flex',
+						alignItems: 'center',
+						gap: '0.3rem',
+					}}
+				>
+					<ThumbsUp size={13} />
+					{likes}
+				</span>
+				<span
+					style={{
+						display: 'flex',
+						alignItems: 'center',
+						gap: '0.3rem',
+					}}
+				>
+					<ThumbsDown size={13} />
+					{dislikes}
+				</span>
+				{comments.length > 0 ? (
+					<button
+						onClick={() => setShowComments((v) => !v)}
+						style={{
+							background: 'none',
+							border: 'none',
+							cursor: 'pointer',
+							fontSize: '0.75rem',
+							color: 'var(--text-secondary)',
+							display: 'flex',
+							alignItems: 'center',
+							gap: '0.3rem',
+							padding: 0,
+							marginLeft: 'auto',
+						}}
+					>
+						<MessageSquare size={13} />
+						{comments.length}{' '}
+						{comments.length === 1 ? 'comment' : 'comments'}
+						{showComments ? (
+							<ChevronUp size={12} />
+						) : (
+							<ChevronDown size={12} />
+						)}
+					</button>
+				) : (
+					<span
+						style={{
+							display: 'flex',
+							alignItems: 'center',
+							gap: '0.3rem',
+							marginLeft: 'auto',
+							opacity: 0.6,
+						}}
+					>
+						<MessageSquare size={13} />0
+					</span>
+				)}
+			</div>
+
+			{/* Comments */}
+			{showComments && comments.length > 0 && (
+				<div style={{ borderTop: '1px solid var(--outline-variant)' }}>
+					{comments.map((c, ci) => (
+						<CommentRow
+							key={getVal(c, 'comment_id', 'id') ?? ci}
+							comment={c}
+							agentMap={agentMap}
+						/>
+					))}
+				</div>
+			)}
+		</div>
+	);
+}
+
+function SocialFeed({ sessionId, scenarioId }) {
+	const [data, setData] = useState(null);
+	const [loading, setLoading] = useState(true);
 
 	useEffect(() => {
-		const canvas = canvasRef.current;
-		const container = containerRef.current;
-		if (!canvas || !container) return;
+		setLoading(true);
+		setData(null);
+		const endpoint = scenarioId
+			? `/scenarios/${scenarioId}/feed`
+			: `/simulation/feed/${sessionId}`;
+		api.get(endpoint)
+			.then((r) => setData(r.data))
+			.catch(() => setData({ posts: [], comments: [], agents: [] }))
+			.finally(() => setLoading(false));
+	}, [sessionId, scenarioId]);
 
-		const dpr = window.devicePixelRatio || 1;
-		const W = container.offsetWidth || 600;
-		const H = container.offsetHeight || 600;
-		canvas.width = W * dpr;
-		canvas.height = H * dpr;
-		canvas.style.width = W + 'px';
-		canvas.style.height = H + 'px';
-
-		const entities = graph?.entities || {};
-		const relations = graph?.relations || [];
-
-		const ctx = canvas.getContext('2d');
-		ctx.scale(dpr, dpr);
-
-		const nodeMap = {};
-		agents.forEach((a) => {
-			nodeMap[a.realname] = {
-				id: a.realname,
-				label:
-					(a.username || a.realname).length > 16
-						? (a.username || a.realname).slice(0, 14) + '…'
-						: a.username || a.realname,
-				fullLabel: a.realname,
-				detail: `@${a.username} · ${a.profession || ''}`,
-				isAgent: true,
-				color: '#12283c',
-				r: 20,
-				x: W / 2 + (Math.random() - 0.5) * W * 0.45,
-				y: H / 2 + (Math.random() - 0.5) * H * 0.45,
-				vx: 0,
-				vy: 0,
-			};
-		});
-
-		const inRelation = new Set();
-		relations.forEach((r) => {
-			inRelation.add(r.source);
-			inRelation.add(r.target);
-		});
-
-		Object.entries(entities).forEach(([name, data]) => {
-			if (!nodeMap[name] && inRelation.has(name)) {
-				const type = (data.type || '').toUpperCase();
-				nodeMap[name] = {
-					id: name,
-					label: name.length > 16 ? name.slice(0, 14) + '…' : name,
-					fullLabel: name,
-					detail: type,
-					isAgent: false,
-					color: TYPE_COLOR[type] || '#74777d',
-					r: 13,
-					x: W / 2 + (Math.random() - 0.5) * W * 0.5,
-					y: H / 2 + (Math.random() - 0.5) * H * 0.5,
-					vx: 0,
-					vy: 0,
-				};
-			}
-		});
-
-		const nodes = Object.values(nodeMap);
-		nodesRef.current = nodes;
-		const idx = {};
-		nodes.forEach((n, i) => {
-			idx[n.id] = i;
-		});
-
-		const edges = relations
-			.filter(
-				(r) =>
-					idx[r.source] !== undefined && idx[r.target] !== undefined,
-			)
-			.map((r) => ({
-				si: idx[r.source],
-				ti: idx[r.target],
-				type: r.type,
-			}));
-
-		const seen = new Set();
-		const drawEdges = edges.filter((e) => {
-			const key = `${Math.min(e.si, e.ti)}-${Math.max(e.si, e.ti)}`;
-			if (seen.has(key)) return false;
-			seen.add(key);
-			return true;
-		});
-
-		let frame = 0;
-
-		function simulate() {
-			const REPULSION = 4200,
-				SPRING_LEN = 140,
-				SPRING_K = 0.028,
-				DAMPING = 0.82,
-				GRAVITY = 0.01;
-			for (let i = 0; i < nodes.length; i++) {
-				for (let j = i + 1; j < nodes.length; j++) {
-					const dx = nodes[j].x - nodes[i].x,
-						dy = nodes[j].y - nodes[i].y;
-					const d2 = Math.max(dx * dx + dy * dy, 0.01),
-						d = Math.sqrt(d2);
-					const f = REPULSION / d2,
-						fx = (dx / d) * f,
-						fy = (dy / d) * f;
-					nodes[i].vx -= fx;
-					nodes[i].vy -= fy;
-					nodes[j].vx += fx;
-					nodes[j].vy += fy;
-				}
-			}
-			edges.forEach((e) => {
-				const n1 = nodes[e.si],
-					n2 = nodes[e.ti];
-				const dx = n2.x - n1.x,
-					dy = n2.y - n1.y,
-					d = Math.sqrt(dx * dx + dy * dy) || 0.01;
-				const f = (d - SPRING_LEN) * SPRING_K,
-					fx = (dx / d) * f,
-					fy = (dy / d) * f;
-				n1.vx += fx;
-				n1.vy += fy;
-				n2.vx -= fx;
-				n2.vy -= fy;
-			});
-			nodes.forEach((n) => {
-				n.vx += (W / 2 - n.x) * GRAVITY;
-				n.vy += (H / 2 - n.y) * GRAVITY;
-				n.vx *= DAMPING;
-				n.vy *= DAMPING;
-				n.x = Math.max(n.r + 6, Math.min(W - n.r - 6, n.x + n.vx));
-				n.y = Math.max(n.r + 6, Math.min(H - n.r - 6, n.y + n.vy));
-			});
-		}
-
-		function draw() {
-			const t = transRef.current;
-			ctx.clearRect(0, 0, W, H);
-
-			ctx.save();
-			ctx.translate(t.x, t.y);
-			ctx.scale(t.scale, t.scale);
-
-			// edges
-			drawEdges.forEach((e) => {
-				const n1 = nodes[e.si],
-					n2 = nodes[e.ti];
-				ctx.beginPath();
-				ctx.moveTo(n1.x, n1.y);
-				ctx.lineTo(n2.x, n2.y);
-				ctx.strokeStyle = 'rgba(18,40,60,0.18)';
-				ctx.lineWidth = 1.5;
-				ctx.stroke();
-
-				// edge label
-				if (drawEdges.length <= 22 && e.type) {
-					const mx = (n1.x + n2.x) / 2;
-					const my = (n1.y + n2.y) / 2;
-					const label =
-						e.type.length > 16 ? e.type.slice(0, 14) + '…' : e.type;
-					ctx.font = '600 10px Inter,system-ui,sans-serif';
-					const tw = ctx.measureText(label).width;
-					// pill background
-					const pad = 5;
-					ctx.fillStyle = 'rgba(255,255,255,0.96)';
-					ctx.beginPath();
-					ctx.roundRect(
-						mx - tw / 2 - pad,
-						my - 7,
-						tw + pad * 2,
-						14,
-						4,
-					);
-					ctx.fill();
-					ctx.strokeStyle = 'rgba(18,40,60,0.12)';
-					ctx.lineWidth = 0.5;
-					ctx.stroke();
-					ctx.fillStyle = '#43474c';
-					ctx.textAlign = 'center';
-					ctx.textBaseline = 'middle';
-					ctx.fillText(label, mx, my);
-				}
-			});
-
-			// nodes
-			nodes.forEach((n) => {
-				// drop shadow
-				ctx.shadowColor = 'rgba(25,28,28,0.16)';
-				ctx.shadowBlur = 10;
-				ctx.shadowOffsetY = 3;
-
-				// flat node circle
-				ctx.beginPath();
-				ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2);
-				ctx.fillStyle = n.color;
-				ctx.fill();
-
-				ctx.shadowBlur = 0;
-				ctx.shadowOffsetY = 0;
-
-				// subtle inner highlight ring
-				ctx.strokeStyle = 'rgba(255,255,255,0.35)';
-				ctx.lineWidth = n.isAgent ? 2 : 1.5;
-				ctx.stroke();
-
-				// label below node
-				const fontSize = n.isAgent ? 12 : 11;
-				ctx.font = n.isAgent
-					? `bold ${fontSize}px Inter,system-ui,sans-serif`
-					: `600 ${fontSize}px Inter,system-ui,sans-serif`;
-				ctx.textAlign = 'center';
-				ctx.textBaseline = 'top';
-				const labelY = n.y + n.r + 4;
-				ctx.fillStyle = n.isAgent ? '#12283c' : '#43474c';
-				ctx.fillText(n.label, n.x, labelY);
-			});
-
-			ctx.restore();
-		}
-
-		function onWheel(e) {
-			e.preventDefault();
-			const rect = canvas.getBoundingClientRect();
-			const mx = e.clientX - rect.left;
-			const my = e.clientY - rect.top;
-			const factor = e.deltaY < 0 ? 1.12 : 1 / 1.12;
-			const t = transRef.current;
-			const newScale = Math.max(0.15, Math.min(6, t.scale * factor));
-			const sf = newScale / t.scale;
-			transRef.current = {
-				x: mx - sf * (mx - t.x),
-				y: my - sf * (my - t.y),
-				scale: newScale,
-			};
-		}
-
-		function tick() {
-			if (frame < 620) simulate();
-			draw();
-			frame++;
-			animRef.current = requestAnimationFrame(tick);
-		}
-		animRef.current = requestAnimationFrame(tick);
-		canvas.addEventListener('wheel', onWheel, { passive: false });
-		return () => {
-			cancelAnimationFrame(animRef.current);
-			canvas.removeEventListener('wheel', onWheel);
-		};
-	}, [agents.length, graph]);
-
-	const handleMouseDown = (e) => {
-		if (e.button !== 0) return;
-		const canvas = canvasRef.current;
-		if (!canvas) return;
-		const rect = canvas.getBoundingClientRect();
-		dragRef.current = {
-			startX: e.clientX - rect.left,
-			startY: e.clientY - rect.top,
-			startTx: transRef.current.x,
-			startTy: transRef.current.y,
-		};
-		canvas.style.cursor = 'grabbing';
-	};
-
-	const handleMouseUp = () => {
-		dragRef.current = null;
-		if (canvasRef.current) canvasRef.current.style.cursor = 'grab';
-	};
-
-	const handleMouseMove = (e) => {
-		const canvas = canvasRef.current;
-		if (!canvas) return;
-		const rect = canvas.getBoundingClientRect();
-		const mx = e.clientX - rect.left;
-		const my = e.clientY - rect.top;
-
-		if (dragRef.current) {
-			const dx = mx - dragRef.current.startX;
-			const dy = my - dragRef.current.startY;
-			transRef.current = {
-				...transRef.current,
-				x: dragRef.current.startTx + dx,
-				y: dragRef.current.startTy + dy,
-			};
-			return;
-		}
-
-		// convert to world space for hover detection
-		const t = transRef.current;
-		const wx = (mx - t.x) / t.scale;
-		const wy = (my - t.y) / t.scale;
-		setHovered(
-			nodesRef.current.find(
-				(n) => Math.sqrt((n.x - wx) ** 2 + (n.y - wy) ** 2) <= n.r + 8,
-			) || null,
+	if (loading)
+		return (
+			<div
+				style={{
+					textAlign: 'center',
+					color: 'var(--text-secondary)',
+					padding: '3rem',
+					fontSize: '0.85rem',
+				}}
+			>
+				<RefreshCw
+					size={20}
+					style={{
+						animation: 'spin 1.4s linear infinite',
+						marginBottom: '0.5rem',
+						color: 'var(--accent-color)',
+					}}
+				/>
+				<div>Loading feed…</div>
+			</div>
 		);
-	};
 
-	const zoom = (factor) => {
-		const canvas = canvasRef.current;
-		if (!canvas) return;
-		const t = transRef.current;
-		const cx = canvas.offsetWidth / 2;
-		const cy = canvas.offsetHeight / 2;
-		const newScale = Math.max(0.15, Math.min(6, t.scale * factor));
-		const sf = newScale / t.scale;
-		transRef.current = {
-			x: cx - sf * (cx - t.x),
-			y: cy - sf * (cy - t.y),
-			scale: newScale,
-		};
-	};
+	const { posts = [], comments = [], agents = [] } = data || {};
 
-	const resetView = () => {
-		transRef.current = { x: 0, y: 0, scale: 1 };
+	// Build 0-indexed agent map
+	const agentMap = {};
+	agents.forEach((a, i) => {
+		agentMap[i] = a;
+		agentMap[String(i)] = a;
+	});
+
+	// Group comments by post_id
+	const commentsByPost = {};
+	comments.forEach((c) => {
+		const pid = getVal(c, 'post_id');
+		if (pid === undefined || pid === null) return;
+		if (!commentsByPost[pid]) commentsByPost[pid] = [];
+		commentsByPost[pid].push(c);
+	});
+
+	if (posts.length === 0)
+		return (
+			<div
+				style={{
+					textAlign: 'center',
+					color: 'var(--text-secondary)',
+					padding: '3rem 1rem',
+					fontSize: '0.85rem',
+				}}
+			>
+				<Rss
+					size={28}
+					style={{ marginBottom: '0.5rem', opacity: 0.4 }}
+				/>
+				<div style={{ fontWeight: 600 }}>No feed data yet.</div>
+				<div style={{ fontSize: '0.75rem', marginTop: '0.3rem' }}>
+					Posts and interactions will appear here once the simulation
+					completes.
+				</div>
+			</div>
+		);
+
+	return (
+		<div
+			style={{
+				flex: 1,
+				overflowY: 'auto',
+				display: 'flex',
+				flexDirection: 'column',
+				gap: '0.75rem',
+				paddingRight: '0.25rem',
+			}}
+		>
+			<div
+				style={{
+					fontSize: '0.72rem',
+					color: 'var(--text-secondary)',
+					fontWeight: 600,
+					paddingBottom: '0.25rem',
+					display: 'flex',
+					alignItems: 'center',
+					gap: '0.5rem',
+					flexWrap: 'wrap',
+				}}
+			>
+				{posts.length} post{posts.length !== 1 ? 's' : ''} ·{' '}
+				{comments.length} comment{comments.length !== 1 ? 's' : ''}
+				{scenarioId && (
+					<span
+						style={{
+							padding: '0.1rem 0.5rem',
+							borderRadius: '999px',
+							background: 'rgba(124,58,237,0.1)',
+							color: '#7c3aed',
+							fontWeight: 700,
+						}}
+					>
+						◆ scenario posts highlighted
+					</span>
+				)}
+			</div>
+			{posts.map((post, i) => {
+				const postId = getVal(post, 'post_id', 'id') ?? i;
+				return (
+					<PostCard
+						key={postId}
+						post={post}
+						comments={commentsByPost[postId] || []}
+						agentMap={agentMap}
+						isScenarioPost={post._source === 'scenario'}
+					/>
+				);
+			})}
+		</div>
+	);
+}
+
+// ─── Create Scenario Modal ────────────────────────────────────────────────────
+function CreateScenarioModal({ sessionId, onClose, onCreated }) {
+	const [name, setName] = useState('');
+	const [description, setDescription] = useState('');
+	const [rounds, setRounds] = useState(1);
+	const [creating, setCreating] = useState(false);
+	const [error, setError] = useState(null);
+
+	const handleSubmit = async (e) => {
+		e.preventDefault();
+		if (!name.trim() || !description.trim()) return;
+		setCreating(true);
+		setError(null);
+		try {
+			const res = await api.post(`/scenarios/session/${sessionId}`, {
+				name: name.trim(),
+				description: description.trim(),
+				rounds: Number(rounds) || 1,
+			});
+			onCreated(res.data);
+			onClose();
+		} catch (err) {
+			setError(
+				err?.response?.data?.detail || 'Failed to create scenario.',
+			);
+		} finally {
+			setCreating(false);
+		}
 	};
 
 	return (
 		<div
-			ref={containerRef}
 			style={{
-				position: 'relative',
-				borderRadius: '12px',
-				overflow: 'hidden',
-				flex: 1,
-				minHeight: 0,
+				position: 'fixed',
+				inset: 0,
+				background: 'rgba(0,0,0,0.45)',
+				display: 'flex',
+				alignItems: 'center',
+				justifyContent: 'center',
+				zIndex: 1000,
+				padding: '1rem',
+			}}
+			onClick={(e) => {
+				if (e.target === e.currentTarget) onClose();
 			}}
 		>
-			<canvas
-				ref={canvasRef}
+			<div
 				style={{
-					display: 'block',
+					background: 'var(--surface)',
+					borderRadius: '14px',
+					padding: '2rem',
 					width: '100%',
-					height: '100%',
-					cursor: 'grab',
-				}}
-				onMouseDown={handleMouseDown}
-				onMouseUp={handleMouseUp}
-				onMouseMove={handleMouseMove}
-				onMouseLeave={() => {
-					setHovered(null);
-					dragRef.current = null;
-					if (canvasRef.current)
-						canvasRef.current.style.cursor = 'grab';
-				}}
-				onDoubleClick={resetView}
-			/>
-			<div
-				style={{
-					position: 'absolute',
-					top: 10,
-					right: 10,
-					background: 'rgba(255,255,255,0.96)',
-					border: '1px solid #e7e8e8',
-					borderRadius: '9px',
-					padding: '0.55rem 0.75rem',
-					fontSize: '0.72rem',
+					maxWidth: '560px',
 					display: 'flex',
 					flexDirection: 'column',
-					gap: 5,
-					boxShadow: '0 2px 8px rgba(25,28,28,0.08)',
+					gap: '1.25rem',
+					boxShadow: '0 8px 32px rgba(0,0,0,0.22)',
+					border: '1px solid var(--outline-variant)',
 				}}
 			>
-				{[
-					['#12283c', 'Agent'],
-					['#2563eb', 'Person'],
-					['#506071', 'Org'],
-					['#2d6a4f', 'Location'],
-					['#7c3aed', 'Event'],
-				].map(([c, l]) => (
-					<div
-						key={l}
-						style={{
-							display: 'flex',
-							alignItems: 'center',
-							gap: 7,
-							color: '#43474c',
-							fontWeight: 500,
-						}}
-					>
-						<div
-							style={{
-								width: 10,
-								height: 10,
-								borderRadius: '50%',
-								background: c,
-								flexShrink: 0,
-							}}
-						/>
-						{l}
-					</div>
-				))}
-			</div>
-			{/* ── Zoom / pan controls ── */}
-			<div
-				style={{
-					position: 'absolute',
-					bottom: 10,
-					right: 10,
-					display: 'flex',
-					flexDirection: 'column',
-					gap: 4,
-				}}
-			>
-				{[
-					['+', 'Zoom in', () => zoom(1.25)],
-					['−', 'Zoom out', () => zoom(1 / 1.25)],
-					['⊙', 'Reset view (double-click)', resetView],
-				].map(([label, title, fn]) => (
-					<button
-						key={label}
-						title={title}
-						onClick={fn}
-						style={{
-							width: 28,
-							height: 28,
-							borderRadius: 6,
-							border: '1px solid #e7e8e8',
-							background: 'rgba(255,255,255,0.96)',
-							color: '#12283c',
-							cursor: 'pointer',
-							fontSize: '0.88rem',
-							fontWeight: 700,
-							lineHeight: 1,
-							display: 'flex',
-							alignItems: 'center',
-							justifyContent: 'center',
-							boxShadow: '0 1px 4px rgba(25,28,28,0.08)',
-						}}
-					>
-						{label}
-					</button>
-				))}
-			</div>
-			{hovered && (
 				<div
 					style={{
-						position: 'absolute',
-						bottom: 110,
-						left: 10,
-						background: 'rgba(255,255,255,0.97)',
-						border: '1px solid #e7e8e8',
-						borderRadius: '8px',
-						padding: '0.45rem 0.75rem',
-						color: '#191c1c',
-						fontSize: '0.78rem',
-						maxWidth: 210,
-						pointerEvents: 'none',
-						boxShadow: '0 2px 8px rgba(25,28,28,0.10)',
+						display: 'flex',
+						alignItems: 'center',
+						justifyContent: 'space-between',
 					}}
 				>
-					<div style={{ fontWeight: 700, color: hovered.color }}>
-						{hovered.fullLabel}
+					<div
+						style={{
+							display: 'flex',
+							alignItems: 'center',
+							gap: '0.6rem',
+						}}
+					>
+						<FlaskConical
+							size={20}
+							color="var(--accent-color)"
+						/>
+						<h3 style={{ margin: 0, fontSize: '1rem' }}>
+							New Scenario
+						</h3>
 					</div>
-					{hovered.detail && (
-						<div
+					<button
+						onClick={onClose}
+						style={{
+							background: 'none',
+							border: 'none',
+							cursor: 'pointer',
+							color: 'var(--text-secondary)',
+							display: 'flex',
+							padding: '0.25rem',
+							borderRadius: '6px',
+						}}
+					>
+						<X size={18} />
+					</button>
+				</div>
+
+				<p
+					style={{
+						margin: 0,
+						fontSize: '0.85rem',
+						color: 'var(--text-secondary)',
+						lineHeight: 1.6,
+					}}
+				>
+					Define a "what-if" scenario. Agents will react to the new
+					situation — building on the same profiles and knowledge
+					graph.
+				</p>
+
+				<form
+					onSubmit={handleSubmit}
+					style={{
+						display: 'flex',
+						flexDirection: 'column',
+						gap: '1rem',
+					}}
+				>
+					<div>
+						<label
 							style={{
-								color: '#506071',
-								marginTop: 2,
-								fontSize: '0.71rem',
+								fontSize: '0.78rem',
+								fontWeight: 600,
+								color: 'var(--text-secondary)',
+								display: 'block',
+								marginBottom: '0.35rem',
 							}}
 						>
-							{hovered.detail}
+							Scenario Name
+						</label>
+						<input
+							className="input-field"
+							value={name}
+							onChange={(e) => setName(e.target.value)}
+							placeholder="e.g. USA Wins — China-Russia Alliance"
+							disabled={creating}
+							style={{ width: '100%', boxSizing: 'border-box' }}
+						/>
+					</div>
+					<div>
+						<label
+							style={{
+								fontSize: '0.78rem',
+								fontWeight: 600,
+								color: 'var(--text-secondary)',
+								display: 'block',
+								marginBottom: '0.35rem',
+							}}
+						>
+							Scenario Description
+						</label>
+						<textarea
+							className="input-field"
+							value={description}
+							onChange={(e) => setDescription(e.target.value)}
+							placeholder="e.g. Let's say the USA won the conflict, but China and Russia formed a new strategic alliance in response…"
+							rows={4}
+							disabled={creating}
+							style={{
+								resize: 'vertical',
+								fontFamily: 'inherit',
+								fontSize: '0.88rem',
+								lineHeight: 1.6,
+								width: '100%',
+								boxSizing: 'border-box',
+							}}
+						/>
+					</div>
+					<div>
+						<label
+							style={{
+								fontSize: '0.78rem',
+								fontWeight: 600,
+								color: 'var(--text-secondary)',
+								display: 'block',
+								marginBottom: '0.35rem',
+							}}
+						>
+							Rounds / Iterations
+						</label>
+						<input
+							type="number"
+							className="input-field"
+							value={rounds}
+							onChange={(e) => setRounds(e.target.value)}
+							min={1}
+							max={20}
+							disabled={creating}
+							style={{ width: '120px' }}
+						/>
+					</div>
+
+					{error && (
+						<div
+							style={{
+								padding: '0.65rem 0.85rem',
+								background: 'rgba(220,38,38,0.08)',
+								border: '1px solid rgba(220,38,38,0.2)',
+								borderRadius: '8px',
+								color: 'var(--danger-color)',
+								fontSize: '0.82rem',
+							}}
+						>
+							{error}
+						</div>
+					)}
+
+					<div
+						style={{
+							display: 'flex',
+							gap: '0.75rem',
+							justifyContent: 'flex-end',
+						}}
+					>
+						<button
+							type="button"
+							className="btn btn-secondary"
+							onClick={onClose}
+							disabled={creating}
+						>
+							Cancel
+						</button>
+						<button
+							type="submit"
+							className="btn"
+							disabled={
+								creating || !name.trim() || !description.trim()
+							}
+							style={{
+								display: 'flex',
+								alignItems: 'center',
+								gap: '0.45rem',
+							}}
+						>
+							{creating ? (
+								<>
+									<RefreshCw
+										size={14}
+										style={{
+											animation:
+												'spin 1.4s linear infinite',
+										}}
+									/>{' '}
+									Creating…
+								</>
+							) : (
+								<>
+									<FlaskConical size={14} /> Create Scenario
+								</>
+							)}
+						</button>
+					</div>
+				</form>
+			</div>
+		</div>
+	);
+}
+
+// ─── Scenario Card ────────────────────────────────────────────────────────────
+function ScenarioCard({ scenario, onRun, onGenerateReport, liveLog }) {
+	const [showLog, setShowLog] = useState(false);
+
+	const statusColors = {
+		completed: { bg: '#dcfce7', color: '#16a34a' },
+		running: { bg: '#dbeafe', color: '#2563eb' },
+		error: { bg: '#fee2e2', color: '#dc2626' },
+		created: { bg: '#f3f4f6', color: '#6b7280' },
+	};
+	const pill = statusColors[scenario.status] || statusColors.created;
+
+	return (
+		<div
+			style={{
+				background: 'var(--surface-container-low)',
+				border: '1px solid var(--outline-variant)',
+				borderRadius: '10px',
+				padding: '1rem',
+				display: 'flex',
+				flexDirection: 'column',
+				gap: '0.65rem',
+			}}
+		>
+			{/* Header */}
+			<div
+				style={{
+					display: 'flex',
+					alignItems: 'flex-start',
+					gap: '0.6rem',
+				}}
+			>
+				<FlaskConical
+					size={16}
+					color="var(--accent-color)"
+					style={{ marginTop: '0.15rem', flexShrink: 0 }}
+				/>
+				<div style={{ flex: 1, minWidth: 0 }}>
+					<div
+						style={{
+							fontWeight: 700,
+							fontSize: '0.88rem',
+							display: 'flex',
+							alignItems: 'center',
+							gap: '0.5rem',
+							flexWrap: 'wrap',
+						}}
+					>
+						{scenario.name}
+						<span
+							style={{
+								padding: '0.1rem 0.5rem',
+								borderRadius: '999px',
+								fontSize: '0.65rem',
+								fontWeight: 700,
+								background: pill.bg,
+								color: pill.color,
+								textTransform: 'uppercase',
+								letterSpacing: '0.04em',
+							}}
+						>
+							{scenario.status}
+						</span>
+					</div>
+					<div
+						style={{
+							fontSize: '0.78rem',
+							color: 'var(--text-secondary)',
+							marginTop: '0.2rem',
+							lineHeight: 1.5,
+						}}
+					>
+						{scenario.description}
+					</div>
+					<div
+						style={{
+							fontSize: '0.7rem',
+							color: 'var(--text-secondary)',
+							marginTop: '0.25rem',
+						}}
+					>
+						{scenario.rounds} round
+						{scenario.rounds !== 1 ? 's' : ''} · Created{' '}
+						{new Date(scenario.created_at).toLocaleString()}
+					</div>
+				</div>
+			</div>
+
+			{/* Running log snippet */}
+			{scenario.status === 'running' && (
+				<div>
+					<button
+						onClick={() => setShowLog((v) => !v)}
+						style={{
+							background: 'none',
+							border: 'none',
+							cursor: 'pointer',
+							fontSize: '0.72rem',
+							color: 'var(--text-secondary)',
+							display: 'flex',
+							alignItems: 'center',
+							gap: '0.3rem',
+							padding: 0,
+							marginBottom: '0.35rem',
+						}}
+					>
+						{showLog ? (
+							<ChevronUp size={12} />
+						) : (
+							<ChevronDown size={12} />
+						)}
+						{showLog ? 'Hide' : 'Show'} live log
+					</button>
+					{showLog && (
+						<div
+							style={{
+								background: 'var(--primary)',
+								borderRadius: '6px',
+								padding: '0.6rem 0.75rem',
+								fontFamily: 'monospace',
+								fontSize: '0.72rem',
+								lineHeight: 1.6,
+								color: 'var(--primary-fixed)',
+								maxHeight: '120px',
+								overflowY: 'auto',
+							}}
+						>
+							{(liveLog || []).length === 0 ? (
+								<span style={{ color: '#8c7c6c' }}>
+									Waiting for events…
+								</span>
+							) : (
+								(liveLog || []).map((ev, i) => (
+									<div
+										key={i}
+										style={{
+											color:
+												ev.type === 'error'
+													? '#f87171'
+													: ev.type === 'done'
+														? '#4ade80'
+														: ev.type === 'round'
+															? '#fb923c'
+															: '#d4c8bc',
+										}}
+									>
+										› {ev.message}
+									</div>
+								))
+							)}
 						</div>
 					)}
 				</div>
 			)}
+
+			{/* Actions */}
+			<div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+				{(scenario.status === 'created' ||
+					scenario.status === 'error') && (
+					<button
+						className="btn"
+						onClick={() => onRun(scenario)}
+						style={{
+							display: 'flex',
+							alignItems: 'center',
+							gap: '0.35rem',
+							fontSize: '0.78rem',
+							padding: '0.45rem 0.85rem',
+						}}
+					>
+						<Play size={13} />
+						Run Scenario
+					</button>
+				)}
+				{scenario.status === 'completed' && (
+					<button
+						className="btn btn-secondary"
+						onClick={() => onGenerateReport(scenario)}
+						style={{
+							display: 'flex',
+							alignItems: 'center',
+							gap: '0.35rem',
+							fontSize: '0.78rem',
+							padding: '0.45rem 0.85rem',
+						}}
+					>
+						<FileText size={13} />
+						Generate Scenario Report
+					</button>
+				)}
+			</div>
+		</div>
+	);
+}
+
+// ─── Resimulate Modal ─────────────────────────────────────────────────────────
+function ResimulateModal({ sessionUuid, session, onClose, onSuccess }) {
+	const [seedInfo, setSeedInfo] = useState(null);
+	const [loadingInfo, setLoadingInfo] = useState(true);
+	const [rounds, setRounds] = useState(3);
+	const [agentSlider, setAgentSlider] = useState(0);
+	const [objective, setObjective] = useState('');
+	const [existingFiles, setExistingFiles] = useState([]);
+	const [filesToRemove, setFilesToRemove] = useState(new Set());
+	const [newFiles, setNewFiles] = useState([]);
+	const [submitting, setSubmitting] = useState(false);
+	const [error, setError] = useState(null);
+	const [dragging, setDragging] = useState(false);
+	const fileInputRef = useRef(null);
+
+	const getAgentCount = (v) => [0, 50, 150, 300, 500][v];
+	const isFailed = session?.status === 'error';
+
+	useEffect(() => {
+		api.get(`/simulation/seed-info/${sessionUuid}`)
+			.then((res) => {
+				setSeedInfo(res.data);
+				setRounds(res.data.rounds || 3);
+				setObjective(res.data.objective || '');
+				setExistingFiles(res.data.files || []);
+			})
+			.catch(() => {})
+			.finally(() => setLoadingInfo(false));
+	}, [sessionUuid]);
+
+	const toggleRemove = (fname) => {
+		setFilesToRemove((prev) => {
+			const next = new Set(prev);
+			next.has(fname) ? next.delete(fname) : next.add(fname);
+			return next;
+		});
+	};
+
+	const keptCount =
+		existingFiles.filter((f) => !filesToRemove.has(f)).length +
+		newFiles.length;
+
+	const handleDrop = (e) => {
+		e.preventDefault();
+		setDragging(false);
+		const dropped = Array.from(e.dataTransfer.files);
+		if (dropped.length) setNewFiles((prev) => [...prev, ...dropped]);
+	};
+
+	const handleSubmit = async () => {
+		if (keptCount === 0) {
+			setError('At least one seed file is required.');
+			return;
+		}
+		setSubmitting(true);
+		setError(null);
+		try {
+			const formData = new FormData();
+			formData.append('rounds', rounds);
+			const agentCount = getAgentCount(agentSlider);
+			if (agentCount > 0) formData.append('agent_count', agentCount);
+			if (objective.trim())
+				formData.append('objective', objective.trim());
+			if (filesToRemove.size > 0)
+				formData.append(
+					'remove_files',
+					JSON.stringify(Array.from(filesToRemove)),
+				);
+			newFiles.forEach((f) => formData.append('add_files', f));
+			await api.post(`/simulation/resimulate/${sessionUuid}`, formData, {
+				headers: { 'Content-Type': 'multipart/form-data' },
+			});
+			onSuccess();
+		} catch (err) {
+			setError(
+				err?.response?.data?.detail ||
+					'Resimulate failed. See console.',
+			);
+			console.error(err);
+		} finally {
+			setSubmitting(false);
+		}
+	};
+
+	return (
+		<div
+			style={{
+				position: 'fixed',
+				inset: 0,
+				background: 'rgba(0,0,0,0.50)',
+				display: 'flex',
+				alignItems: 'center',
+				justifyContent: 'center',
+				zIndex: 1000,
+				padding: '1rem',
+			}}
+			onClick={(e) => {
+				if (e.target === e.currentTarget) onClose();
+			}}
+		>
+			<div
+				style={{
+					background: 'var(--surface)',
+					borderRadius: '14px',
+					padding: '2rem',
+					width: '100%',
+					maxWidth: '600px',
+					maxHeight: '90vh',
+					overflowY: 'auto',
+					display: 'flex',
+					flexDirection: 'column',
+					gap: '1.25rem',
+					boxShadow: '0 8px 32px rgba(0,0,0,0.25)',
+					border: '1px solid var(--outline-variant)',
+				}}
+			>
+				{/* Header */}
+				<div
+					style={{
+						display: 'flex',
+						alignItems: 'center',
+						justifyContent: 'space-between',
+					}}
+				>
+					<div
+						style={{
+							display: 'flex',
+							alignItems: 'center',
+							gap: '0.6rem',
+						}}
+					>
+						<RefreshCw
+							size={20}
+							color={isFailed ? '#d97706' : 'var(--accent-color)'}
+						/>
+						<h3 style={{ margin: 0, fontSize: '1rem' }}>
+							Resimulate
+						</h3>
+					</div>
+					<button
+						onClick={onClose}
+						style={{
+							background: 'none',
+							border: 'none',
+							cursor: 'pointer',
+							color: 'var(--text-secondary)',
+							display: 'flex',
+							alignItems: 'center',
+							padding: '0.25rem',
+							borderRadius: '6px',
+						}}
+					>
+						<X size={18} />
+					</button>
+				</div>
+
+				{/* Warning banner */}
+				<div
+					style={{
+						background: isFailed ? '#fef3c7' : '#eff6ff',
+						border: `1px solid ${isFailed ? '#fcd34d' : '#bfdbfe'}`,
+						borderRadius: '10px',
+						padding: '0.85rem 1rem',
+						fontSize: '0.82rem',
+						color: isFailed ? '#92400e' : '#1e40af',
+						lineHeight: 1.5,
+					}}
+				>
+					{isFailed
+						? '⚠️ The previous simulation failed. This will clear all generated data and retry with the settings below.'
+						: 'This will permanently clear all posts, reports, scenarios, and generated data for this simulation and re-run it from scratch. Your seed files will be preserved unless you change them below.'}
+				</div>
+
+				{loadingInfo ? (
+					<p
+						style={{
+							color: 'var(--text-secondary)',
+							fontSize: '0.85rem',
+						}}
+					>
+						Loading current configuration…
+					</p>
+				) : (
+					<>
+						{/* Seed files */}
+						<div
+							style={{
+								display: 'flex',
+								flexDirection: 'column',
+								gap: '0.5rem',
+							}}
+						>
+							<label
+								style={{
+									fontSize: '0.78rem',
+									fontWeight: 600,
+									color: 'var(--text-secondary)',
+									textTransform: 'uppercase',
+									letterSpacing: '0.05em',
+								}}
+							>
+								Seed Files
+							</label>
+
+							{existingFiles.length > 0 && (
+								<div
+									style={{
+										display: 'flex',
+										flexDirection: 'column',
+										gap: '0.3rem',
+									}}
+								>
+									{existingFiles.map((fname) => (
+										<div
+											key={fname}
+											style={{
+												display: 'flex',
+												alignItems: 'center',
+												justifyContent: 'space-between',
+												padding: '0.45rem 0.65rem',
+												background: filesToRemove.has(
+													fname,
+												)
+													? '#fee2e2'
+													: 'var(--surface-container-high)',
+												borderRadius: '8px',
+												fontSize: '0.82rem',
+												textDecoration:
+													filesToRemove.has(fname)
+														? 'line-through'
+														: 'none',
+												color: filesToRemove.has(fname)
+													? '#dc2626'
+													: 'var(--text-primary)',
+												transition: 'all 0.15s',
+											}}
+										>
+											<span
+												style={{
+													wordBreak: 'break-all',
+												}}
+											>
+												{fname}
+											</span>
+											<button
+												onClick={() =>
+													toggleRemove(fname)
+												}
+												title={
+													filesToRemove.has(fname)
+														? 'Keep this file'
+														: 'Remove this file'
+												}
+												style={{
+													background: 'none',
+													border: 'none',
+													cursor: 'pointer',
+													color: filesToRemove.has(
+														fname,
+													)
+														? '#16a34a'
+														: '#dc2626',
+													display: 'flex',
+													alignItems: 'center',
+													flexShrink: 0,
+													marginLeft: '0.5rem',
+													padding: '0.15rem',
+												}}
+											>
+												{filesToRemove.has(fname) ? (
+													<Plus size={14} />
+												) : (
+													<X size={14} />
+												)}
+											</button>
+										</div>
+									))}
+								</div>
+							)}
+
+							{/* Drop zone for adding new files */}
+							<div
+								onDrop={handleDrop}
+								onDragOver={(e) => {
+									e.preventDefault();
+									setDragging(true);
+								}}
+								onDragLeave={() => setDragging(false)}
+								onClick={() => fileInputRef.current?.click()}
+								style={{
+									border: `2px dashed ${dragging ? 'var(--accent-color)' : 'var(--outline-variant)'}`,
+									borderRadius: '10px',
+									padding: '1rem',
+									textAlign: 'center',
+									cursor: 'pointer',
+									background: dragging
+										? 'var(--surface-container-low)'
+										: 'transparent',
+									transition: 'all 0.15s ease',
+									fontSize: '0.8rem',
+									color: 'var(--text-secondary)',
+								}}
+							>
+								{newFiles.length > 0 ? (
+									<span
+										style={{
+											fontWeight: 500,
+											color: 'var(--on-surface)',
+										}}
+									>
+										+ {newFiles.length} new file
+										{newFiles.length > 1 ? 's' : ''} to add
+									</span>
+								) : (
+									'Drop files here or click to add more seed files'
+								)}
+								<input
+									ref={fileInputRef}
+									type="file"
+									multiple
+									style={{ display: 'none' }}
+									onChange={(e) =>
+										setNewFiles((prev) => [
+											...prev,
+											...Array.from(e.target.files),
+										])
+									}
+								/>
+							</div>
+
+							{keptCount === 0 && (
+								<p
+									style={{
+										fontSize: '0.75rem',
+										color: '#dc2626',
+										margin: 0,
+									}}
+								>
+									At least one seed file is required.
+								</p>
+							)}
+						</div>
+
+						{/* Rounds */}
+						<div
+							style={{
+								display: 'flex',
+								flexDirection: 'column',
+								gap: '0.4rem',
+							}}
+						>
+							<label
+								style={{
+									fontSize: '0.78rem',
+									fontWeight: 600,
+									color: 'var(--text-secondary)',
+									textTransform: 'uppercase',
+									letterSpacing: '0.05em',
+								}}
+							>
+								Iterations / Rounds
+							</label>
+							<input
+								type="number"
+								min="1"
+								max="100"
+								className="input-field"
+								value={rounds}
+								onChange={(e) =>
+									setRounds(Number(e.target.value))
+								}
+							/>
+						</div>
+
+						{/* Agent slider */}
+						<div
+							style={{
+								display: 'flex',
+								flexDirection: 'column',
+								gap: '0.4rem',
+							}}
+						>
+							<label
+								style={{
+									fontSize: '0.78rem',
+									fontWeight: 600,
+									color: 'var(--text-secondary)',
+									textTransform: 'uppercase',
+									letterSpacing: '0.05em',
+								}}
+							>
+								Force Add Agents
+							</label>
+							<input
+								type="range"
+								min="0"
+								max="4"
+								step="1"
+								value={agentSlider}
+								onChange={(e) =>
+									setAgentSlider(Number(e.target.value))
+								}
+								style={{ width: '100%', cursor: 'pointer' }}
+							/>
+							<div
+								style={{
+									display: 'flex',
+									justifyContent: 'space-between',
+									fontSize: '0.7rem',
+									color: 'var(--text-secondary)',
+								}}
+							>
+								{['Natural', '50', '150', '300', '500'].map(
+									(label, i) => (
+										<span
+											key={label}
+											style={{
+												fontWeight:
+													agentSlider === i
+														? 600
+														: 400,
+											}}
+										>
+											{label}
+										</span>
+									),
+								)}
+							</div>
+							<div
+								style={{
+									textAlign: 'center',
+									fontSize: '0.8rem',
+									fontWeight: 600,
+									color: 'var(--accent-color)',
+								}}
+							>
+								{agentSlider === 0
+									? 'Generate naturally from input'
+									: `Force inflate to ${getAgentCount(agentSlider)} agents`}
+							</div>
+						</div>
+
+						{/* Objective */}
+						<div
+							style={{
+								display: 'flex',
+								flexDirection: 'column',
+								gap: '0.4rem',
+							}}
+						>
+							<label
+								style={{
+									fontSize: '0.78rem',
+									fontWeight: 600,
+									color: 'var(--text-secondary)',
+									textTransform: 'uppercase',
+									letterSpacing: '0.05em',
+								}}
+							>
+								Investigation Objective{' '}
+								<span
+									style={{
+										fontWeight: 400,
+										textTransform: 'none',
+									}}
+								>
+									(optional)
+								</span>
+							</label>
+							<textarea
+								className="input-field"
+								placeholder="e.g. Understand how employees react to a 20% salary cut"
+								value={objective}
+								onChange={(e) => setObjective(e.target.value)}
+								rows={2}
+								style={{
+									resize: 'vertical',
+									fontFamily: 'inherit',
+									lineHeight: 1.5,
+								}}
+							/>
+						</div>
+					</>
+				)}
+
+				{error && (
+					<p
+						style={{
+							margin: 0,
+							fontSize: '0.82rem',
+							color: '#dc2626',
+							background: '#fee2e2',
+							padding: '0.6rem 0.85rem',
+							borderRadius: '8px',
+						}}
+					>
+						{error}
+					</p>
+				)}
+
+				{/* Actions */}
+				<div
+					style={{
+						display: 'flex',
+						gap: '0.75rem',
+						justifyContent: 'flex-end',
+					}}
+				>
+					<button
+						onClick={onClose}
+						disabled={submitting}
+						style={{
+							padding: '0.55rem 1.1rem',
+							borderRadius: '8px',
+							border: '1px solid var(--outline-variant)',
+							background: 'transparent',
+							cursor: 'pointer',
+							fontSize: '0.85rem',
+							color: 'var(--text-secondary)',
+						}}
+					>
+						Cancel
+					</button>
+					<button
+						onClick={handleSubmit}
+						disabled={submitting || loadingInfo || keptCount === 0}
+						style={{
+							padding: '0.55rem 1.25rem',
+							borderRadius: '8px',
+							border: 'none',
+							background: isFailed
+								? '#d97706'
+								: 'var(--accent-color)',
+							color: '#fff',
+							fontWeight: 700,
+							cursor:
+								submitting || loadingInfo || keptCount === 0
+									? 'not-allowed'
+									: 'pointer',
+							fontSize: '0.85rem',
+							display: 'flex',
+							alignItems: 'center',
+							gap: '0.4rem',
+							opacity:
+								submitting || loadingInfo || keptCount === 0
+									? 0.65
+									: 1,
+						}}
+					>
+						<RefreshCw size={14} />
+						{submitting ? 'Starting…' : 'Resimulate'}
+					</button>
+				</div>
+			</div>
 		</div>
 	);
 }
@@ -1112,6 +2155,213 @@ function CreateReportModal({ sessionId, onClose, onCreated }) {
 	);
 }
 
+// ─── Scenario Report Modal ────────────────────────────────────────────────────
+function ScenarioReportModal({ scenario, onClose, onCreated }) {
+	const [description, setDescription] = useState('');
+	const [generating, setGenerating] = useState(false);
+	const [error, setError] = useState(null);
+
+	const handleSubmit = async (e) => {
+		e.preventDefault();
+		if (!description.trim()) return;
+		setGenerating(true);
+		setError(null);
+		try {
+			const res = await api.post(
+				`/scenarios/${scenario.scenario_id}/report`,
+				{
+					description: description.trim(),
+				},
+			);
+			onCreated(res.data);
+			onClose();
+		} catch (err) {
+			setError(
+				err?.response?.data?.detail ||
+					'Failed to generate scenario report.',
+			);
+		} finally {
+			setGenerating(false);
+		}
+	};
+
+	return (
+		<div
+			style={{
+				position: 'fixed',
+				inset: 0,
+				background: 'rgba(0,0,0,0.45)',
+				display: 'flex',
+				alignItems: 'center',
+				justifyContent: 'center',
+				zIndex: 1000,
+				padding: '1rem',
+			}}
+			onClick={(e) => {
+				if (e.target === e.currentTarget) onClose();
+			}}
+		>
+			<div
+				style={{
+					background: 'var(--surface)',
+					borderRadius: '14px',
+					padding: '2rem',
+					width: '100%',
+					maxWidth: '560px',
+					display: 'flex',
+					flexDirection: 'column',
+					gap: '1.25rem',
+					boxShadow: '0 8px 32px rgba(0,0,0,0.22)',
+					border: '1px solid var(--outline-variant)',
+				}}
+			>
+				<div
+					style={{
+						display: 'flex',
+						alignItems: 'center',
+						justifyContent: 'space-between',
+					}}
+				>
+					<div
+						style={{
+							display: 'flex',
+							alignItems: 'center',
+							gap: '0.6rem',
+						}}
+					>
+						<FileText
+							size={20}
+							color="var(--accent-color)"
+						/>
+						<h3 style={{ margin: 0, fontSize: '1rem' }}>
+							Generate Scenario Report
+						</h3>
+					</div>
+					<button
+						onClick={onClose}
+						style={{
+							background: 'none',
+							border: 'none',
+							cursor: 'pointer',
+							color: 'var(--text-secondary)',
+							display: 'flex',
+							padding: '0.25rem',
+							borderRadius: '6px',
+						}}
+					>
+						<X size={18} />
+					</button>
+				</div>
+				<div
+					style={{
+						padding: '0.65rem 0.85rem',
+						background: 'rgba(37,99,235,0.06)',
+						border: '1px solid rgba(37,99,235,0.15)',
+						borderRadius: '8px',
+						fontSize: '0.82rem',
+						color: 'var(--accent-color)',
+					}}
+				>
+					<strong>Scenario:</strong> {scenario.name} —{' '}
+					{scenario.description}
+				</div>
+				<p
+					style={{
+						margin: 0,
+						fontSize: '0.85rem',
+						color: 'var(--text-secondary)',
+						lineHeight: 1.6,
+					}}
+				>
+					Describe what you want the report to focus on. The agent
+					will analyse how this scenario changes dynamics, what
+					improved or worsened, and how real-world users might react.
+				</p>
+				<form
+					onSubmit={handleSubmit}
+					style={{
+						display: 'flex',
+						flexDirection: 'column',
+						gap: '1rem',
+					}}
+				>
+					<textarea
+						className="input-field"
+						value={description}
+						onChange={(e) => setDescription(e.target.value)}
+						placeholder="e.g. How does this scenario shift power dynamics? What narratives emerge? How might the public react?"
+						rows={4}
+						disabled={generating}
+						style={{
+							resize: 'vertical',
+							fontFamily: 'inherit',
+							fontSize: '0.88rem',
+							lineHeight: 1.6,
+						}}
+					/>
+					{error && (
+						<div
+							style={{
+								padding: '0.65rem 0.85rem',
+								background: 'rgba(220,38,38,0.08)',
+								border: '1px solid rgba(220,38,38,0.2)',
+								borderRadius: '8px',
+								color: 'var(--danger-color)',
+								fontSize: '0.82rem',
+							}}
+						>
+							{error}
+						</div>
+					)}
+					<div
+						style={{
+							display: 'flex',
+							gap: '0.75rem',
+							justifyContent: 'flex-end',
+						}}
+					>
+						<button
+							type="button"
+							className="btn btn-secondary"
+							onClick={onClose}
+							disabled={generating}
+						>
+							Cancel
+						</button>
+						<button
+							type="submit"
+							className="btn"
+							disabled={generating || !description.trim()}
+							style={{
+								display: 'flex',
+								alignItems: 'center',
+								gap: '0.45rem',
+							}}
+						>
+							{generating ? (
+								<>
+									<RefreshCw
+										size={14}
+										style={{
+											animation:
+												'spin 1.4s linear infinite',
+										}}
+									/>{' '}
+									Generating…
+								</>
+							) : (
+								<>
+									<FileText size={14} /> Generate Report
+								</>
+							)}
+						</button>
+					</div>
+				</form>
+			</div>
+		</div>
+	);
+}
+
 // ─── Main view ────────────────────────────────────────────────────────────────
 export default function SessionView() {
 	const { id } = useParams();
@@ -1126,10 +2376,19 @@ export default function SessionView() {
 		agents: [],
 		graph: { entities: {}, relations: [] },
 	});
-	const [activeTab, setActiveTab] = useState('graph');
+	const [activeTab, setActiveTab] = useState('feed');
 	const [dbEvents, setDbEvents] = useState([]);
 	const [showReportModal, setShowReportModal] = useState(false);
+	const [showResimulateModal, setShowResimulateModal] = useState(false);
 	const [reportsCount, setReportsCount] = useState(0);
+
+	// Scenario state
+	const [scenarios, setScenarios] = useState([]);
+	const [showCreateScenario, setShowCreateScenario] = useState(false);
+	const [selectedPill, setSelectedPill] = useState('main'); // 'main' or scenario_id
+	const [scenarioLiveLogs, setScenarioLiveLogs] = useState({}); // { scenario_uuid: [...events] }
+	const [scenarioReportTarget, setScenarioReportTarget] = useState(null);
+
 	const messagesEndRef = useRef(null);
 	const logEndRef = useRef(null);
 	const { setSessionNav } = useSidebar();
@@ -1143,14 +2402,19 @@ export default function SessionView() {
 			agentCount,
 			relationCount,
 			reportsCount,
+			scenariosCount: scenarios.length,
 			session,
 			onCreateReport:
 				session?.status === 'completed'
 					? () => setShowReportModal(true)
 					: null,
+			onResimulate:
+				session?.status === 'completed' || session?.status === 'error'
+					? () => setShowResimulateModal(true)
+					: null,
 		});
 		return () => setSessionNav(null);
-	}, [activeTab, artifacts, session, reportsCount]);
+	}, [activeTab, artifacts, session, reportsCount, scenarios]);
 
 	useEffect(() => {
 		fetchData();
@@ -1163,7 +2427,9 @@ export default function SessionView() {
 	useEffect(() => {
 		if (session?.status !== 'running') return;
 		const token = localStorage.getItem('token');
-		const url = `http://localhost:8000/api/simulation/stream/${id}?token=${encodeURIComponent(token)}`;
+		const base =
+			import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
+		const url = `${base}/simulation/stream/${id}?token=${encodeURIComponent(token)}`;
 		const es = new EventSource(url);
 		es.onmessage = (e) => {
 			try {
@@ -1209,12 +2475,71 @@ export default function SessionView() {
 				} catch {
 					/* non-fatal */
 				}
+				// Fetch scenarios
+				try {
+					const scenRes = await api.get(`/scenarios/session/${id}`);
+					setScenarios(scenRes.data || []);
+				} catch {
+					/* non-fatal */
+				}
 			}
 		} catch (err) {
 			console.error(err);
 		} finally {
 			if (showLoader) setLoading(false);
 		}
+	};
+
+	const fetchScenarios = async () => {
+		try {
+			const res = await api.get(`/scenarios/session/${id}`);
+			setScenarios(res.data || []);
+		} catch {
+			/* noop */
+		}
+	};
+
+	const handleRunScenario = async (scenario) => {
+		try {
+			await api.post(`/scenarios/${scenario.scenario_id}/run`);
+			// Update local state optimistically
+			setScenarios((prev) =>
+				prev.map((s) =>
+					s.scenario_id === scenario.scenario_id
+						? { ...s, status: 'running' }
+						: s,
+				),
+			);
+			// Start SSE stream
+			_startScenarioStream(scenario.scenario_id);
+		} catch (err) {
+			alert(err?.response?.data?.detail || 'Failed to run scenario.');
+		}
+	};
+
+	const _startScenarioStream = (scenarioId) => {
+		const token = localStorage.getItem('token');
+		const base =
+			import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
+		const url = `${base}/scenarios/${scenarioId}/stream?token=${encodeURIComponent(token)}`;
+		const es = new EventSource(url);
+		es.onmessage = (e) => {
+			try {
+				const ev = JSON.parse(e.data);
+				setScenarioLiveLogs((prev) => ({
+					...prev,
+					[scenarioId]: [...(prev[scenarioId] || []), ev],
+				}));
+				if (ev.type === 'done' || ev.type === 'error') {
+					es.close();
+					// Refresh scenarios list to get updated status
+					setTimeout(() => fetchScenarios(), 800);
+				}
+			} catch {
+				/* noop */
+			}
+		};
+		es.onerror = () => es.close();
 	};
 
 	const handleChat = async (e) => {
@@ -1230,11 +2555,27 @@ export default function SessionView() {
 		try {
 			const formData = new URLSearchParams();
 			formData.append('query', userQ);
-			const res = await api.post(`/simulation/chat/${id}`, formData, {
-				headers: {
-					'Content-Type': 'application/x-www-form-urlencoded',
-				},
-			});
+
+			let res;
+			if (selectedPill && selectedPill !== 'main') {
+				// Chat in scenario context
+				res = await api.post(
+					`/scenarios/${selectedPill}/chat`,
+					formData,
+					{
+						headers: {
+							'Content-Type': 'application/x-www-form-urlencoded',
+						},
+					},
+				);
+			} else {
+				// Chat with main simulation
+				res = await api.post(`/simulation/chat/${id}`, formData, {
+					headers: {
+						'Content-Type': 'application/x-www-form-urlencoded',
+					},
+				});
+			}
 			setMessages((prev) => [...prev, res.data]);
 		} catch (err) {
 			console.error(err);
@@ -1297,6 +2638,38 @@ export default function SessionView() {
 				/>
 			)}
 
+			{showResimulateModal && session && (
+				<ResimulateModal
+					sessionUuid={id}
+					session={session}
+					onClose={() => setShowResimulateModal(false)}
+					onSuccess={() => {
+						setShowResimulateModal(false);
+						fetchData();
+					}}
+				/>
+			)}
+
+			{showCreateScenario && session && (
+				<CreateScenarioModal
+					sessionId={id}
+					onClose={() => setShowCreateScenario(false)}
+					onCreated={(newScenario) => {
+						setScenarios((prev) => [...prev, newScenario]);
+					}}
+				/>
+			)}
+
+			{scenarioReportTarget && (
+				<ScenarioReportModal
+					scenario={scenarioReportTarget}
+					onClose={() => setScenarioReportTarget(null)}
+					onCreated={() => {
+						setScenarioReportTarget(null);
+					}}
+				/>
+			)}
+
 			{/* ── Split body ── */}
 			<div
 				style={{
@@ -1311,7 +2684,11 @@ export default function SessionView() {
 				{/* LEFT PANEL */}
 				<div
 					style={{
-						width: '42%',
+						width:
+							activeTab === 'insights' || activeTab === 'reports'
+								? '70%'
+								: '42%',
+						transition: 'width 0.3s ease',
 						flexShrink: 0,
 						display: 'flex',
 						flexDirection: 'column',
@@ -1447,24 +2824,224 @@ export default function SessionView() {
 								overflow: 'hidden',
 							}}
 						>
-							{/* Graph */}
-							{activeTab === 'graph' &&
-								(agents.length === 0 ? (
+							{/* ── Scenario pill bar (shown on feed tab and always) ── */}
+							{scenarios.length > 0 &&
+								(activeTab === 'feed' ||
+									activeTab === 'scenarios') && (
 									<div
 										style={{
-											textAlign: 'center',
-											color: 'var(--text-secondary)',
-											padding: '3rem 1rem',
+											display: 'flex',
+											gap: '0.4rem',
+											flexWrap: 'wrap',
+											alignItems: 'center',
 										}}
 									>
-										No agent or graph data available.
+										<Tag
+											size={13}
+											color="var(--text-secondary)"
+											style={{ flexShrink: 0 }}
+										/>
+										{/* Main pill */}
+										<button
+											onClick={() => {
+												setSelectedPill('main');
+												if (activeTab !== 'feed')
+													setActiveTab('feed');
+											}}
+											style={{
+												padding: '0.2rem 0.75rem',
+												borderRadius: '999px',
+												fontSize: '0.72rem',
+												fontWeight: 700,
+												border: `1.5px solid ${selectedPill === 'main' ? 'var(--accent-color)' : 'var(--outline-variant)'}`,
+												background:
+													selectedPill === 'main'
+														? 'var(--accent-color)'
+														: 'transparent',
+												color:
+													selectedPill === 'main'
+														? '#fff'
+														: 'var(--text-secondary)',
+												cursor: 'pointer',
+												transition: 'all 0.15s',
+											}}
+										>
+											Main
+										</button>
+										{/* Scenario pills */}
+										{scenarios.map((s) => (
+											<button
+												key={s.scenario_id}
+												onClick={() => {
+													setSelectedPill(
+														s.scenario_id,
+													);
+													if (activeTab !== 'feed')
+														setActiveTab('feed');
+												}}
+												title={s.description}
+												style={{
+													padding: '0.2rem 0.75rem',
+													borderRadius: '999px',
+													fontSize: '0.72rem',
+													fontWeight: 700,
+													border: `1.5px solid ${selectedPill === s.scenario_id ? '#7c3aed' : 'var(--outline-variant)'}`,
+													background:
+														selectedPill ===
+														s.scenario_id
+															? '#7c3aed'
+															: 'transparent',
+													color:
+														selectedPill ===
+														s.scenario_id
+															? '#fff'
+															: 'var(--text-secondary)',
+													cursor: 'pointer',
+													transition: 'all 0.15s',
+													opacity:
+														s.status !== 'completed'
+															? 0.5
+															: 1,
+												}}
+												disabled={
+													s.status !== 'completed'
+												}
+											>
+												{s.name}
+											</button>
+										))}
 									</div>
-								) : (
-									<ForceGraph
-										agents={agents}
-										graph={graph}
-									/>
-								))}
+								)}
+
+							{/* Feed */}
+							{activeTab === 'feed' && (
+								<SocialFeed
+									sessionId={id}
+									scenarioId={
+										selectedPill !== 'main'
+											? selectedPill
+											: null
+									}
+								/>
+							)}
+
+							{/* Scenarios panel */}
+							{activeTab === 'scenarios' && (
+								<div
+									style={{
+										display: 'flex',
+										flexDirection: 'column',
+										gap: '0.75rem',
+										flex: 1,
+										overflowY: 'auto',
+										paddingRight: '0.2rem',
+									}}
+								>
+									<div
+										style={{
+											display: 'flex',
+											alignItems: 'center',
+											justifyContent: 'space-between',
+											flexShrink: 0,
+										}}
+									>
+										<div
+											style={{
+												fontWeight: 700,
+												fontSize: '0.9rem',
+												display: 'flex',
+												alignItems: 'center',
+												gap: '0.4rem',
+											}}
+										>
+											<FlaskConical
+												size={16}
+												color="var(--accent-color)"
+											/>
+											Simulate a Scenario
+										</div>
+										<button
+											className="btn"
+											onClick={() =>
+												setShowCreateScenario(true)
+											}
+											style={{
+												display: 'flex',
+												alignItems: 'center',
+												gap: '0.35rem',
+												fontSize: '0.78rem',
+												padding: '0.45rem 0.85rem',
+											}}
+										>
+											<Plus size={13} />
+											New Scenario
+										</button>
+									</div>
+									<p
+										style={{
+											margin: 0,
+											fontSize: '0.8rem',
+											color: 'var(--text-secondary)',
+											lineHeight: 1.6,
+										}}
+									>
+										Create "what-if" scenarios that extend
+										the current simulation from its
+										completed state. Each scenario lets
+										agents react to a new hypothetical
+										situation.
+									</p>
+									{scenarios.length === 0 && (
+										<div
+											style={{
+												textAlign: 'center',
+												color: 'var(--text-secondary)',
+												padding: '2.5rem 1rem',
+											}}
+										>
+											<FlaskConical
+												size={28}
+												style={{
+													marginBottom: '0.5rem',
+													opacity: 0.35,
+												}}
+											/>
+											<div
+												style={{
+													fontWeight: 600,
+													fontSize: '0.85rem',
+												}}
+											>
+												No scenarios yet
+											</div>
+											<div
+												style={{
+													fontSize: '0.75rem',
+													marginTop: '0.25rem',
+												}}
+											>
+												Click "New Scenario" to create
+												your first what-if scenario.
+											</div>
+										</div>
+									)}
+									{scenarios.map((s) => (
+										<ScenarioCard
+											key={s.scenario_id}
+											scenario={s}
+											onRun={handleRunScenario}
+											onGenerateReport={(sc) =>
+												setScenarioReportTarget(sc)
+											}
+											liveLog={
+												scenarioLiveLogs[
+													s.scenario_id
+												] || []
+											}
+										/>
+									))}
+								</div>
+							)}
 
 							{/* Agents */}
 							{activeTab === 'agents' && (
@@ -1854,6 +3431,26 @@ export default function SessionView() {
 									onCountChange={setReportsCount}
 								/>
 							)}
+
+							{activeTab === 'insights' && (
+								<div
+									style={{
+										flex: 1,
+										minHeight: 0,
+										overflowY: 'auto',
+										paddingRight: '0.2rem',
+									}}
+								>
+									<InsightsDashboard
+										sessionId={
+											selectedPill !== 'main'
+												? selectedPill
+												: id
+										}
+										isScenario={selectedPill !== 'main'}
+									/>
+								</div>
+							)}
 						</div>
 					)}
 				</div>
@@ -1905,11 +3502,94 @@ export default function SessionView() {
 								flex: 1,
 								minHeight: '480px',
 								background: 'var(--surface-container-lowest)',
-								border: '1px solid var(--outline-variant)',
+								border: `1px solid ${selectedPill && selectedPill !== 'main' ? 'rgba(124,58,237,0.35)' : 'var(--outline-variant)'}`,
 								borderRadius: '12px',
 								overflow: 'hidden',
 							}}
 						>
+							{/* Scenario pill context header */}
+							{scenarios.length > 0 && (
+								<div
+									style={{
+										padding: '0.6rem 1rem',
+										borderBottom:
+											'1px solid var(--outline-variant)',
+										background:
+											'var(--surface-container-low)',
+										display: 'flex',
+										gap: '0.4rem',
+										flexWrap: 'wrap',
+										alignItems: 'center',
+									}}
+								>
+									<span
+										style={{
+											fontSize: '0.7rem',
+											fontWeight: 600,
+											color: 'var(--text-secondary)',
+											marginRight: '0.2rem',
+										}}
+									>
+										Chat context:
+									</span>
+									<button
+										onClick={() => setSelectedPill('main')}
+										style={{
+											padding: '0.15rem 0.6rem',
+											borderRadius: '999px',
+											fontSize: '0.7rem',
+											fontWeight: 700,
+											border: `1.5px solid ${selectedPill === 'main' ? 'var(--accent-color)' : 'var(--outline-variant)'}`,
+											background:
+												selectedPill === 'main'
+													? 'var(--accent-color)'
+													: 'transparent',
+											color:
+												selectedPill === 'main'
+													? '#fff'
+													: 'var(--text-secondary)',
+											cursor: 'pointer',
+											transition: 'all 0.15s',
+										}}
+									>
+										Main
+									</button>
+									{scenarios
+										.filter((s) => s.status === 'completed')
+										.map((s) => (
+											<button
+												key={s.scenario_id}
+												onClick={() =>
+													setSelectedPill(
+														s.scenario_id,
+													)
+												}
+												title={s.description}
+												style={{
+													padding: '0.15rem 0.6rem',
+													borderRadius: '999px',
+													fontSize: '0.7rem',
+													fontWeight: 700,
+													border: `1.5px solid ${selectedPill === s.scenario_id ? '#7c3aed' : 'var(--outline-variant)'}`,
+													background:
+														selectedPill ===
+														s.scenario_id
+															? '#7c3aed'
+															: 'transparent',
+													color:
+														selectedPill ===
+														s.scenario_id
+															? '#fff'
+															: 'var(--text-secondary)',
+													cursor: 'pointer',
+													transition: 'all 0.15s',
+												}}
+											>
+												{s.name}
+											</button>
+										))}
+								</div>
+							)}
 							<div
 								style={{
 									flex: 1,
@@ -1990,7 +3670,11 @@ export default function SessionView() {
 									className="input-field"
 									value={query}
 									onChange={(e) => setQuery(e.target.value)}
-									placeholder="Ask a question about the simulation…"
+									placeholder={
+										selectedPill && selectedPill !== 'main'
+											? `Ask about scenario: ${scenarios.find((s) => s.scenario_id === selectedPill)?.name || ''}…`
+											: 'Ask a question about the simulation…'
+									}
 									disabled={chatLoading}
 									style={{ flex: 1 }}
 								/>
@@ -1998,7 +3682,15 @@ export default function SessionView() {
 									type="submit"
 									className="btn"
 									disabled={chatLoading}
-									style={{ padding: '0.7rem', flexShrink: 0 }}
+									style={{
+										padding: '0.7rem',
+										flexShrink: 0,
+										background:
+											selectedPill &&
+											selectedPill !== 'main'
+												? '#7c3aed'
+												: undefined,
+									}}
 								>
 									<Send size={18} />
 								</button>

@@ -16,16 +16,30 @@ export default function Home() {
 	const [sessions, setSessions] = useState([]);
 	const [loading, setLoading] = useState(true);
 	const [title, setTitle] = useState('');
+	const [objective, setObjective] = useState('');
 	const [files, setFiles] = useState([]);
 	const [rounds, setRounds] = useState(3);
+	const [agentSlider, setAgentSlider] = useState(0); // 0-4, default 0 (natural agent generation)
 	const [uploading, setUploading] = useState(false);
 	const [dragging, setDragging] = useState(false);
 	const fileInputRef = useRef(null);
 	const navigate = useNavigate();
 
+	const [appVersion, setAppVersion] = useState('');
+
 	useEffect(() => {
 		fetchSessions();
+		api.get('/version')
+			.then((res) => setAppVersion(res.data.version))
+			.catch(() => {});
 	}, []);
+
+	// Map slider position (0-4) to agent count
+	// 0 = natural generation (no forced inflation)
+	const getAgentCount = (sliderValue) => {
+		const counts = [0, 50, 150, 300, 500];
+		return counts[sliderValue];
+	};
 
 	const fetchSessions = async () => {
 		try {
@@ -47,7 +61,13 @@ export default function Home() {
 		try {
 			const formData = new FormData();
 			formData.append('rounds', rounds);
+			const agentCount = getAgentCount(agentSlider);
+			if (agentCount > 0) {
+				formData.append('agent_count', agentCount);
+			}
 			if (title.trim()) formData.append('title', title.trim());
+			if (objective.trim())
+				formData.append('objective', objective.trim());
 			Array.from(files).forEach((file) => {
 				formData.append('files', file);
 			});
@@ -431,6 +451,49 @@ export default function Home() {
 							/>
 						</div>
 
+						{/* Objective */}
+						<div
+							className="form-group"
+							style={{ margin: 0 }}
+						>
+							<label className="form-label">
+								Investigation Objective{' '}
+								<span
+									style={{
+										fontWeight: 400,
+										color: 'var(--text-secondary)',
+										fontSize: '0.78rem',
+									}}
+								>
+									(optional)
+								</span>
+							</label>
+							<textarea
+								className="input-field"
+								placeholder="e.g. Understand how employees react to a 20% salary cut"
+								value={objective}
+								onChange={(e) => setObjective(e.target.value)}
+								rows={2}
+								style={{
+									resize: 'vertical',
+									fontFamily: 'inherit',
+									lineHeight: 1.5,
+								}}
+							/>
+							<p
+								style={{
+									fontSize: '0.72rem',
+									color: 'var(--text-secondary)',
+									margin: '0.3rem 0 0',
+									lineHeight: 1.4,
+								}}
+							>
+								The AI will generate targeted questions from
+								this objective and answer them after the
+								simulation.
+							</p>
+						</div>
+
 						{/* Drop zone */}
 						<div
 							className="form-group"
@@ -529,6 +592,67 @@ export default function Home() {
 							/>
 						</div>
 
+						{/* Agent Count Slider */}
+						<div
+							className="form-group"
+							style={{ margin: 0 }}
+						>
+							<label className="form-label">
+								Force Add Agents
+							</label>
+							<div style={{ paddingTop: '0.5rem' }}>
+								<input
+									type="range"
+									min="0"
+									max="4"
+									step="1"
+									value={agentSlider}
+									onChange={(e) =>
+										setAgentSlider(Number(e.target.value))
+									}
+									style={{
+										width: '100%',
+										cursor: 'pointer',
+									}}
+								/>
+								<div
+									style={{
+										display: 'flex',
+										justifyContent: 'space-between',
+										marginTop: '0.4rem',
+										fontSize: '0.7rem',
+										color: 'var(--text-secondary)',
+									}}
+								>
+									<span
+										style={{
+											fontWeight:
+												agentSlider === 0 ? 600 : 400,
+										}}
+									>
+										Natural
+									</span>
+									<span>50</span>
+									<span>150</span>
+									<span>300</span>
+									<span>500</span>
+								</div>
+								<div
+									style={{
+										marginTop: '0.5rem',
+										textAlign: 'center',
+										fontSize: '0.82rem',
+										fontWeight: 600,
+										color: 'var(--accent-color)',
+									}}
+								>
+									{agentSlider === 0
+										? 'Generate naturally from input'
+										: `Force inflate to ${getAgentCount(agentSlider)} agents`}
+								</div>
+							</div>
+						</div>
+
 						{/* Submit */}
 						<button
 							type="submit"
@@ -560,8 +684,8 @@ export default function Home() {
 					<p style={{ margin: 0, fontWeight: 600 }}>
 						Created by StaticaLabs Internal
 					</p>
-					<p style={{ margin: 0 }}>angelmacwan@staticalabs.com</p>
-					<p>ALPHA</p>
+					<p>angelmacwan@staticalabs.com</p>
+					<p style={{ margin: 0 }}>{appVersion || 'loading...'}</p>
 				</div>
 			</aside>
 		</div>

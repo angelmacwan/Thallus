@@ -16,6 +16,8 @@ class User(Base):
     sessions = relationship("Session", back_populates="owner")
     logs = relationship("ActionLog", back_populates="user")
     reports = relationship("Report", back_populates="owner")
+    scenarios = relationship("Scenario", back_populates="owner")
+    insights = relationship("InsightRecord", back_populates="owner")
 
 
 class Session(Base):
@@ -35,6 +37,8 @@ class Session(Base):
     chat_messages = relationship("ChatMessage", back_populates="session")
     events = relationship("SimulationEvent", back_populates="session", order_by="SimulationEvent.id")
     reports = relationship("Report", back_populates="session")
+    scenarios = relationship("Scenario", back_populates="session")
+    insights = relationship("InsightRecord", back_populates="session", foreign_keys="InsightRecord.session_id")
 
 
 class ActionLog(Base):
@@ -73,6 +77,15 @@ class SimulationEvent(Base):
     session = relationship("Session", back_populates="events")
 
 
+class UnauthorizedRegisterAttempt(Base):
+    __tablename__ = "unauthorized_register_attempts"
+
+    id = Column(Integer, primary_key=True, index=True)
+    email = Column(String, index=True)
+    timestamp = Column(DateTime, default=datetime.utcnow)
+    ip_address = Column(String, nullable=True)
+
+
 class Report(Base):
     __tablename__ = "reports"
 
@@ -85,5 +98,74 @@ class Report(Base):
     file_path = Column(String)       # absolute-ish path to the .md file on disk
     created_at = Column(DateTime, default=datetime.utcnow)
 
+    scenario_id = Column(Integer, ForeignKey("scenarios.id"), nullable=True)
+    is_scenario_report = Column(Boolean, default=False)
+
     session = relationship("Session", back_populates="reports")
     owner = relationship("User", back_populates="reports")
+    scenario = relationship("Scenario", back_populates="reports", foreign_keys=[scenario_id])
+
+
+class Scenario(Base):
+    __tablename__ = "scenarios"
+
+    id = Column(Integer, primary_key=True, index=True)
+    scenario_id = Column(String, unique=True, index=True, default=lambda: str(uuid.uuid4()))
+    session_id = Column(Integer, ForeignKey("sessions.id"))
+    user_id = Column(Integer, ForeignKey("users.id"))
+    name = Column(String)
+    description = Column(Text)
+    rounds = Column(Integer, default=1)
+    status = Column(String, default="created")  # created, running, completed, error
+    outputs_path = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    session = relationship("Session", back_populates="scenarios")
+    owner = relationship("User", back_populates="scenarios")
+    chat_messages = relationship("ScenarioChatMessage", back_populates="scenario")
+    events = relationship("ScenarioEvent", back_populates="scenario", order_by="ScenarioEvent.id")
+    reports = relationship("Report", back_populates="scenario", foreign_keys="Report.scenario_id")
+    insights = relationship("InsightRecord", back_populates="scenario", foreign_keys="InsightRecord.scenario_id")
+
+
+class ScenarioChatMessage(Base):
+    __tablename__ = "scenario_chat_messages"
+
+    id = Column(Integer, primary_key=True, index=True)
+    scenario_id = Column(Integer, ForeignKey("scenarios.id"))
+    is_user = Column(Boolean)
+    text = Column(Text)
+    timestamp = Column(DateTime, default=datetime.utcnow)
+
+    scenario = relationship("Scenario", back_populates="chat_messages")
+
+
+class ScenarioEvent(Base):
+    __tablename__ = "scenario_events"
+
+    id = Column(Integer, primary_key=True, index=True)
+    scenario_id = Column(Integer, ForeignKey("scenarios.id"))
+    type = Column(String)   # stage, agent, action, round, error, done
+    message = Column(Text)
+    timestamp = Column(DateTime, default=datetime.utcnow)
+
+    scenario = relationship("Scenario", back_populates="events")
+
+
+class InsightRecord(Base):
+    __tablename__ = "insight_records"
+
+    id = Column(Integer, primary_key=True, index=True)
+    insight_id = Column(String, unique=True, index=True, default=lambda: str(uuid.uuid4()))
+    session_id = Column(Integer, ForeignKey("sessions.id"), nullable=True)
+    scenario_id = Column(Integer, ForeignKey("scenarios.id"), nullable=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    query = Column(Text)
+    debate_rounds = Column(Integer, default=3)
+    status = Column(String, default="pending")  # pending, running, complete, error
+    file_path = Column(String)  # absolute path to insight_{insight_id}.json
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    session = relationship("Session", back_populates="insights", foreign_keys=[session_id])
+    scenario = relationship("Scenario", back_populates="insights", foreign_keys=[scenario_id])
+    owner = relationship("User", back_populates="insights")
