@@ -10,7 +10,7 @@ from core.config import MODEL_NAME
 
 # Entity types that should become social-media simulation agents
 _AGENT_TYPES = {
-    "person", "student", "expert", "journalist", "ceo", "researcher",
+    "person", "people", "student", "expert", "journalist", "ceo", "researcher",
     "politician", "activist", "scientist", "engineer", "executive",
     "artist", "athlete", "author", "teacher", "doctor",
 }
@@ -43,7 +43,8 @@ class ProfileGenerator:
         self.graph = graph
         self.client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 
-    def generate_profiles(self, output_path: str = "data/agents.json") -> list:
+    def generate_profiles(self, output_path: str = "data/agents.json", target_count: int = None) -> list:
+        # Generate core agents from graph entities
         agents = []
 
         for name, ent_data in self.graph.entities.items():
@@ -51,9 +52,36 @@ class ProfileGenerator:
             if not isinstance(ent_type, str) or ent_type.lower() not in _AGENT_TYPES:
                 continue
 
+            # For generic "People" entities, infer specific role from context
+            if ent_type.lower() == "people":
+                inferred_role = self._infer_role(name)
+                if inferred_role:
+                    print(f"  Inferred role for {name}: {inferred_role}")
+                    ent_type = inferred_role
+                else:
+                    # Skip generic group entities like "American troops", "Indian nationals"
+                    if any(word in name.lower() for word in ["troops", "nationals", "members", "forces"]):
+                        print(f"  Skipping group entity: {name}")
+                        continue
+                    ent_type = "person"  # Default fallback
+
             profile = self._generate_one(name, ent_type)
             if profile:
                 agents.append(profile)
+
+        core_count = len(agents)
+        print(f"Generated {core_count} core agent(s) from graph entities")
+
+        # Generate additional synthetic agents if target_count is specified
+        if target_count and target_count > core_count:
+            additional_needed = target_count - core_count
+            print(f"Generating {additional_needed} additional synthetic agents to reach target of {target_count}...")
+            
+            # Extract topics from graph entities to create diverse agents
+            topics = self._extract_topics_from_graph()
+            synthetic_agents = self._generate_synthetic_agents(additional_needed, topics, core_count)
+            agents.extend(synthetic_agents)
+            print(f"Generated {len(synthetic_agents)} synthetic agent(s)")
 
         dir_name = os.path.dirname(output_path)
         if dir_name:
@@ -63,6 +91,242 @@ class ProfileGenerator:
 
         print(f"Saved {len(agents)} OASIS agent profile(s) → {output_path}")
         return agents
+
+    # ------------------------------------------------------------------
+    def _extract_topics_from_graph(self) -> list[str]:
+        """
+        Use an LLM to generate meaningful topic phrases from the graph,
+        suitable for creating synthetic agent personas that will actively engage
+        with simulation content.
+        """
+        # Build context from full entity names and relationships
+        entity_lines = [
+            f"{name} ({data.get('type', 'entity')})"
+            for name, data in list(self.graph.entities.items())[:20]
+        ]
+        relation_lines = [
+            f"{r['source']} {r['type']} {r['target']}"
+            for r in self.graph.relations[:15]
+        ]
+        context = "Entities: " + ", ".join(entity_lines)
+        if relation_lines:
+            context += "\nRelationships: " + "; ".join(relation_lines)
+
+        prompt = (
+            "Based on this knowledge graph, generate 12 meaningful topic phrases that describe "
+            "the key themes and subject areas that people might be interested in and discuss on social media.\n\n"
+            f"Context:\n{context}\n\n"
+            "Requirements:\n"
+            "- Each topic must be a meaningful phrase of 2-5 words, NOT a single generic word or entity type\n"
+            "- Topics should represent specific interests that would motivate someone to engage with this content\n"
+            "- GOOD examples: 'enterprise cloud migration', 'AI-driven business transformation', "
+            "'strategic consulting partnerships'\n"
+            "- BAD examples: 'organization', 'ibm', 'concept' (too vague or just raw tokens)\n"
+            "- Return ONLY a JSON array of 12 strings"
+        )
+
+        try:
+            response = self.client.models.generate_content(
+                model=MODEL_NAME,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                    temperature=0.6,
+                ),
+            )
+            topics = json.loads(response.text)
+            if isinstance(topics, list) and topics and all(isinstance(t, str) for t in topics):
+                print(f"LLM generated {len(topics)} topic phrase(s) for synthetic agents.")
+                return topics[:20]
+        except Exception as exc:
+            print(f"Warning: LLM topic extraction failed ({exc}); falling back to entity names.")
+
+        # Fallback: use full entity names as topics (not split word tokens)
+        entity_names = list(self.graph.entities.keys())[:20]
+        return entity_names if entity_names else ["technology", "politics", "science", "business"]
+
+    def _generate_synthetic_agents(self, count: int, topics: list[str], start_index: int) -> list[dict]:
+        """
+        Generate synthetic agents with diverse profiles based on graph topics.
+        
+        Args:
+            count: Number of synthetic agents to generate
+            topics: List of topics to use for agent diversity
+            start_index: Starting index for naming synthetic agents
+        
+        Returns:
+            List of agent profile dictionaries
+        """
+        synthetic_agents = []
+        
+        # Define agent archetypes for diversity
+        professions = [
+            "journalist", "researcher", "student", "teacher", "engineer",
+            "scientist", "activist", "politician", "entrepreneur", "analyst",
+            "consultant", "executive", "artist", "writer", "developer"
+        ]
+        
+        countries = ["US", "UK", "Canada", "Germany", "France", "Japan", "India", "Brazil", "Australia"]
+        genders = ["male", "female", "non-binary"]
+        mbti_types = ["INTJ", "ENTP", "INFP", "ESTJ", "ISFJ", "ENFJ", "ISTP", "ESFP"]
+        
+        # Generate agents in batches using LLM
+        batch_size = 10
+        for i in range(0, count, batch_size):
+            batch_count = min(batch_size, count - i)
+            
+            prompt = f"""Generate {batch_count} diverse social media user profiles for a simulation.
+
+Base these profiles on the following context topics: {', '.join(topics[:10])}
+
+Return ONLY a JSON array of {batch_count} objects, each with these exact keys:
+  "realname"         – unique full name (string)
+  "username"         – unique social-media handle: lowercase letters, digits, underscores only
+  "bio"              – 1-2 sentence social-media bio (string)
+  "persona"          – 2-3 sentence character/personality description (string)
+  "age"              – integer between 18-75
+  "gender"           – "male" | "female" | "non-binary"
+  "mbti"             – Myers-Briggs type code, e.g. "INTJ"
+  "country"          – country of origin
+  "profession"       – professional field relevant to the topics
+  "interested_topics" – list of 2-4 interest topics from the context
+
+Make each profile unique and diverse. Vary the professions, ages, countries, and perspectives.
+"""
+            
+            try:
+                response = self.client.models.generate_content(
+                    model=MODEL_NAME,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
+                        response_mime_type="application/json",
+                        temperature=0.9,  # Higher temperature for more diversity
+                    ),
+                )
+                batch_profiles = json.loads(response.text)
+                
+                # Validate and add default values
+                for idx, profile in enumerate(batch_profiles):
+                    # Ensure all required fields exist
+                    profile.setdefault("realname", f"Agent {start_index + i + idx + 1}")
+                    profile.setdefault("username", f"agent_{start_index + i + idx + 1}")
+                    profile.setdefault("bio", "Interested observer and commentator.")
+                    profile.setdefault("persona", profile["bio"])
+                    profile.setdefault("age", 30)
+                    profile.setdefault("gender", genders[(i + idx) % len(genders)])
+                    profile.setdefault("mbti", mbti_types[(i + idx) % len(mbti_types)])
+                    profile.setdefault("country", countries[(i + idx) % len(countries)])
+                    profile.setdefault("profession", professions[(i + idx) % len(professions)])
+                    profile.setdefault("interested_topics", topics[:3])
+                    
+                    # Coerce age to int
+                    try:
+                        profile["age"] = int(profile["age"])
+                    except (TypeError, ValueError):
+                        profile["age"] = 30
+                    
+                    synthetic_agents.append(profile)
+                    
+                print(f"  Generated synthetic batch {i // batch_size + 1}: {len(batch_profiles)} profiles")
+                
+            except Exception as exc:
+                print(f"  Warning: Batch generation failed: {exc}")
+                # Fallback: create simple profiles
+                for idx in range(batch_count):
+                    agent_num = start_index + i + idx + 1
+                    fallback_profile = {
+                        "realname": f"Agent {agent_num}",
+                        "username": f"agent_{agent_num}",
+                        "bio": f"Interested in {', '.join(topics[:2])}.",
+                        "persona": f"A curious individual following developments in {topics[0] if topics else 'various fields'}.",
+                        "age": 25 + ((i + idx) % 50),
+                        "gender": genders[(i + idx) % len(genders)],
+                        "mbti": mbti_types[(i + idx) % len(mbti_types)],
+                        "country": countries[(i + idx) % len(countries)],
+                        "profession": professions[(i + idx) % len(professions)],
+                        "interested_topics": topics[:3] if topics else ["general"]
+                    }
+                    synthetic_agents.append(fallback_profile)
+        
+        return synthetic_agents[:count]  # Ensure we return exactly the requested count
+
+    # ------------------------------------------------------------------
+    def _infer_role(self, name: str) -> str | None:
+        """
+        Infer a person's role/profession from their graph context.
+        
+        Returns a specific role (e.g., "politician", "journalist", "diplomat")
+        or None if the role cannot be confidently inferred.
+        """
+        # Gather context from graph relations
+        context_parts = []
+        
+        # Get relations where this person is involved
+        for rel in self.graph.relations:
+            if rel["source"] == name:
+                context_parts.append(f"{name} {rel['type']} {rel['target']}")
+            elif rel["target"] == name:
+                context_parts.append(f"{rel['source']} {rel['type']} {name}")
+        
+        if not context_parts:
+            # No relations found - try to infer from name alone
+            return self._infer_role_from_name(name)
+        
+        context = ". ".join(context_parts[:10])  # Limit context to avoid token limits
+        
+        # Use LLM to infer the professional role
+        prompt = f"""Based on the following information about {name}, infer their most likely professional role or occupation.
+
+Context:
+{context}
+
+Respond with ONLY ONE of these roles (choose the best fit):
+politician, diplomat, ambassador, journalist, reporter, military_officer, spokesperson, analyst, activist, researcher, scientist, engineer, executive, ceo, official, advisor, expert, doctor, teacher, author, artist, athlete, lawyer, judge
+
+If none fit well, respond with: person
+
+Role:"""
+        
+        try:
+            response = self.client.models.generate_content(
+                model=MODEL_NAME,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    temperature=0.3,
+                ),
+            )
+            inferred_role = response.text.strip().lower()
+            
+            # Validate the response
+            if inferred_role in _AGENT_TYPES:
+                return inferred_role
+            elif inferred_role == "person":
+                return None
+            else:
+                # Try to extract a valid role from the response
+                for role in _AGENT_TYPES:
+                    if role in inferred_role:
+                        return role
+                return None
+                
+        except Exception as exc:
+            print(f"  Warning: Role inference failed for {name}: {exc}")
+            return None
+    
+    def _infer_role_from_name(self, name: str) -> str | None:
+        """Fallback: infer role from name patterns (e.g., 'Dr.', 'President')."""
+        name_lower = name.lower()
+        
+        if any(title in name_lower for title in ["dr.", "doctor"]):
+            return "doctor"
+        elif any(title in name_lower for title in ["prof.", "professor"]):
+            return "teacher"
+        elif any(title in name_lower for title in ["president", "prime minister", "senator", "governor"]):
+            return "politician"
+        elif any(title in name_lower for title in ["ambassador", "diplomat"]):
+            return "diplomat"
+        
+        return None
 
     # ------------------------------------------------------------------
     def _generate_one(self, name: str, ent_type: str) -> dict | None:

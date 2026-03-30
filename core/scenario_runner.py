@@ -1,43 +1,41 @@
 """
 ScenarioRunner – runs a "what-if" scenario on top of an existing simulation session.
 
-Reuses the same agent profiles and knowledge graph from the parent session but
-seeds the OASIS environment with a user-supplied scenario description so that
-agents react to the hypothetical situation.
+Reuses the same agent profiles from the parent session and injects the user as the
+first (most influential) agent whose single post — the scenario description — becomes
+the seed truth that all other agents react to.
+
+The combined profile list (user + sim agents) is written to scenario_agents.json so
+InsightsEngine can read correct indices and identify which agent is the seed user.
 """
 
 import asyncio
 import json
 import os
 import sqlite3
+import tempfile
 
 from dotenv import load_dotenv
 load_dotenv()
 
 from core.config import CAMEL_MODEL_TYPE
-from core.graph_memory import LocalGraphMemory
-
-
-def _bridge_google_api_key():
-    if not os.getenv("GOOGLE_API_KEY") and os.getenv("GEMINI_API_KEY"):
-        os.environ["GOOGLE_API_KEY"] = os.getenv("GEMINI_API_KEY")
 
 
 class ScenarioRunner:
     def __init__(
         self,
-        graph: LocalGraphMemory,
         agents_path: str,
         db_path: str,
         log_path: str,
         scenario_description: str,
+        user_label: str = "You",
         emit_event=None,
     ):
-        self.graph = graph
         self.agents_path = agents_path
         self.db_path = db_path
         self.log_path = log_path
         self.scenario_description = scenario_description
+        self.user_label = user_label
         self._emit = emit_event if callable(emit_event) else (lambda t, m: None)
 
     # ──────────────────────────────────────────────────────────────────────────
@@ -91,12 +89,56 @@ class ScenarioRunner:
             ActionType.FOLLOW,
         ]
 
-        self._emit("stage", "Building scenario agent graph…")
-        agent_graph = await generate_reddit_agent_graph(
-            profile_path=self.agents_path,
-            model=model,
-            available_actions=available_actions,
+        # ── Inject user as the first (most influential) agent ─────────────────
+        # The user posts the scenario description before any LLM round starts,
+        # so it is the only content on the platform when agents wake up.
+        # is_seed_user=True lets InsightsEngine exclude them from debates.
+        user_handle = self.user_label.lower().replace(" ", "_")
+        user_profile = {
+            "username": user_handle,
+            "realname": self.user_label,
+            "bio": "Scenario architect and simulation operator.",
+            "persona": (
+                f"{self.user_label} introduced this scenario. "
+                "Posts with authority; other participants react to their framing."
+            ),
+            "age": 35,
+            "gender": "non-binary",
+            "mbti": "ENTJ",
+            "country": "US",
+            "profession": "Analyst",
+            "interested_topics": ["current events", "geopolitics", "society"],
+            "is_seed_user": True,
+        }
+
+        with open(self.agents_path, encoding="utf-8") as fh:
+            sim_profiles = json.load(fh)
+
+        combined_profiles = [user_profile] + sim_profiles
+
+        # Persist so InsightsEngine reads correct indices + can identify seed user
+        scenario_dir = os.path.dirname(self.log_path)
+        os.makedirs(scenario_dir, exist_ok=True)
+        scenario_agents_path = os.path.join(scenario_dir, "scenario_agents.json")
+        with open(scenario_agents_path, "w", encoding="utf-8") as fh:
+            json.dump(combined_profiles, fh, ensure_ascii=False)
+
+        tmp = tempfile.NamedTemporaryFile(
+            mode="w", suffix=".json", delete=False, encoding="utf-8"
         )
+        json.dump(combined_profiles, tmp, ensure_ascii=False)
+        tmp.close()
+
+        self._emit("stage", "Building scenario agent graph…")
+        try:
+            agent_graph = await generate_reddit_agent_graph(
+                profile_path=tmp.name,
+                model=model,
+                available_actions=available_actions,
+            )
+        finally:
+            os.unlink(tmp.name)
+
         self._emit("stage", "Scenario agent graph ready")
 
         # Fresh database for this scenario run
@@ -111,23 +153,20 @@ class ScenarioRunner:
 
         await env.reset()
 
-        # ── Seed pass ─────────────────────────────────────────────────────────
-        # First agent posts the scenario description + graph context so every
-        # subsequent LLM step has the hypothetical situation to react to.
-        seed_contents = self._build_seed_posts()
-        if seed_contents:
-            first_agent = env.agent_graph.get_agent(0)
-            seed_actions = {
-                first_agent: [
-                    ManualAction(
-                        action_type=ActionType.CREATE_POST,
-                        action_args={"content": text},
-                    )
-                    for text in seed_contents
-                ]
-            }
-            await env.step(seed_actions)
-            self._emit("action", f"Seeded scenario with {len(seed_contents)} context post(s)")
+        # ── User seed post ────────────────────────────────────────────────────
+        # The user (agent 0) posts the scenario description as plain text.
+        # No prefixes, no graph noise — just the premise, as if a real person
+        # broke the news. Every LLM agent reads this first.
+        user_agent = env.agent_graph.get_agent(0)
+        await env.step({
+            user_agent: [
+                ManualAction(
+                    action_type=ActionType.CREATE_POST,
+                    action_args={"content": self.scenario_description},
+                )
+            ]
+        })
+        self._emit("action", f"@{user_handle} posted the scenario — agents will now react")
 
         # ── LLM rounds ────────────────────────────────────────────────────────
         for r in range(rounds):
@@ -146,32 +185,11 @@ class ScenarioRunner:
         self._export_db_to_log()
         self._emit("done", "Scenario simulation complete")
 
-    # ──────────────────────────────────────────────────────────────────────────
-    # Helpers
-    # ──────────────────────────────────────────────────────────────────────────
-
-    def _build_seed_posts(self) -> list[str]:
-        """Scenario description first, then a few graph facts for context."""
-        posts = [f"[SCENARIO UPDATE] {self.scenario_description}"]
-
-        for name, data in list(self.graph.entities.items())[:3]:
-            etype = data.get("type", "entity")
-            posts.append(f"Background context — Notable {etype}: {name}")
-
-        for rel in self.graph.relations[:2]:
-            posts.append(
-                f"Context: {rel['source']} {rel['type']} {rel['target']}"
-            )
-
-        return posts[:6]
-
     def _build_camel_model(self):
         from camel.models import ModelFactory
         from camel.types import ModelPlatformType
 
-        _bridge_google_api_key()
-
-        if os.getenv("GOOGLE_API_KEY"):
+        if os.getenv("GEMINI_API_KEY"):
             from camel.types import ModelType as MT
             try:
                 model_type = MT(CAMEL_MODEL_TYPE)
@@ -182,15 +200,8 @@ class ScenarioRunner:
                 model_type=model_type,
             )
 
-        if os.getenv("OPENAI_API_KEY"):
-            from camel.types import ModelType as MT
-            return ModelFactory.create(
-                model_platform=ModelPlatformType.OPENAI,
-                model_type=MT.GPT_4O_MINI,
-            )
-
         raise EnvironmentError(
-            "No LLM API key found. Set GEMINI_API_KEY or OPENAI_API_KEY."
+            "No LLM API key found. Set GEMINI_API_KEY in your .env file."
         )
 
     def _export_db_to_log(self):

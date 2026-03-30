@@ -19,6 +19,9 @@ import {
 	PlusSquare,
 	Rss,
 	FlaskConical,
+	Sparkles,
+	RefreshCw,
+	AlertTriangle,
 } from 'lucide-react';
 import { SidebarCtx } from './SidebarContext';
 import Auth from './views/Auth';
@@ -105,6 +108,12 @@ function Sidebar() {
 								icon: <FileText size={15} />,
 								label: `Reports${sessionNav.reportsCount ? ` (${sessionNav.reportsCount})` : ''}`,
 							},
+							{
+								id: 'insights',
+								icon: <Sparkles size={15} />,
+								label: 'Insights',
+								completedOnly: true,
+							},
 						]
 							.filter(
 								(item) =>
@@ -146,6 +155,47 @@ function Sidebar() {
 								</button>
 							</>
 						)}
+						{/* Resimulate button – for completed or failed sessions */}
+						{sessionNav.onResimulate &&
+							(() => {
+								const isFailed =
+									sessionNav.session?.status === 'error';
+								return (
+									<>
+										{!sessionNav.onCreateReport && (
+											<div
+												style={{
+													height: '1px',
+													background:
+														'var(--outline-variant)',
+													margin: '0.5rem 0.85rem',
+												}}
+											/>
+										)}
+										<button
+											className="sidebar-nav-btn"
+											onClick={sessionNav.onResimulate}
+											style={{
+												color: isFailed
+													? '#d97706'
+													: 'var(--text-secondary)',
+												fontWeight: isFailed
+													? 700
+													: 500,
+											}}
+										>
+											{isFailed ? (
+												<AlertTriangle size={15} />
+											) : (
+												<RefreshCw size={15} />
+											)}
+											{isFailed
+												? 'Retry Simulation'
+												: 'Resimulate'}
+										</button>
+									</>
+								);
+							})()}
 						{sessionNav.session &&
 							(() => {
 								const status =

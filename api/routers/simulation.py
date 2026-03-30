@@ -39,7 +39,7 @@ def _get_current_user_query(
     return user
 
 
-def run_simulation_task(session_id: int, session_uuid: str, inputs_path: str, outputs_path: str, rounds: int, emit):
+def run_simulation_task(session_id: int, session_uuid: str, inputs_path: str, outputs_path: str, rounds: int, agent_count: int, emit):
     # Runs in background task thread
     from ..database import SessionLocal
     db = SessionLocal()
@@ -74,7 +74,7 @@ def run_simulation_task(session_id: int, session_uuid: str, inputs_path: str, ou
         emit("stage", "Generating agent profiles…")
         agents_path = os.path.join(outputs_path, "agents.json")
         pg = ProfileGenerator(graph)
-        profiles = pg.generate_profiles(output_path=agents_path)
+        profiles = pg.generate_profiles(output_path=agents_path, target_count=agent_count)
         n_agents = len(profiles) if isinstance(profiles, list) else "?"
         emit("stage", f"{n_agents} agent profile(s) generated")
 
@@ -107,7 +107,9 @@ def run_simulation_task(session_id: int, session_uuid: str, inputs_path: str, ou
 async def upload_and_simulate(
     background_tasks: BackgroundTasks,
     rounds: int = Form(...),
+    agent_count: int = Form(None),  # Optional: only force inflate if specified
     title: str = Form(None),
+    objective: str = Form(None),
     files: List[UploadFile] = File(...),
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
@@ -119,12 +121,19 @@ async def upload_and_simulate(
     outputs_path = os.path.join(base_dir, "output")
 
     os.makedirs(inputs_path, exist_ok=True)
+    os.makedirs(outputs_path, exist_ok=True)
 
     # Save files
     for file in files:
         file_location = os.path.join(inputs_path, file.filename)
         with open(file_location, "wb") as f:
             f.write(await file.read())
+
+    # Persist the simulation objective so the metrics engine can read it later
+    if objective and objective.strip():
+        objective_path = os.path.join(outputs_path, "objective.txt")
+        with open(objective_path, "w", encoding="utf-8") as f:
+            f.write(objective.strip())
 
     # Create session
     db_session = crud.create_session(db, current_user.id, inputs_path, outputs_path, rounds, title)
@@ -158,6 +167,7 @@ async def upload_and_simulate(
         inputs_path,
         outputs_path,
         rounds,
+        agent_count,
         emit,
     )
 
@@ -321,6 +331,164 @@ def get_session_artifacts(
     result["graph"] = _json.load(open(graph_path, encoding="utf-8")) if os.path.exists(graph_path) else {"entities": {}, "relations": []}
 
     return result
+
+
+@router.get("/seed-info/{session_uuid}")
+def get_seed_info(
+    session_uuid: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """Return current seed config for a session (for resimulate modal pre-population)."""
+    db_session = crud.get_session(db, session_uuid)
+    if not db_session or db_session.user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    inputs_path = db_session.inputs_path
+    outputs_path = db_session.outputs_path
+
+    files: list[str] = []
+    if os.path.exists(inputs_path):
+        files = [f for f in os.listdir(inputs_path) if os.path.isfile(os.path.join(inputs_path, f))]
+
+    objective = ""
+    objective_path = os.path.join(outputs_path, "objective.txt")
+    if os.path.exists(objective_path):
+        with open(objective_path, encoding="utf-8") as fh:
+            objective = fh.read().strip()
+
+    return {
+        "files": sorted(files),
+        "rounds": db_session.rounds,
+        "objective": objective,
+        "title": db_session.title,
+    }
+
+
+@router.post("/resimulate/{session_uuid}", response_model=schemas.SessionResponse)
+async def resimulate(
+    background_tasks: BackgroundTasks,
+    session_uuid: str,
+    rounds: int = Form(...),
+    agent_count: int = Form(None),
+    objective: str = Form(None),
+    add_files: List[UploadFile] = File(default=[]),
+    remove_files: str = Form(None),  # JSON array of filenames to remove
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """Clear all generated data for a session and re-run the simulation."""
+    db_session = crud.get_session(db, session_uuid)
+    if not db_session or db_session.user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    if db_session.status == "running":
+        raise HTTPException(status_code=400, detail="Cannot resimulate while simulation is running")
+
+    inputs_path = db_session.inputs_path
+    outputs_path = db_session.outputs_path
+
+    # 1. Remove requested seed files from inputs
+    if remove_files:
+        try:
+            for fname in _json.loads(remove_files):
+                safe_path = os.path.join(inputs_path, os.path.basename(fname))
+                if os.path.isfile(safe_path):
+                    os.remove(safe_path)
+        except Exception as exc:
+            print(f"Warning: could not remove some input files: {exc}")
+
+    # 2. Add new seed files
+    for file in add_files:
+        dest = os.path.join(inputs_path, os.path.basename(file.filename))
+        with open(dest, "wb") as fh:
+            fh.write(await file.read())
+
+    # Ensure at least one input file remains
+    remaining = [f for f in os.listdir(inputs_path) if os.path.isfile(os.path.join(inputs_path, f))] if os.path.exists(inputs_path) else []
+    if not remaining:
+        raise HTTPException(status_code=400, detail="At least one seed file is required")
+
+    # 3. Clear all generated outputs
+    if os.path.exists(outputs_path):
+        for fname in os.listdir(outputs_path):
+            fpath = os.path.join(outputs_path, fname)
+            if os.path.isfile(fpath):
+                os.remove(fpath)
+    os.makedirs(outputs_path, exist_ok=True)
+
+    # 4. Write new objective if provided
+    if objective and objective.strip():
+        with open(os.path.join(outputs_path, "objective.txt"), "w", encoding="utf-8") as fh:
+            fh.write(objective.strip())
+
+    # 5. Clear DB-linked data: reports, scenarios (+ sub-data), events, chat messages
+    for report in list(db_session.reports):
+        if report.file_path and os.path.exists(report.file_path):
+            try:
+                os.remove(report.file_path)
+            except Exception:
+                pass
+        db.delete(report)
+
+    for scenario in list(db_session.scenarios):
+        for rep in list(scenario.reports):
+            if rep.file_path and os.path.exists(rep.file_path):
+                try:
+                    os.remove(rep.file_path)
+                except Exception:
+                    pass
+            db.delete(rep)
+        if scenario.outputs_path and os.path.exists(scenario.outputs_path):
+            import shutil as _shutil
+            _shutil.rmtree(scenario.outputs_path, ignore_errors=True)
+        for ev in list(scenario.events):
+            db.delete(ev)
+        for msg in list(scenario.chat_messages):
+            db.delete(msg)
+        db.delete(scenario)
+
+    for ev in list(db_session.events):
+        db.delete(ev)
+
+    for msg in list(db_session.chat_messages):
+        db.delete(msg)
+
+    # 6. Update session record
+    db_session.rounds = rounds
+    db_session.status = "pending"
+    db.commit()
+    db.refresh(db_session)
+
+    crud.log_action(db, current_user.id, "resimulate", f"Session: {session_uuid}, Rounds: {rounds}")
+
+    # 7. Queue background simulation task
+    q: _queue.Queue = _queue.Queue()
+    _session_queues[session_uuid] = q
+    _db_session_id = db_session.id
+
+    def emit(event_type: str, message: str):
+        q.put({"type": event_type, "message": message})
+        try:
+            from ..database import SessionLocal as _SL
+            _db = _SL()
+            crud.add_simulation_event(_db, _db_session_id, event_type, message)
+            _db.close()
+        except Exception:
+            pass
+
+    background_tasks.add_task(
+        run_simulation_task,
+        db_session.id,
+        session_uuid,
+        inputs_path,
+        outputs_path,
+        rounds,
+        agent_count,
+        emit,
+    )
+
+    return db_session
 
 
 @router.get("/stream/{session_uuid}")

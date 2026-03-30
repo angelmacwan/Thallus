@@ -10,3 +10,8 @@ sqlalchemy
 python-jose
 python-multipart
 bcrypt
+scikit-learn
+python-dateutil
+python-louvain
+networkx
+numpy

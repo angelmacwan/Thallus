@@ -120,6 +120,7 @@ def _run_scenario_task(
     rounds: int,
     description: str,
     emit,
+    user_label: str = "You",
 ):
     from ..database import SessionLocal
 
@@ -134,24 +135,20 @@ def _run_scenario_task(
     db.commit()
 
     try:
-        from core.graph_memory import LocalGraphMemory
         from core.scenario_runner import ScenarioRunner
 
         os.makedirs(scenario_outputs_path, exist_ok=True)
 
-        graph = LocalGraphMemory(
-            storage_path=os.path.join(session_outputs_path, "graph.json")
-        )
         agents_path = os.path.join(session_outputs_path, "agents.json")
         db_path = os.path.join(scenario_outputs_path, "simulation.db")
         log_path = os.path.join(scenario_outputs_path, "actions.jsonl")
 
         sr = ScenarioRunner(
-            graph=graph,
             agents_path=agents_path,
             db_path=db_path,
             log_path=log_path,
             scenario_description=description,
+            user_label=user_label,
             emit_event=emit,
         )
         sr.run(rounds)
@@ -207,6 +204,9 @@ def run_scenario(
         except Exception:
             pass
 
+    # Derive a readable label from the user's email (e.g. "angel" from "angel@example.com")
+    user_label = current_user.email.split("@")[0]
+
     background_tasks.add_task(
         _run_scenario_task,
         scenario.id,
@@ -216,6 +216,7 @@ def run_scenario(
         scenario.rounds,
         scenario.description,
         emit,
+        user_label,
     )
 
     crud.log_action(db, current_user.id, "run_scenario", f"Scenario: {scenario_uuid}")
