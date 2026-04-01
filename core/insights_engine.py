@@ -83,7 +83,7 @@ class InsightsEngine:
                 or agent.get("name")
                 or f"Agent_{idx}"
             )
-            result[str(idx)] = str(name)
+            result[str(idx)] = f"{name} ({idx})"
         return result
 
     # ── LLM helper ────────────────────────────────────────────────────────────
@@ -133,7 +133,7 @@ class InsightsEngine:
 
         for action in actions:
             agent_id = str(action.get("user_id", action.get("agent_id", "")))
-            agent_name = agent_map.get(agent_id, f"Agent_{agent_id}")
+            agent_name = agent_map.get(agent_id, f"Agent_{agent_id} ({agent_id})")
             if agent_name not in per_agent:
                 per_agent[agent_name] = {
                     "agent_id": agent_id,
