@@ -53,7 +53,16 @@ Requirements:
 - Use formal analytical language with clear section headings.
 - Surface behavioural patterns, emerging narratives, and agent interactions.
 - Include direct quotes or paraphrases from agent posts/comments where relevant.
-- End with a concise Prediction/Conclusion section.
+
+IMPORTANT: Analyze SOFT METRICS in your response:
+- **Sentiment Shifts**: Track emotional/tonal evolution across posts. Did sentiment become more positive, negative, or polarized?
+- **Influence Spread**: Identify which agents' ideas propagated through the network and how other agents echoed or built upon them.
+- **Decision Cascades**: Trace chains of actions—how did one agent's action trigger follow-up actions by others?
+- **Stability vs Volatility**: Note whether agent positions remained consistent or shifted significantly over time.
+- **Consensus Formation**: Describe whether agents converged toward agreement or diverged into opposing camps.
+- **Thought Leadership**: Identify agents who emerged as narrative drivers or whose ideas garnered most engagement.
+
+End with a concise Prediction/Conclusion section that synthesizes soft metrics trends alongside substantive findings.
 """
 
         try:
@@ -158,13 +167,19 @@ Write a **comprehensive, enterprise-grade Markdown report** that:
 2. Contains clearly numbered sections with descriptive headings.
 3. Includes a **Key Findings** section with bullet points.
 4. Includes an **Agent Dynamics** section analysing individual and group behaviour.
-5. Includes a **Network & Relationship Analysis** section with at least one Mermaid diagram
+5. Includes a dedicated **Soft Metrics Analysis** section covering:
+   - **Sentiment Evolution**: How did emotional tone shift across the simulation?
+   - **Influence Cascades**: Which agents' ideas propagated? How did influence flow?
+   - **Consensus vs Polarization**: Did agents converge or diverge? How unified/polarized was the group?
+   - **Thought Leadership**: Who emerged as narrative drivers? Whose ideas had most impact?
+   - **Position Stability**: How stable were agent positions? Did conviction strengthen/weaken?
+6. Includes a **Network & Relationship Analysis** section with at least one Mermaid diagram
    (e.g. `graph TD` or `graph LR`) illustrating important entity relationships or information flows.
-6. Includes a **Narrative & Discourse Analysis** section.
-7. Includes a **Risk & Opportunity Assessment** table (use Markdown table syntax).
-8. Ends with **Conclusions & Recommendations** with actionable bullet points.
-9. Uses formal, professional language suitable for sharing with senior stakeholders.
-10. Contains no placeholder text — every section must be fully written.
+7. Includes a **Narrative & Discourse Analysis** section.
+8. Includes a **Risk & Opportunity Assessment** table (use Markdown table syntax).
+9. Ends with **Conclusions & Recommendations** with actionable bullet points that reflect soft metrics insights.
+10. Uses formal, professional language suitable for sharing with senior stakeholders.
+11. Contains no placeholder text — every section must be fully written.
 
 Return ONLY the Markdown report, starting with a `#` level title.
 """

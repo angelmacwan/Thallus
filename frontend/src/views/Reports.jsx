@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import api from '../api';
-import { FileText, RefreshCw, X, Trash2, Plus } from 'lucide-react';
+import { FileText, RefreshCw, X, Trash2, Plus, Download } from 'lucide-react';
 import mermaid from 'mermaid';
 
 mermaid.initialize({ startOnLoad: false, theme: 'neutral' });
@@ -583,6 +583,27 @@ export default function Reports() {
 		}
 	};
 
+	const handleDownload = async (e, report) => {
+		e.stopPropagation();
+		try {
+			const res = await api.get(`/reports/${report.report_id}/content`, {
+				responseType: 'text',
+				transformResponse: [(data) => data],
+			});
+			const blob = new Blob([res.data], { type: 'text/markdown' });
+			const url = URL.createObjectURL(blob);
+			const link = document.createElement('a');
+			link.href = url;
+			link.download = `${report.title}.md`;
+			document.body.appendChild(link);
+			link.click();
+			document.body.removeChild(link);
+			URL.revokeObjectURL(url);
+		} catch {
+			alert('Failed to download report.');
+		}
+	};
+
 	if (loading) {
 		return (
 			<div
@@ -799,6 +820,25 @@ export default function Reports() {
 											})}
 										</div>
 									</div>
+
+									{/* Download */}
+									<button
+										onClick={(e) => handleDownload(e, r)}
+										style={{
+											background: 'none',
+											border: 'none',
+											cursor: 'pointer',
+											color: 'var(--text-secondary)',
+											padding: '0.25rem',
+											borderRadius: '6px',
+											flexShrink: 0,
+											display: 'flex',
+											alignItems: 'center',
+										}}
+										title="Download report as MD"
+									>
+										<Download size={13} />
+									</button>
 
 									{/* Delete */}
 									<button

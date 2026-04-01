@@ -222,10 +222,20 @@ Based on the user's query and the simulation data above, generate 3-5 specific, 
 insight observations that directly answer or relate to the query. Each insight should be a \
 clear, evidence-grounded observation from the simulation.
 
+When analyzing, explicitly consider these SOFT METRICS:
+- **Sentiment Shifts**: How did emotional tone evolve? Did posts become increasingly positive/negative/polarized?
+- **Influence Spread**: Which agents' ideas were echoed or built upon by others? How did ideas cascade?
+- **Decision Cascades**: Did agent actions trigger follow-up actions by other agents? What chains of behavior emerged?
+- **Stability vs Volatility**: Were agent positions consistent or did they shift significantly? How stable were group dynamics?
+- **Consensus Formation**: Did agents converge toward shared views, or diverge into opposing camps?
+- **Polarization Patterns**: Did opinion clusters emerge? How distinct were agent positions from each other?
+- **Thought Leadership**: Which agents drove narrative direction? Whose ideas garnered most engagement?
+
 Return a JSON array of insight objects. Each object must have:
 - "id": "i_0", "i_1", etc.
-- "text": the insight observation statement (1-2 sentences)
+- "text": the insight observation statement (1-2 sentences), optionally referencing one or more soft metrics above
 - "answer_text": a direct synthesized answer to the query from this insight's perspective (1-2 sentences)
+- "soft_metrics_noted": an optional array of the specific soft metrics this insight touches on (e.g., ["sentiment_shifts", "influence_spread"])
 
 Return ONLY the JSON array, no other text."""
 
@@ -283,11 +293,19 @@ For each agent, generate their honest initial position in response to the user's
 The position should feel authentic to their character — shaped by their persona, MBTI, \
 interests, and sample posts.
 
+When formulating positions, consider how each agent might view:
+- The emotional or psychological dimensions of the query (sentiment around the topic)
+- How their ideas or values might spread or resonate with peers
+- Whether they see the issue as triggering cascading consequences
+- The stability or volatility of their stance on this—how firm vs uncertain they are
+- Points of potential consensus or disagreement with others
+
 Return a JSON array — one entry per agent — each with:
 - "agent_id": the agent's id string (e.g. "0", "1", ...)
 - "agent_name": the agent's name
 - "position": the agent's answer/stance on the query (1-3 sentences, authentic to their character)
 - "reasoning": why they hold this position, grounded in their profile or posts (1-2 sentences)
+- "conviction_level": 'strong', 'moderate', or 'weak' — how certain or firm this agent is in their position
 
 Return ONLY the JSON array. No other text."""
 
@@ -346,15 +364,25 @@ CURRENT POSITIONS (end of round {round_num - 1}):
 Each agent has now read all other agents' positions and reasoning. Simulate each agent \
 updating their response. Agents may:
 - Strengthen their original position with new arguments
-- Shift their stance if persuaded by another agent
-- Find nuance or partial agreement
-- Challenge a specific other agent by name
+- Shift their stance if persuaded by another agent (sentiment/emotional shifts)
+- Find nuance or partial agreement (consensus formation)
+- Challenge a specific other agent by name (thought leadership and influence dynamics)
+- Show increased or decreased conviction based on how others respond (stability vs volatility)
+
+Pay attention to SOFT METRICS as agents update:
+- How is consensus/divergence forming across the group?
+- Are any agents cascading off others' ideas? Who is influencing whom?
+- Is sentiment in discussion becoming more polarized or unified?
+- Who is emerging as thought leaders driving the narrative?
+- How stable vs volatile are agents' positions—are they shifting or holding firm?
 
 Return a JSON array — one entry per agent — each with:
 - "agent_id": same id as above
 - "agent_name": same name as above
 - "position": updated position after this debate round (1-3 sentences)
 - "reasoning": updated reasoning, possibly referencing other agents by name (1-2 sentences)
+- "conviction_change": 'stronger', 'same', or 'weaker' — how did conviction evolve this round?
+- "influenced_by": optional array of agent names whose arguments influenced this update
 
 Return ONLY the JSON array. No other text."""
 
@@ -402,7 +430,15 @@ FINAL AGENT POSITIONS (after all debate rounds):
 {positions_json}
 
 TASK:
-Synthesize these positions into a coherent result. Group agents by similarity of position.
+Synthesize these positions into a coherent result. Group agents by similarity of position, \
+and analyze the SOFT METRICS that shaped the outcome:
+
+**Key soft metrics to assess:**
+- **Consensus Formation**: Did agents converge toward shared views? Are there clear consensus clusters or deep polarization?
+- **Influence & Cascading**: Did certain agent viewpoints dominate and cascade through the group? Who were the thought leaders?
+- **Sentiment Evolution**: What was the overall emotional/sentiment arc? Did discussion become more heated, unified, or nuanced?
+- **Stability Patterns**: How stable were final positions? Did conviction levels strengthen, weaken, or remain unchanged?
+- **Polarization**: How distinct are the agent groups? Are they close together in opinion or far apart?
 
 Return a single JSON object with:
 - "overall_verdict": a balanced, synthesized answer to the user's query (2-4 sentences), \
@@ -410,6 +446,9 @@ Return a single JSON object with:
 - "score": {{ "agree": float, "disagree": float, "other": float }} — fractions of agents \
   that broadly agree vs disagree vs hold a neutral/other position (must sum to 1.0). \
   Assign based on the direction of each agent's final position relative to the query.
+- "soft_metrics_summary": a brief synthesis (2-3 sentences) of the key soft metrics patterns observed. \
+  Mention: level of consensus/polarization, any thought leaders that emerged, sentiment trajectory, \
+  and stability of the positions
 - "answer_groups": array of 2-4 distinct clusters of agents with similar positions:
   - "group_id": "g_0", "g_1", etc.
   - "label": short label for this group's shared stance (3-8 words)

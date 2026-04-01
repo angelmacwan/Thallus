@@ -29,7 +29,6 @@ import { SidebarCtx } from './SidebarContext';
 import Auth from './views/Auth';
 import Home from './views/Home';
 import SessionView from './views/Session';
-import Reports from './views/Reports';
 import NewSimulationModal from './components/NewSimulationModal';
 
 const PrivateRoute = ({ children }) => {
@@ -347,13 +346,6 @@ function Sidebar() {
 							<LayoutList size={15} />
 							Simulations
 						</button>
-						<button
-							className={`sidebar-nav-btn${location.pathname === '/reports' ? ' active' : ''}`}
-							onClick={() => navigate('/reports')}
-						>
-							<FileText size={15} />
-							Reports
-						</button>
 					</>
 				)}
 			</nav>
@@ -418,14 +410,6 @@ function AppLayout() {
 							element={
 								<PrivateRoute>
 									<SessionView />
-								</PrivateRoute>
-							}
-						/>
-						<Route
-							path="/reports"
-							element={
-								<PrivateRoute>
-									<Reports />
 								</PrivateRoute>
 							}
 						/>
