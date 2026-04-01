@@ -39,7 +39,7 @@ def _get_current_user_query(
     return user
 
 
-def run_simulation_task(session_id: int, session_uuid: str, inputs_path: str, outputs_path: str, rounds: int, agent_count: int, emit):
+def run_simulation_task(session_id: int, session_uuid: str, inputs_path: str, outputs_path: str, rounds: int, agent_count: int, emit, enable_web_search: bool = False, objective: str = ""):
     # Runs in background task thread
     from ..database import SessionLocal
     db = SessionLocal()
@@ -59,6 +59,15 @@ def run_simulation_task(session_id: int, session_uuid: str, inputs_path: str, ou
         from core.simulation_runner import SimulationRunner
 
         os.makedirs(outputs_path, exist_ok=True)
+
+        # ── Optional: Google Search Grounding ─────────────────────────────
+        if enable_web_search:
+            try:
+                from core.web_search import run_web_search_grounding
+                run_web_search_grounding(inputs_path, objective=objective, emit=emit)
+            except Exception as ws_exc:
+                emit("stage", f"Web search grounding skipped: {ws_exc}")
+
         emit("stage", "Processing input documents…")
         graph = LocalGraphMemory(storage_path=os.path.join(outputs_path, "graph.json"))
 
@@ -110,6 +119,7 @@ async def upload_and_simulate(
     agent_count: int = Form(None),  # Optional: only force inflate if specified
     title: str = Form(None),
     objective: str = Form(None),
+    enable_web_search: bool = Form(False),
     files: List[UploadFile] = File(...),
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
@@ -169,6 +179,8 @@ async def upload_and_simulate(
         rounds,
         agent_count,
         emit,
+        enable_web_search,
+        objective or "",
     )
 
     return db_session
@@ -363,6 +375,43 @@ def get_seed_info(
         "objective": objective,
         "title": db_session.title,
     }
+
+
+@router.get("/seed-docs/{session_uuid}")
+def get_seed_docs(
+    session_uuid: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """Return a rich list of all seed documents for a session, including web search results."""
+    db_session = crud.get_session(db, session_uuid)
+    if not db_session or db_session.user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    inputs_path = db_session.inputs_path
+    docs: list[dict] = []
+
+    if os.path.exists(inputs_path):
+        for fname in sorted(os.listdir(inputs_path)):
+            fpath = os.path.join(inputs_path, fname)
+            if not os.path.isfile(fpath):
+                continue
+            stat = os.stat(fpath)
+            is_web = fname.endswith("_web_results.md")
+            # Derive a human-readable display name
+            if is_web:
+                display = fname.replace("_web_results.md", "").replace("_", " ").title()
+            else:
+                display = fname
+            docs.append({
+                "filename": fname,
+                "display_name": display,
+                "size_bytes": stat.st_size,
+                "is_web_result": is_web,
+                "modified_at": stat.st_mtime,
+            })
+
+    return {"documents": docs}
 
 
 @router.post("/resimulate/{session_uuid}", response_model=schemas.SessionResponse)

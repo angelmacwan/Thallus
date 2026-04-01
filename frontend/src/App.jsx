@@ -23,6 +23,7 @@ import {
 	RefreshCw,
 	AlertTriangle,
 	PlusCircle,
+	FolderOpen,
 } from 'lucide-react';
 import { SidebarCtx } from './SidebarContext';
 import Auth from './views/Auth';
@@ -89,6 +90,11 @@ function Sidebar() {
 								icon: <FlaskConical size={15} />,
 								label: `Scenarios${sessionNav.scenariosCount ? ` (${sessionNav.scenariosCount})` : ''}`,
 								completedOnly: true,
+							},
+							{
+								id: 'seed_data',
+								icon: <FolderOpen size={15} />,
+								label: 'Seed Data',
 							},
 							{
 								id: 'agents',

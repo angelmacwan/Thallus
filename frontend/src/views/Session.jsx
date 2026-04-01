@@ -25,6 +25,9 @@ import {
 	Play,
 	Plus,
 	Tag,
+	Globe,
+	FolderOpen,
+	File,
 } from 'lucide-react';
 
 mermaid.initialize({ startOnLoad: false, theme: 'neutral' });
@@ -57,6 +60,215 @@ function MermaidBlock({ code }) {
 				border: '1px solid var(--outline-variant)',
 			}}
 		/>
+	);
+}
+
+// ─── Seed Data Tab ───────────────────────────────────────────────────────────
+function SeedDataPanel({ sessionId }) {
+	const [docs, setDocs] = useState([]);
+	const [loading, setLoading] = useState(true);
+
+	useEffect(() => {
+		setLoading(true);
+		api.get(`/simulation/seed-docs/${sessionId}`)
+			.then((res) => setDocs(res.data.documents || []))
+			.catch(() => {})
+			.finally(() => setLoading(false));
+	}, [sessionId]);
+
+	const formatBytes = (bytes) => {
+		if (bytes < 1024) return `${bytes} B`;
+		if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+		return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+	};
+
+	const userDocs = docs.filter((d) => !d.is_web_result);
+	const webDocs = docs.filter((d) => d.is_web_result);
+
+	if (loading)
+		return (
+			<div
+				style={{
+					textAlign: 'center',
+					padding: '2rem',
+					color: 'var(--text-secondary)',
+					fontSize: '0.85rem',
+				}}
+			>
+				Loading…
+			</div>
+		);
+
+	const DocRow = ({ doc }) => (
+		<div
+			style={{
+				display: 'flex',
+				alignItems: 'center',
+				gap: '0.6rem',
+				padding: '0.6rem 0.75rem',
+				borderRadius: '8px',
+				border: '1px solid var(--outline-variant)',
+				background: 'var(--surface-container-low)',
+			}}
+		>
+			<div style={{ flexShrink: 0 }}>
+				{doc.is_web_result ? (
+					<Globe
+						size={15}
+						color="var(--accent-color)"
+					/>
+				) : (
+					<File
+						size={15}
+						color="var(--text-secondary)"
+					/>
+				)}
+			</div>
+			<div style={{ flex: 1, minWidth: 0 }}>
+				<div
+					style={{
+						fontWeight: 600,
+						fontSize: '0.82rem',
+						whiteSpace: 'nowrap',
+						overflow: 'hidden',
+						textOverflow: 'ellipsis',
+					}}
+					title={doc.filename}
+				>
+					{doc.display_name}
+				</div>
+				<div
+					style={{
+						fontSize: '0.7rem',
+						color: 'var(--text-secondary)',
+						marginTop: '0.1rem',
+					}}
+				>
+					{formatBytes(doc.size_bytes)}
+					{doc.is_web_result && (
+						<span
+							style={{
+								marginLeft: '0.5rem',
+								padding: '0.1rem 0.45rem',
+								borderRadius: '999px',
+								background: 'rgba(37,99,235,0.1)',
+								color: 'var(--accent-color)',
+								fontWeight: 700,
+								fontSize: '0.65rem',
+							}}
+						>
+							WEB
+						</span>
+					)}
+				</div>
+			</div>
+		</div>
+	);
+
+	return (
+		<div
+			style={{
+				display: 'flex',
+				flexDirection: 'column',
+				gap: '1rem',
+				flex: 1,
+				overflowY: 'auto',
+			}}
+		>
+			{/* Uploaded documents */}
+			<div>
+				<div
+					style={{
+						display: 'flex',
+						alignItems: 'center',
+						gap: '0.4rem',
+						fontSize: '0.73rem',
+						fontWeight: 700,
+						color: 'var(--text-secondary)',
+						textTransform: 'uppercase',
+						letterSpacing: '0.05em',
+						marginBottom: '0.5rem',
+					}}
+				>
+					<FolderOpen size={13} />
+					Uploaded ({userDocs.length})
+				</div>
+				{userDocs.length === 0 ? (
+					<div
+						style={{
+							fontSize: '0.8rem',
+							color: 'var(--text-secondary)',
+							padding: '0.5rem 0',
+						}}
+					>
+						No uploaded files.
+					</div>
+				) : (
+					<div
+						style={{
+							display: 'flex',
+							flexDirection: 'column',
+							gap: '0.4rem',
+						}}
+					>
+						{userDocs.map((d) => (
+							<DocRow
+								key={d.filename}
+								doc={d}
+							/>
+						))}
+					</div>
+				)}
+			</div>
+
+			{/* Web search results */}
+			<div>
+				<div
+					style={{
+						display: 'flex',
+						alignItems: 'center',
+						gap: '0.4rem',
+						fontSize: '0.73rem',
+						fontWeight: 700,
+						color: 'var(--text-secondary)',
+						textTransform: 'uppercase',
+						letterSpacing: '0.05em',
+						marginBottom: '0.5rem',
+					}}
+				>
+					<Globe size={13} />
+					Web Search Results ({webDocs.length})
+				</div>
+				{webDocs.length === 0 ? (
+					<div
+						style={{
+							fontSize: '0.8rem',
+							color: 'var(--text-secondary)',
+							padding: '0.5rem 0',
+						}}
+					>
+						No web search results. Enable{' '}
+						<em>Web Search Grounding</em> when creating a new
+						simulation.
+					</div>
+				) : (
+					<div
+						style={{
+							display: 'flex',
+							flexDirection: 'column',
+							gap: '0.4rem',
+						}}
+					>
+						{webDocs.map((d) => (
+							<DocRow
+								key={d.filename}
+								doc={d}
+							/>
+						))}
+					</div>
+				)}
+			</div>
+		</div>
 	);
 }
 
@@ -3422,6 +3634,11 @@ export default function SessionView() {
 										})()}
 									</div>
 								</div>
+							)}
+
+							{/* Seed Data */}
+							{activeTab === 'seed_data' && (
+								<SeedDataPanel sessionId={id} />
 							)}
 
 							{/* Reports */}

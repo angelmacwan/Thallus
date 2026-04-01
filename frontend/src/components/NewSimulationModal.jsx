@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { UploadCloud, Zap, X } from 'lucide-react';
+import { UploadCloud, Zap, X, Globe } from 'lucide-react';
 import api from '../api';
 
 export default function NewSimulationModal({ open, onClose }) {
@@ -11,6 +11,7 @@ export default function NewSimulationModal({ open, onClose }) {
 	const [agentSlider, setAgentSlider] = useState(0);
 	const [uploading, setUploading] = useState(false);
 	const [dragging, setDragging] = useState(false);
+	const [enableWebSearch, setEnableWebSearch] = useState(false);
 	const fileInputRef = useRef(null);
 	const navigate = useNavigate();
 
@@ -25,6 +26,7 @@ export default function NewSimulationModal({ open, onClose }) {
 		setFiles([]);
 		setRounds(3);
 		setAgentSlider(0);
+		setEnableWebSearch(false);
 	};
 
 	const handleClose = () => {
@@ -47,6 +49,10 @@ export default function NewSimulationModal({ open, onClose }) {
 			if (objective.trim())
 				formData.append('objective', objective.trim());
 			Array.from(files).forEach((file) => formData.append('files', file));
+			formData.append(
+				'enable_web_search',
+				enableWebSearch ? 'true' : 'false',
+			);
 
 			const res = await api.post('/simulation/upload', formData, {
 				headers: { 'Content-Type': 'multipart/form-data' },
@@ -275,6 +281,65 @@ export default function NewSimulationModal({ open, onClose }) {
 							/>
 						</div>
 					</div>
+
+					{/* Web Search Grounding */}
+					<label
+						style={{
+							display: 'flex',
+							alignItems: 'flex-start',
+							gap: '0.7rem',
+							cursor: 'pointer',
+							padding: '0.75rem 0.85rem',
+							borderRadius: '10px',
+							border: `1.5px solid ${enableWebSearch ? 'var(--accent-color)' : 'var(--outline-variant)'}`,
+							background: enableWebSearch
+								? 'rgba(var(--accent-rgb, 37,99,235),0.06)'
+								: 'transparent',
+							transition: 'all 0.15s ease',
+						}}
+					>
+						<input
+							type="checkbox"
+							checked={enableWebSearch}
+							onChange={(e) =>
+								setEnableWebSearch(e.target.checked)
+							}
+							style={{
+								marginTop: '0.15rem',
+								accentColor: 'var(--accent-color)',
+								flexShrink: 0,
+							}}
+						/>
+						<div>
+							<div
+								style={{
+									display: 'flex',
+									alignItems: 'center',
+									gap: '0.4rem',
+									fontWeight: 600,
+									fontSize: '0.85rem',
+									color: enableWebSearch
+										? 'var(--accent-color)'
+										: 'var(--on-surface)',
+								}}
+							>
+								<Globe size={14} />
+								Enable Web Search Grounding
+							</div>
+							<p
+								style={{
+									fontSize: '0.72rem',
+									color: 'var(--text-secondary)',
+									margin: '0.25rem 0 0',
+									lineHeight: 1.4,
+								}}
+							>
+								Automatically searches Google for news,
+								articles, and data relevant to your seed topics
+								and adds them as context documents.
+							</p>
+						</div>
+					</label>
 
 					{/* Rounds */}
 					<div
