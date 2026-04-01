@@ -4,20 +4,13 @@ from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from .. import crud, schemas, auth, models
 from ..deps import get_db
-
-ALLOWED_EMAILS = {
-    "armacwan@gmail.com",
-    "angel.macwan@staticalabs.com",
-    "angelmacwan@staticalabs.com",
-    "saskia.oditt@staticalabs.com",
-    "saskia.oditt@test.com",
-}
+from core.config import SERVER, ALLOWED_EMAILS
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 @router.post("/register", response_model=schemas.UserResponse)
 def register(user: schemas.UserCreate, db: Session = Depends(get_db)):
-    if user.email.lower() not in ALLOWED_EMAILS:
+    if SERVER == "DEV" and user.email.lower() not in ALLOWED_EMAILS:
         crud.log_unauthorized_register(db, email=user.email)
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
