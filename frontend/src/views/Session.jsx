@@ -1651,6 +1651,7 @@ function ResimulateModal({ sessionUuid, session, onClose, onSuccess }) {
 	const [existingFiles, setExistingFiles] = useState([]);
 	const [filesToRemove, setFilesToRemove] = useState(new Set());
 	const [newFiles, setNewFiles] = useState([]);
+	const [useWebSearch, setUseWebSearch] = useState(false);
 	const [submitting, setSubmitting] = useState(false);
 	const [error, setError] = useState(null);
 	const [dragging, setDragging] = useState(false);
@@ -1665,6 +1666,7 @@ function ResimulateModal({ sessionUuid, session, onClose, onSuccess }) {
 				setSeedInfo(res.data);
 				setRounds(res.data.rounds || 3);
 				setObjective(res.data.objective || '');
+				// Only show user-uploaded files (backend now excludes _web_results.md)
 				setExistingFiles(res.data.files || []);
 			})
 			.catch(() => {})
@@ -1704,6 +1706,7 @@ function ResimulateModal({ sessionUuid, session, onClose, onSuccess }) {
 			if (agentCount > 0) formData.append('agent_count', agentCount);
 			if (objective.trim())
 				formData.append('objective', objective.trim());
+			formData.append('enable_web_search', useWebSearch);
 			if (filesToRemove.size > 0)
 				formData.append(
 					'remove_files',
@@ -2122,6 +2125,66 @@ function ResimulateModal({ sessionUuid, session, onClose, onSuccess }) {
 									lineHeight: 1.5,
 								}}
 							/>
+						</div>
+
+						{/* Web Search Grounding */}
+						<div
+							style={{
+								display: 'flex',
+								alignItems: 'flex-start',
+								gap: '0.75rem',
+								padding: '0.85rem 1rem',
+								background: useWebSearch
+									? 'rgba(var(--accent-rgb, 99,102,241), 0.08)'
+									: 'var(--surface-container-high)',
+								border: `1px solid ${useWebSearch ? 'var(--accent-color)' : 'var(--outline-variant)'}`,
+								borderRadius: '10px',
+								cursor: 'pointer',
+								transition: 'all 0.15s',
+							}}
+							onClick={() => setUseWebSearch((v) => !v)}
+						>
+							<input
+								type="checkbox"
+								id="web-search-checkbox"
+								checked={useWebSearch}
+								onChange={(e) =>
+									setUseWebSearch(e.target.checked)
+								}
+								onClick={(e) => e.stopPropagation()}
+								style={{
+									marginTop: '0.15rem',
+									accentColor: 'var(--accent-color)',
+									width: '15px',
+									height: '15px',
+									flexShrink: 0,
+									cursor: 'pointer',
+								}}
+							/>
+							<div>
+								<label
+									htmlFor="web-search-checkbox"
+									style={{
+										fontSize: '0.85rem',
+										fontWeight: 600,
+										color: 'var(--text-primary)',
+										cursor: 'pointer',
+									}}
+								>
+									Web Search Grounding
+								</label>
+								<p
+									style={{
+										margin: '0.2rem 0 0',
+										fontSize: '0.78rem',
+										color: 'var(--text-secondary)',
+										lineHeight: 1.4,
+									}}
+								>
+									Enrich seed documents with live web search
+									results before running the simulation.
+								</p>
+							</div>
 						</div>
 					</>
 				)}

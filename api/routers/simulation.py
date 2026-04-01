@@ -359,9 +359,15 @@ def get_seed_info(
     inputs_path = db_session.inputs_path
     outputs_path = db_session.outputs_path
 
-    files: list[str] = []
+    user_files: list[str] = []
+    web_files: list[str] = []
     if os.path.exists(inputs_path):
-        files = [f for f in os.listdir(inputs_path) if os.path.isfile(os.path.join(inputs_path, f))]
+        for f in os.listdir(inputs_path):
+            if os.path.isfile(os.path.join(inputs_path, f)):
+                if f.endswith("_web_results.md"):
+                    web_files.append(f)
+                else:
+                    user_files.append(f)
 
     objective = ""
     objective_path = os.path.join(outputs_path, "objective.txt")
@@ -370,7 +376,8 @@ def get_seed_info(
             objective = fh.read().strip()
 
     return {
-        "files": sorted(files),
+        "files": sorted(user_files),
+        "web_files": sorted(web_files),
         "rounds": db_session.rounds,
         "objective": objective,
         "title": db_session.title,
@@ -421,6 +428,7 @@ async def resimulate(
     rounds: int = Form(...),
     agent_count: int = Form(None),
     objective: str = Form(None),
+    enable_web_search: bool = Form(False),
     add_files: List[UploadFile] = File(default=[]),
     remove_files: str = Form(None),  # JSON array of filenames to remove
     db: Session = Depends(get_db),
@@ -446,6 +454,16 @@ async def resimulate(
                     os.remove(safe_path)
         except Exception as exc:
             print(f"Warning: could not remove some input files: {exc}")
+
+    # 1b. Always delete previously generated web-search files so they are not
+    #     carried over regardless of whether web search is re-enabled.
+    if os.path.exists(inputs_path):
+        for fname in os.listdir(inputs_path):
+            if fname.endswith("_web_results.md"):
+                try:
+                    os.remove(os.path.join(inputs_path, fname))
+                except Exception as exc:
+                    print(f"Warning: could not remove web-search file {fname}: {exc}")
 
     # 2. Add new seed files
     for file in add_files:
@@ -535,6 +553,8 @@ async def resimulate(
         rounds,
         agent_count,
         emit,
+        enable_web_search,
+        objective or "",
     )
 
     return db_session
