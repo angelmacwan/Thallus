@@ -1,3 +1,4 @@
+import json
 import os
 import uuid
 from fastapi import APIRouter, Depends, HTTPException
@@ -34,11 +35,34 @@ def generate_report(
     graph = LocalGraphMemory(storage_path=os.path.join(outputs_path, "graph.json"))
     log_path = os.path.join(outputs_path, "actions.jsonl")
 
+    # Load investigation objective
+    objective = ""
+    objective_path = os.path.join(outputs_path, "objective.txt")
+    if os.path.exists(objective_path):
+        with open(objective_path, encoding="utf-8") as fh:
+            objective = fh.read().strip()
+
     # Gather chat history for this session
     chat_messages = [
         {"is_user": m.is_user, "text": m.text}
         for m in db_session.chat_messages
     ]
+
+    # Gather completed insights for this session
+    insight_records = crud.get_insights_for_session(db, db_session.id)
+    insights = []
+    for record in insight_records:
+        if record.status == "complete" and record.file_path and os.path.exists(record.file_path):
+            try:
+                with open(record.file_path, encoding="utf-8") as fh:
+                    data = json.load(fh)
+                insights.append({
+                    "query": record.query,
+                    "overall_verdict": data.get("overall_verdict", ""),
+                    "insights": data.get("insights", []),
+                })
+            except Exception:
+                pass
 
     ra = ReportAgent(graph, log_path=log_path)
 
@@ -50,6 +74,8 @@ def generate_report(
         description=body.description,
         chat_messages=chat_messages,
         output_path=file_path,
+        objective=objective,
+        insights=insights if insights else None,
     )
 
     db_report = crud.create_report(

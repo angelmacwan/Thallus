@@ -273,13 +273,14 @@ function SeedDataPanel({ sessionId }) {
 }
 
 // ─── Session Reports Tab ──────────────────────────────────────────────────────
-function SessionReportsList({ sessionId, onCountChange }) {
+function SessionReportsList({ sessionId, onCountChange, scenarios = [] }) {
 	const [reports, setReports] = useState([]);
 	const [loading, setLoading] = useState(true);
 	const [selected, setSelected] = useState(null);
 	const [content, setContent] = useState(null);
 	const [contentLoading, setContentLoading] = useState(false);
 	const [deleting, setDeleting] = useState(null);
+	const [showModal, setShowModal] = useState(false);
 
 	const fetchReports = async () => {
 		setLoading(true);
@@ -336,6 +337,12 @@ function SessionReportsList({ sessionId, onCountChange }) {
 		}
 	};
 
+	const handleReportCreated = (newReport) => {
+		setReports((prev) => [newReport, ...prev]);
+		onCountChange(reports.length + 1);
+		openReport(newReport);
+	};
+
 	const mdComponents = {
 		code({ node, inline, className, children, ...props }) {
 			const lang = (className || '').replace('language-', '');
@@ -380,6 +387,14 @@ function SessionReportsList({ sessionId, onCountChange }) {
 				overflow: 'hidden',
 			}}
 		>
+			{showModal && (
+				<CreateReportModal
+					sessionId={sessionId}
+					scenarios={scenarios}
+					onClose={() => setShowModal(false)}
+					onCreated={handleReportCreated}
+				/>
+			)}
 			{/* List */}
 			<div
 				style={{
@@ -393,6 +408,22 @@ function SessionReportsList({ sessionId, onCountChange }) {
 					paddingRight: '0.25rem',
 				}}
 			>
+				<button
+					className="btn"
+					onClick={() => setShowModal(true)}
+					style={{
+						display: 'flex',
+						alignItems: 'center',
+						gap: '0.4rem',
+						fontSize: '0.8rem',
+						padding: '0.45rem 0.85rem',
+						alignSelf: 'flex-end',
+						flexShrink: 0,
+					}}
+				>
+					<Plus size={13} />
+					Generate Report
+				</button>
 				{loading && (
 					<div
 						style={{
@@ -2169,10 +2200,15 @@ function ResimulateModal({ sessionUuid, session, onClose, onSuccess }) {
 }
 
 // ─── Create Report Modal ──────────────────────────────────────────────────────
-function CreateReportModal({ sessionId, onClose, onCreated }) {
+function CreateReportModal({ sessionId, scenarios = [], onClose, onCreated }) {
 	const [description, setDescription] = useState('');
+	const [selectedSource, setSelectedSource] = useState('main');
 	const [generating, setGenerating] = useState(false);
 	const [error, setError] = useState(null);
+
+	const completedScenarios = scenarios.filter(
+		(s) => s.status === 'completed',
+	);
 
 	const handleSubmit = async (e) => {
 		e.preventDefault();
@@ -2180,9 +2216,16 @@ function CreateReportModal({ sessionId, onClose, onCreated }) {
 		setGenerating(true);
 		setError(null);
 		try {
-			const res = await api.post(`/reports/generate/${sessionId}`, {
-				description: description.trim(),
-			});
+			let res;
+			if (selectedSource !== 'main') {
+				res = await api.post(`/scenarios/${selectedSource}/report`, {
+					description: description.trim(),
+				});
+			} else {
+				res = await api.post(`/reports/generate/${sessionId}`, {
+					description: description.trim(),
+				});
+			}
 			onCreated(res.data);
 			onClose();
 		} catch (err) {
@@ -2287,6 +2330,80 @@ function CreateReportModal({ sessionId, onClose, onCreated }) {
 						gap: '1rem',
 					}}
 				>
+					{completedScenarios.length > 0 && (
+						<div>
+							<label
+								style={{
+									fontSize: '0.78rem',
+									fontWeight: 600,
+									color: 'var(--text-secondary)',
+									display: 'block',
+									marginBottom: '0.4rem',
+								}}
+							>
+								Report Context
+							</label>
+							<div
+								style={{
+									display: 'flex',
+									gap: '0.4rem',
+									flexWrap: 'wrap',
+								}}
+							>
+								<button
+									type="button"
+									onClick={() => setSelectedSource('main')}
+									style={{
+										padding: '0.3rem 0.75rem',
+										borderRadius: '999px',
+										border: `1.5px solid ${selectedSource === 'main' ? 'var(--accent-color)' : 'var(--outline-variant)'}`,
+										background:
+											selectedSource === 'main'
+												? 'var(--accent-color)'
+												: 'transparent',
+										color:
+											selectedSource === 'main'
+												? '#fff'
+												: 'var(--text-secondary)',
+										cursor: 'pointer',
+										fontSize: '0.78rem',
+										fontWeight: 600,
+										transition: 'all 0.15s',
+									}}
+								>
+									Main Simulation
+								</button>
+								{completedScenarios.map((s) => (
+									<button
+										key={s.scenario_id}
+										type="button"
+										onClick={() =>
+											setSelectedSource(s.scenario_id)
+										}
+										style={{
+											padding: '0.3rem 0.75rem',
+											borderRadius: '999px',
+											border: `1.5px solid ${selectedSource === s.scenario_id ? '#7c3aed' : 'var(--outline-variant)'}`,
+											background:
+												selectedSource === s.scenario_id
+													? '#7c3aed'
+													: 'transparent',
+											color:
+												selectedSource === s.scenario_id
+													? '#fff'
+													: 'var(--text-secondary)',
+											cursor: 'pointer',
+											fontSize: '0.78rem',
+											fontWeight: 600,
+											transition: 'all 0.15s',
+										}}
+									>
+										◆ {s.name}
+									</button>
+								))}
+							</div>
+						</div>
+					)}
 					<textarea
 						className="input-field"
 						value={description}
@@ -2845,6 +2962,7 @@ export default function SessionView() {
 			{showReportModal && session && (
 				<CreateReportModal
 					sessionId={id}
+					scenarios={scenarios}
 					onClose={() => setShowReportModal(false)}
 					onCreated={() => {}}
 				/>
@@ -3646,6 +3764,7 @@ export default function SessionView() {
 								<SessionReportsList
 									sessionId={id}
 									onCountChange={setReportsCount}
+									scenarios={scenarios}
 								/>
 							)}
 

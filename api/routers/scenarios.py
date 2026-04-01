@@ -488,11 +488,34 @@ def generate_scenario_report(
     )
     log_path = os.path.join(scenario.outputs_path, "actions.jsonl") if scenario.outputs_path else os.path.join(db_session.outputs_path, "actions.jsonl")
 
+    # Load investigation objective (always from the parent session)
+    objective = ""
+    objective_path = os.path.join(db_session.outputs_path, "objective.txt")
+    if os.path.exists(objective_path):
+        with open(objective_path, encoding="utf-8") as fh:
+            objective = fh.read().strip()
+
     # Include scenario chat history for context
     chat_messages = [
         {"is_user": m.is_user, "text": m.text}
         for m in scenario.chat_messages
     ]
+
+    # Gather completed insights for this scenario
+    insight_records = crud.get_insights_for_scenario(db, scenario.id)
+    insights = []
+    for record in insight_records:
+        if record.status == "complete" and record.file_path and os.path.exists(record.file_path):
+            try:
+                with open(record.file_path, encoding="utf-8") as fh:
+                    data = _json.load(fh)
+                insights.append({
+                    "query": record.query,
+                    "overall_verdict": data.get("overall_verdict", ""),
+                    "insights": data.get("insights", []),
+                })
+            except Exception:
+                pass
 
     ra = ReportAgent(graph, log_path=log_path)
 
@@ -513,6 +536,9 @@ def generate_scenario_report(
         description=scenario_description,
         chat_messages=chat_messages,
         output_path=file_path,
+        objective=objective,
+        insights=insights if insights else None,
+        scenario={"name": scenario.name, "description": scenario.description},
     )
 
     # Tag title clearly as scenario report

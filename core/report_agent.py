@@ -80,6 +80,9 @@ Requirements:
         description: str,
         chat_messages: list[dict] | None = None,
         output_path: str | None = None,
+        objective: str = "",
+        insights: list[dict] | None = None,
+        scenario: dict | None = None,
     ) -> tuple[str, str]:
         """
         Generate a full enterprise-grade structured Markdown report.
@@ -97,8 +100,40 @@ Requirements:
                 lines.append(f"**{role}:** {m.get('text', '')}")
             chat_str = "\n\n".join(lines[-30:])
 
+        objective_str = objective.strip() if objective else "(no investigation objective provided)"
+
+        if scenario:
+            context_str = f"**Selected Scenario:** {scenario.get('name', 'Unknown')}\n{scenario.get('description', '')}"
+        else:
+            context_str = "**Context:** Main simulation (no scenario selected)"
+
+        insights_str = "(no user insights available)"
+        if insights:
+            sections = []
+            for idx, ins in enumerate(insights, 1):
+                query = ins.get("query", "(unknown question)")
+                verdict = ins.get("overall_verdict", "")
+                obs_lines = [
+                    f"  - {item.get('answer_text', item.get('text', ''))}"
+                    for item in ins.get("insights", [])[:4]
+                ]
+                obs_block = "\n".join(obs_lines) if obs_lines else "  (no individual observations)"
+                sections.append(
+                    f"**Insight {idx}**\n"
+                    f"Question: {query}\n"
+                    f"Verdict: {verdict}\n"
+                    f"Key observations:\n{obs_block}"
+                )
+            insights_str = "\n\n".join(sections)
+
         prompt = f"""You are a senior analyst tasked with writing an enterprise-ready simulation analysis report.
 The simulation modelled agents interacting in a digital social-media environment.
+
+## Investigation Objective
+{objective_str}
+
+## Simulation Context
+{context_str}
 
 ## Report Focus
 {description}
@@ -108,6 +143,9 @@ The simulation modelled agents interacting in a digital social-media environment
 
 ## Simulation Action Logs (agent behaviour)
 {logs_str}
+
+## User-Generated Insights & Questions
+{insights_str}
 
 ## Prior Chat Analysis
 {chat_str}
