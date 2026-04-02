@@ -9,7 +9,7 @@ At a high level, Thallus takes source material such as reports, briefs, notes, o
 The product supports two main ways of working:
 
 - A web application for uploading documents, launching simulations, monitoring progress, viewing outputs, and generating reports.
-- A CLI workflow for running the same core pipeline directly from the terminal.
+- A CLI workflow for running the same core pipeline directly from the terminal. (Will be sunset soon)
 
 ## What Thallus Can Do
 
