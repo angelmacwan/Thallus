@@ -213,41 +213,22 @@ export default function SettingsModal({ open, onClose }) {
 											marginLeft: '0.1rem',
 										}}
 									>
-										/ {maxCredits.toLocaleString()} credits
+										credits
 									</span>
 								</div>
 
-								{/* Progress bar */}
-								<div
-									style={{
-										height: '8px',
-										borderRadius: '999px',
-										background: 'var(--outline-variant)',
-										overflow: 'hidden',
-									}}
-								>
+								{credits <= 0 && (
 									<div
 										style={{
-											height: '100%',
-											width: `${pct}%`,
-											borderRadius: '999px',
-											background: barColor,
-											transition: 'width 0.4s ease',
+											marginTop: '0.6rem',
+											fontSize: '0.75rem',
+											color: 'var(--text-secondary)',
 										}}
-									/>
-								</div>
-
-								<div
-									style={{
-										marginTop: '0.6rem',
-										fontSize: '0.75rem',
-										color: 'var(--text-secondary)',
-									}}
-								>
-									{credits <= 0
-										? '⚠ You have no credits remaining. Contact support to top up.'
-										: `${pct.toFixed(0)}% remaining`}
-								</div>
+									>
+										⚠ You have no credits remaining. Contact
+										support to top up.
+									</div>
+								)}
 							</div>
 
 							{credits <= 0 && (

@@ -779,61 +779,23 @@ function Sidebar() {
 												style={{
 													display: 'flex',
 													alignItems: 'center',
-													justifyContent:
-														'space-between',
-													marginBottom: '0.35rem',
+													gap: '0.35rem',
 												}}
 											>
-												<div
-													style={{
-														display: 'flex',
-														alignItems: 'center',
-														gap: '0.35rem',
-													}}
-												>
-													<Coins
-														size={12}
-														color={barColor}
-													/>
-													<span
-														style={{
-															fontSize: '0.72rem',
-															fontWeight: 600,
-															color: barColor,
-														}}
-													>
-														{credits.display_credits.toLocaleString()}{' '}
-														credits
-													</span>
-												</div>
+												<Coins
+													size={12}
+													color={barColor}
+												/>
 												<span
 													style={{
-														fontSize: '0.68rem',
-														color: 'var(--text-secondary)',
+														fontSize: '0.72rem',
+														fontWeight: 600,
+														color: barColor,
 													}}
 												>
-													/ {credits.initial_credits}
+													{credits.display_credits.toLocaleString()}{' '}
+													credits
 												</span>
-											</div>
-											<div
-												style={{
-													height: '4px',
-													borderRadius: '999px',
-													background:
-														'var(--outline-variant)',
-													overflow: 'hidden',
-												}}
-											>
-												<div
-													style={{
-														height: '100%',
-														width: `${pct}%`,
-														borderRadius: '999px',
-														background: barColor,
-														transition:
-															'width 0.3s ease',
-													}}
-												/>
 											</div>
 										</div>
 									);
