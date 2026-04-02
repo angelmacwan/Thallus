@@ -11,6 +11,7 @@ from google.genai import types
 
 from core.config import MODEL_NAME
 from core.graph_memory import LocalGraphMemory
+from core.usage import UsageSummary
 
 
 class OntologyGenerator:
@@ -39,6 +40,7 @@ class OntologyGenerator:
     def __init__(self, graph: LocalGraphMemory):
         self.graph = graph
         self.client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+        self._usage = UsageSummary()
 
     # ------------------------------------------------------------------
     # Public API
@@ -128,6 +130,11 @@ Guidelines:
                     response_mime_type="application/json",
                 ),
             )
+            if response.usage_metadata:
+                self._usage.add(
+                    input_tokens=response.usage_metadata.prompt_token_count or 0,
+                    output_tokens=response.usage_metadata.candidates_token_count or 0,
+                )
             ontology = json.loads(response.text)
             classes = len(ontology.get("classes", []))
             obj_props = len(ontology.get("object_properties", []))

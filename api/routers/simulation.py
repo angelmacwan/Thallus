@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from typing import List
 
 from .. import crud, schemas, models
-from ..deps import get_db, get_current_user
+from ..deps import get_db, get_current_user, require_credits
 
 router = APIRouter(prefix="/api/simulation", tags=["simulation"])
 
@@ -39,9 +39,10 @@ def _get_current_user_query(
     return user
 
 
-def run_simulation_task(session_id: int, session_uuid: str, inputs_path: str, outputs_path: str, rounds: int, agent_count: int, emit, enable_web_search: bool = False, objective: str = ""):
+def run_simulation_task(session_id: int, session_uuid: str, inputs_path: str, outputs_path: str, rounds: int, agent_count: int, emit, enable_web_search: bool = False, objective: str = "", user_id: int = None):
     # Runs in background task thread
     from ..database import SessionLocal
+    from ..billing import UsageSummary, deduct_credits
     db = SessionLocal()
     db_session = db.query(models.Session).filter(models.Session.id == session_id).first()
     if not db_session:
@@ -50,6 +51,8 @@ def run_simulation_task(session_id: int, session_uuid: str, inputs_path: str, ou
 
     db_session.status = "running"
     db.commit()
+
+    usage = UsageSummary()
 
     try:
         from core.graph_memory import LocalGraphMemory
@@ -65,6 +68,7 @@ def run_simulation_task(session_id: int, session_uuid: str, inputs_path: str, ou
             try:
                 from core.web_search import run_web_search_grounding
                 run_web_search_grounding(inputs_path, objective=objective, emit=emit)
+                usage.add(grounded_prompts=1)
             except Exception as ws_exc:
                 emit("stage", f"Web search grounding skipped: {ws_exc}")
 
@@ -78,12 +82,14 @@ def run_simulation_task(session_id: int, session_uuid: str, inputs_path: str, ou
         emit("stage", "Generating ontology…")
         og = OntologyGenerator(graph)
         og.generate(output_path=os.path.join(outputs_path, "ontology.json"))
+        usage += og._usage
         emit("stage", "Ontology generated")
 
         emit("stage", "Generating agent profiles…")
         agents_path = os.path.join(outputs_path, "agents.json")
         pg = ProfileGenerator(graph)
         profiles = pg.generate_profiles(output_path=agents_path, target_count=agent_count)
+        usage += pg._usage
         n_agents = len(profiles) if isinstance(profiles, list) else "?"
         emit("stage", f"{n_agents} agent profile(s) generated")
 
@@ -97,6 +103,7 @@ def run_simulation_task(session_id: int, session_uuid: str, inputs_path: str, ou
             emit_event=emit,
         )
         sr.run(rounds)
+        usage += sr._usage
 
         db_session.status = "completed"
         db.commit()
@@ -107,6 +114,16 @@ def run_simulation_task(session_id: int, session_uuid: str, inputs_path: str, ou
         emit("error", f"Simulation failed: {e}")
         print(f"Simulation error: {e}")
     finally:
+        # Deduct regardless of success/failure (partial usage still costs)
+        if user_id and (usage.input_tokens > 0 or usage.output_tokens > 0):
+            try:
+                deduct_credits(
+                    db, user_id, usage,
+                    description=f"Simulation {session_uuid}",
+                    session_db_id=session_id,
+                )
+            except Exception as billing_exc:
+                print(f"[billing] deduct_credits failed: {billing_exc}")
         emit("done", "Stream closed")
         _session_queues.pop(session_uuid, None)
         db.close()
@@ -122,7 +139,7 @@ async def upload_and_simulate(
     enable_web_search: bool = Form(False),
     files: List[UploadFile] = File(...),
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user)
+    current_user: models.User = Depends(require_credits)
 ):
     email_safe = current_user.email.replace("@", "_at_").replace(".", "_")
     session_uuid = str(uuid.uuid4())
@@ -181,6 +198,7 @@ async def upload_and_simulate(
         emit,
         enable_web_search,
         objective or "",
+        current_user.id,
     )
 
     return db_session

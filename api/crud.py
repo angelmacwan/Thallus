@@ -7,7 +7,12 @@ def get_user_by_email(db: Session, email: str):
 
 def create_user(db: Session, user: schemas.UserCreate):
     hashed_password = get_password_hash(user.password)
-    db_user = models.User(email=user.email, hashed_password=hashed_password)
+    from core.config import FREE_CREDITS_ON_SIGNUP_USD
+    db_user = models.User(
+        email=user.email,
+        hashed_password=hashed_password,
+        credits=FREE_CREDITS_ON_SIGNUP_USD,
+    )
     db.add(db_user)
     db.commit()
     db.refresh(db_user)

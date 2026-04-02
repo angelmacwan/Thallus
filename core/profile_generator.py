@@ -7,6 +7,7 @@ from google import genai
 from google.genai import types
 from core.graph_memory import LocalGraphMemory
 from core.config import MODEL_NAME
+from core.usage import UsageSummary
 
 # Entity types that should become social-media simulation agents
 _AGENT_TYPES = {
@@ -42,6 +43,7 @@ class ProfileGenerator:
     def __init__(self, graph: LocalGraphMemory):
         self.graph = graph
         self.client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+        self._usage = UsageSummary()
 
     def generate_profiles(self, output_path: str = "data/agents.json", target_count: int = None) -> list:
         # Generate core agents from graph entities
@@ -134,6 +136,11 @@ class ProfileGenerator:
                     temperature=0.6,
                 ),
             )
+            if response.usage_metadata:
+                self._usage.add(
+                    input_tokens=response.usage_metadata.prompt_token_count or 0,
+                    output_tokens=response.usage_metadata.candidates_token_count or 0,
+                )
             topics = json.loads(response.text)
             if isinstance(topics, list) and topics and all(isinstance(t, str) for t in topics):
                 print(f"LLM generated {len(topics)} topic phrase(s) for synthetic agents.")
@@ -203,6 +210,11 @@ Make each profile unique and diverse. Vary the professions, ages, countries, and
                         temperature=0.9,  # Higher temperature for more diversity
                     ),
                 )
+                if response.usage_metadata:
+                    self._usage.add(
+                        input_tokens=response.usage_metadata.prompt_token_count or 0,
+                        output_tokens=response.usage_metadata.candidates_token_count or 0,
+                    )
                 batch_profiles = json.loads(response.text)
                 
                 # Validate and add default values
@@ -295,6 +307,11 @@ Role:"""
                     temperature=0.3,
                 ),
             )
+            if response.usage_metadata:
+                self._usage.add(
+                    input_tokens=response.usage_metadata.prompt_token_count or 0,
+                    output_tokens=response.usage_metadata.candidates_token_count or 0,
+                )
             inferred_role = response.text.strip().lower()
             
             # Validate the response
@@ -352,6 +369,11 @@ Return ONLY a JSON object with exactly these keys:
                     response_mime_type="application/json",
                 ),
             )
+            if response.usage_metadata:
+                self._usage.add(
+                    input_tokens=response.usage_metadata.prompt_token_count or 0,
+                    output_tokens=response.usage_metadata.candidates_token_count or 0,
+                )
             profile = json.loads(response.text)
 
             # Guarantee required keys exist

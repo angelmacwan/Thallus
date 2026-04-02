@@ -1,4 +1,4 @@
-from sqlalchemy import Boolean, Column, ForeignKey, Integer, String, DateTime, Text
+from sqlalchemy import Boolean, Column, ForeignKey, Integer, String, DateTime, Text, Float
 from sqlalchemy.orm import relationship
 from datetime import datetime
 import uuid
@@ -12,12 +12,14 @@ class User(Base):
     email = Column(String, unique=True, index=True)
     hashed_password = Column(String)
     is_active = Column(Boolean, default=True)
+    credits = Column(Float, default=1.0)  # stored in USD; display = credits * CREDITS_PER_USD
 
     sessions = relationship("Session", back_populates="owner")
     logs = relationship("ActionLog", back_populates="user")
     reports = relationship("Report", back_populates="owner")
     scenarios = relationship("Scenario", back_populates="owner")
     insights = relationship("InsightRecord", back_populates="owner")
+    credit_transactions = relationship("CreditTransaction", back_populates="user")
 
 
 class Session(Base):
@@ -169,3 +171,18 @@ class InsightRecord(Base):
     session = relationship("Session", back_populates="insights", foreign_keys=[session_id])
     scenario = relationship("Scenario", back_populates="insights", foreign_keys=[scenario_id])
     owner = relationship("User", back_populates="insights")
+
+
+class CreditTransaction(Base):
+    __tablename__ = "credit_transactions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), index=True)
+    # negative = spend, positive = top-up/grant
+    amount_usd = Column(Float, nullable=False)
+    description = Column(String, nullable=False)
+    session_id = Column(Integer, ForeignKey("sessions.id"), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    user = relationship("User", back_populates="credit_transactions")
+    session = relationship("Session")

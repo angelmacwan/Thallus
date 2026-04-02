@@ -19,6 +19,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from core.config import CAMEL_MODEL_TYPE
+from core.usage import UsageSummary
 
 
 class ScenarioRunner:
@@ -37,6 +38,7 @@ class ScenarioRunner:
         self.scenario_description = scenario_description
         self.user_label = user_label
         self._emit = emit_event if callable(emit_event) else (lambda t, m: None)
+        self._usage = UsageSummary()
 
     # ──────────────────────────────────────────────────────────────────────────
     # Public
@@ -179,6 +181,17 @@ class ScenarioRunner:
             self._emit("round", f"Round {r + 1}/{rounds} complete")
 
         await env.close()
+
+        # ── Estimate OASIS token usage (camel-ai doesn't expose usage_metadata) ──
+        from core.config import (
+            OASIS_EST_INPUT_TOKENS_PER_AGENT_ROUND,
+            OASIS_EST_OUTPUT_TOKENS_PER_AGENT_ROUND,
+        )
+        n_agents = len(profiles)
+        self._usage.add(
+            input_tokens=n_agents * rounds * OASIS_EST_INPUT_TOKENS_PER_AGENT_ROUND,
+            output_tokens=n_agents * rounds * OASIS_EST_OUTPUT_TOKENS_PER_AGENT_ROUND,
+        )
 
         # ── Export ────────────────────────────────────────────────────────────
         self._emit("stage", "Exporting scenario data…")

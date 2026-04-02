@@ -9,7 +9,7 @@ from .deps import get_current_user
 from . import models
 
 from .routers import auth, sessions, simulation, reports
-from .routers import scenarios, insights
+from .routers import scenarios, insights, users
 
 # Create database tables
 Base.metadata.create_all(bind=engine)
@@ -20,6 +20,15 @@ Base.metadata.create_all(bind=engine)
 _MIGRATIONS = [
     "ALTER TABLE reports ADD COLUMN scenario_id INTEGER REFERENCES scenarios(id)",
     "ALTER TABLE reports ADD COLUMN is_scenario_report BOOLEAN DEFAULT 0",
+    "ALTER TABLE users ADD COLUMN credits FLOAT DEFAULT 1.0",
+    """CREATE TABLE IF NOT EXISTS credit_transactions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL REFERENCES users(id),
+        amount_usd FLOAT NOT NULL,
+        description VARCHAR NOT NULL,
+        session_id INTEGER REFERENCES sessions(id),
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )""",
 ]
 with engine.connect() as _conn:
     for _sql in _MIGRATIONS:
@@ -45,6 +54,7 @@ app.include_router(simulation.router)
 app.include_router(reports.router)
 app.include_router(scenarios.router)
 app.include_router(insights.router)
+app.include_router(users.router)
 
 APP_VERSION = "internal alpha 1.3"
 

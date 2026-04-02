@@ -24,10 +24,13 @@ try:
 except ImportError:
     GENAI_AVAILABLE = False
 
+from core.usage import UsageSummary
+
 
 class InsightsEngine:
     def __init__(self, outputs_path: str, result_file: str = None):
         self.outputs_path = outputs_path
+        self._usage = UsageSummary()
         self.actions_file = os.path.join(outputs_path, "actions.jsonl")
         self.agents_file = os.path.join(outputs_path, "agents.json")
         self.result_file = result_file or os.path.join(outputs_path, "insights.json")
@@ -105,6 +108,11 @@ class InsightsEngine:
                     temperature=temperature,
                 ),
             )
+            if response.usage_metadata:
+                self._usage.add(
+                    input_tokens=response.usage_metadata.prompt_token_count or 0,
+                    output_tokens=response.usage_metadata.candidates_token_count or 0,
+                )
             return response.text
         except Exception as e:
             print(f"[InsightsEngine] LLM call failed: {e}")
@@ -498,7 +506,7 @@ Return ONLY the JSON object. No other text."""
 
     # ── Main pipeline ─────────────────────────────────────────────────────────
 
-    def run(self, query: str, debate_rounds: int = 3) -> None:
+    def run(self, query: str, debate_rounds: int = 3) -> "UsageSummary":
         debate_rounds = max(1, min(10, debate_rounds))
         try:
             self._write_status("Loading simulation data...")
@@ -615,7 +623,9 @@ Return ONLY the JSON object. No other text."""
                 "aggregate": aggregate,
             }
             self._write_result(result)
+            return self._usage
 
         except Exception as e:
             print(f"[InsightsEngine] Pipeline failed: {e}")
             self._write_error(str(e))
+            return self._usage

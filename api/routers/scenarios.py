@@ -10,7 +10,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from .. import crud, models, schemas
-from ..deps import get_current_user, get_db
+from ..deps import get_current_user, get_db, require_credits
 
 router = APIRouter(prefix="/api/scenarios", tags=["scenarios"])
 
@@ -121,8 +121,10 @@ def _run_scenario_task(
     description: str,
     emit,
     user_label: str = "You",
+    user_id: int = None,
 ):
     from ..database import SessionLocal
+    from ..billing import UsageSummary, deduct_credits
 
     db = SessionLocal()
     scenario = db.query(models.Scenario).filter(models.Scenario.id == scenario_db_id).first()
@@ -133,6 +135,8 @@ def _run_scenario_task(
     scenario.status = "running"
     scenario.outputs_path = scenario_outputs_path
     db.commit()
+
+    usage = UsageSummary()
 
     try:
         from core.scenario_runner import ScenarioRunner
@@ -152,6 +156,7 @@ def _run_scenario_task(
             emit_event=emit,
         )
         sr.run(rounds)
+        usage += sr._usage
 
         scenario.status = "completed"
         db.commit()
@@ -162,6 +167,14 @@ def _run_scenario_task(
         emit("error", f"Scenario failed: {exc}")
         print(f"Scenario error: {exc}")
     finally:
+        if user_id and (usage.input_tokens > 0 or usage.output_tokens > 0):
+            try:
+                deduct_credits(
+                    db, user_id, usage,
+                    description=f"Scenario {scenario_uuid}",
+                )
+            except Exception as billing_exc:
+                print(f"[billing] deduct_credits failed: {billing_exc}")
         emit("done", "Scenario stream closed")
         _scenario_queues.pop(scenario_uuid, None)
         db.close()
@@ -172,7 +185,7 @@ def run_scenario(
     scenario_uuid: str,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user),
+    current_user: models.User = Depends(require_credits),
 ):
     scenario = crud.get_scenario_by_uuid(db, scenario_uuid)
     if not scenario or scenario.user_id != current_user.id:
@@ -217,6 +230,7 @@ def run_scenario(
         scenario.description,
         emit,
         user_label,
+        current_user.id,
     )
 
     crud.log_action(db, current_user.id, "run_scenario", f"Scenario: {scenario_uuid}")

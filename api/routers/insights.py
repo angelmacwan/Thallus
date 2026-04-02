@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 from typing import List
 from .. import crud, models, schemas
 from ..database import SessionLocal, get_db
-from ..deps import get_current_user
+from ..deps import get_current_user, require_credits
 
 router = APIRouter(
     prefix="/api/insights",
@@ -70,9 +70,10 @@ def _status_from_file(file_path: str) -> schemas.InsightsStatusResponse:
         return schemas.InsightsStatusResponse(available=False, status="pending")
 
 
-def _run_insights_bg(outputs_path: str, query: str, debate_rounds: int, insight_id: str) -> None:
+def _run_insights_bg(outputs_path: str, query: str, debate_rounds: int, insight_id: str, user_id: int = None) -> None:
     """Background task: run InsightsEngine and update DB status when done."""
     from core.insights_engine import InsightsEngine
+    from ..billing import UsageSummary, deduct_credits
 
     file_path = _insight_file_path(outputs_path, insight_id)
 
@@ -86,9 +87,9 @@ def _run_insights_bg(outputs_path: str, query: str, debate_rounds: int, insight_
         db.close()
 
     engine = InsightsEngine(outputs_path, result_file=file_path)
-    engine.run(query, debate_rounds)
+    usage = engine.run(query, debate_rounds)
 
-    # Update DB status from final file
+    # Update DB status from final file and deduct credits
     db = SessionLocal()
     try:
         record = crud.get_insight_by_uuid(db, insight_id)
@@ -100,6 +101,16 @@ def _run_insights_bg(outputs_path: str, query: str, debate_rounds: int, insight_
             except Exception:
                 final_status = "error"
             crud.update_insight_status(db, record, final_status)
+        # Deduct credits for the insight run
+        if user_id and usage and (usage.input_tokens > 0 or usage.output_tokens > 0):
+            try:
+                from ..billing import deduct_credits
+                deduct_credits(
+                    db, user_id, usage,
+                    description=f"Insights {insight_id}",
+                )
+            except Exception as billing_exc:
+                print(f"[billing] deduct_credits failed: {billing_exc}")
     finally:
         db.close()
 
@@ -202,7 +213,7 @@ def generate_insights(
     request: schemas.InsightsGenerateRequest,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user),
+    current_user: models.User = Depends(require_credits),
 ):
     db_session = crud.get_session(db, session_uuid)
     if not db_session or db_session.user_id != current_user.id:
@@ -228,7 +239,7 @@ def generate_insights(
     )
 
     background_tasks.add_task(
-        _run_insights_bg, db_session.outputs_path, request.query, debate_rounds, insight_id
+        _run_insights_bg, db_session.outputs_path, request.query, debate_rounds, insight_id, current_user.id
     )
     return {"message": "Insights generation started", "insight_id": insight_id}
 
@@ -287,7 +298,7 @@ def generate_scenario_insights(
     request: schemas.InsightsGenerateRequest,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user),
+    current_user: models.User = Depends(require_credits),
 ):
     scenario = crud.get_scenario_by_uuid(db, scenario_uuid)
     if not scenario or not scenario.outputs_path:
@@ -308,7 +319,7 @@ def generate_scenario_insights(
     )
 
     background_tasks.add_task(
-        _run_insights_bg, scenario.outputs_path, request.query, debate_rounds, insight_id
+        _run_insights_bg, scenario.outputs_path, request.query, debate_rounds, insight_id, current_user.id
     )
     return {"message": "Insights generation started", "insight_id": insight_id}
 

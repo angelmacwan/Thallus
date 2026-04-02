@@ -6,12 +6,14 @@ from google import genai
 from google.genai import types
 from core.graph_memory import LocalGraphMemory
 from core.config import MODEL_NAME
+from core.usage import UsageSummary
 
 class ReportAgent:
     def __init__(self, graph: LocalGraphMemory, log_path: str = "data/actions.jsonl"):
         self.graph = graph
         self.log_path = log_path
         self.client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+        self._usage = UsageSummary()
 
     def _load_logs(self) -> str:
         logs = []
@@ -70,6 +72,11 @@ End with a concise Prediction/Conclusion section that synthesizes soft metrics t
                 model=MODEL_NAME,
                 contents=prompt,
             )
+            if response.usage_metadata:
+                self._usage.add(
+                    input_tokens=response.usage_metadata.prompt_token_count or 0,
+                    output_tokens=response.usage_metadata.candidates_token_count or 0,
+                )
             report = response.text
 
             if output_path:
@@ -189,6 +196,11 @@ Return ONLY the Markdown report, starting with a `#` level title.
                 model=MODEL_NAME,
                 contents=prompt,
             )
+            if response.usage_metadata:
+                self._usage.add(
+                    input_tokens=response.usage_metadata.prompt_token_count or 0,
+                    output_tokens=response.usage_metadata.candidates_token_count or 0,
+                )
             report_text = response.text.strip()
 
             # Extract the title from the first # heading

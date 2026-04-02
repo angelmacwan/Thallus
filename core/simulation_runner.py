@@ -18,6 +18,7 @@ load_dotenv()
 
 from core.config import CAMEL_MODEL_TYPE
 from core.graph_memory import LocalGraphMemory
+from core.usage import UsageSummary
 
 
 class SimulationRunner:
@@ -34,6 +35,7 @@ class SimulationRunner:
         self.db_path = db_path
         self.log_path = log_path
         self._emit = emit_event if callable(emit_event) else (lambda t, m: None)
+        self._usage = UsageSummary()
 
     # ------------------------------------------------------------------
     # Public
@@ -141,6 +143,17 @@ class SimulationRunner:
 
         await env.close()
 
+        # ── Estimate OASIS token usage (camel-ai doesn't expose usage_metadata) ──
+        from core.config import (
+            OASIS_EST_INPUT_TOKENS_PER_AGENT_ROUND,
+            OASIS_EST_OUTPUT_TOKENS_PER_AGENT_ROUND,
+        )
+        n_agents = len(profiles)
+        self._usage.add(
+            input_tokens=n_agents * rounds * OASIS_EST_INPUT_TOKENS_PER_AGENT_ROUND,
+            output_tokens=n_agents * rounds * OASIS_EST_OUTPUT_TOKENS_PER_AGENT_ROUND,
+        )
+
         # ── Post-run export ───────────────────────────────────────────
         self._emit("stage", "Exporting simulation data…")
         self._export_db_to_log()
@@ -216,6 +229,11 @@ class SimulationRunner:
                     temperature=0.7,
                 ),
             )
+            if response.usage_metadata:
+                self._usage.add(
+                    input_tokens=response.usage_metadata.prompt_token_count or 0,
+                    output_tokens=response.usage_metadata.candidates_token_count or 0,
+                )
             posts = json.loads(response.text)
             if isinstance(posts, list) and posts and all(isinstance(p, str) for p in posts):
                 print(f"LLM generated {len(posts)} contextual seed post(s).")

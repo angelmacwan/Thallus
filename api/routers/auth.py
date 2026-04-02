@@ -3,8 +3,8 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from .. import crud, schemas, auth, models
-from ..deps import get_db
-from core.config import SERVER, ALLOWED_EMAILS
+from ..deps import get_db, get_current_user
+from core.config import SERVER, ALLOWED_EMAILS, FREE_CREDITS_ON_SIGNUP_USD, CREDITS_PER_USD
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -20,6 +20,15 @@ def register(user: schemas.UserCreate, db: Session = Depends(get_db)):
     if db_user:
         raise HTTPException(status_code=400, detail="Email already registered")
     new_user = crud.create_user(db=db, user=user)
+    # Log the welcome-credits transaction
+    from ..models import CreditTransaction
+    tx = CreditTransaction(
+        user_id=new_user.id,
+        amount_usd=FREE_CREDITS_ON_SIGNUP_USD,
+        description=f"Welcome credits ({FREE_CREDITS_ON_SIGNUP_USD * CREDITS_PER_USD:.0f} credits)",
+    )
+    db.add(tx)
+    db.commit()
     crud.log_action(db, new_user.id, "register")
     return new_user
 

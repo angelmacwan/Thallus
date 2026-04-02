@@ -61,7 +61,14 @@ export default function NewSimulationModal({ open, onClose }) {
 			navigate(`/session/${res.data.session_id}`);
 		} catch (err) {
 			console.error('Upload failed', err);
-			alert('Upload failed. See console.');
+			if (err.response?.status === 402) {
+				alert(
+					err.response.data?.detail ||
+						'You have run out of credits. Please top up to continue.',
+				);
+			} else {
+				alert('Upload failed. See console.');
+			}
 		} finally {
 			setUploading(false);
 		}

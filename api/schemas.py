@@ -11,6 +11,7 @@ class UserCreate(UserBase):
 class UserResponse(UserBase):
     id: int
     is_active: bool
+    credits: float = 1.0
 
     class Config:
         from_attributes = True
@@ -296,6 +297,13 @@ class MetricsFullResponse(BaseModel):
     engagement: Optional[dict] = None  # EngagementMetricsResponse structure
     narratives: Optional[dict] = None  # NarrativeMetricsResponse structure
     summary: Optional[dict] = None  # MetricsSummaryResponse structure
+
+
+class CreditsResponse(BaseModel):
+    email: str
+    credits_usd: float
+    display_credits: int   # credits_usd * CREDITS_PER_USD
+    initial_credits: int   # FREE_CREDITS_ON_SIGNUP_USD * CREDITS_PER_USD
 
 
 # ── Question-Based Metrics (Idea #2) ─────────────────────────────────────────

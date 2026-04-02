@@ -36,12 +36,14 @@ import {
 	GraduationCap,
 	UploadCloud,
 	Zap,
+	Coins,
 } from 'lucide-react';
 import { SidebarCtx } from './SidebarContext';
 import Auth from './views/Auth';
 import Home from './views/Home';
 import SessionView from './views/Session';
 import NewSimulationModal from './components/NewSimulationModal';
+import SettingsModal from './components/SettingsModal';
 
 function InfoModal({ open, onClose }) {
 	if (!open) return null;
@@ -394,6 +396,8 @@ function Sidebar() {
 	const { sessionNav, setNewSimOpen } = React.useContext(SidebarCtx);
 	const [profileOpen, setProfileOpen] = useState(false);
 	const [infoOpen, setInfoOpen] = useState(false);
+	const [settingsOpen, setSettingsOpen] = useState(false);
+	const [credits, setCredits] = useState(null);
 	const profileRef = useRef(null);
 
 	// Decode email from JWT
@@ -407,6 +411,14 @@ function Sidebar() {
 			return '';
 		}
 	})();
+
+	// Fetch credits when dropdown opens
+	useEffect(() => {
+		if (!profileOpen) return;
+		api.get('/user/me')
+			.then((res) => setCredits(res.data))
+			.catch(() => setCredits(null));
+	}, [profileOpen]);
 
 	// Close dropdown on outside click
 	useEffect(() => {
@@ -737,6 +749,95 @@ function Sidebar() {
 								zIndex: 100,
 							}}
 						>
+							{/* Credits bar */}
+							{credits !== null &&
+								(() => {
+									const pct =
+										credits.initial_credits > 0
+											? Math.min(
+													100,
+													(credits.display_credits /
+														credits.initial_credits) *
+														100,
+												)
+											: 0;
+									const barColor =
+										pct > 50
+											? '#16a34a'
+											: pct > 20
+												? '#d97706'
+												: '#dc2626';
+									return (
+										<div
+											style={{
+												padding: '0.6rem 0.85rem',
+												borderBottom:
+													'1px solid var(--outline-variant)',
+											}}
+										>
+											<div
+												style={{
+													display: 'flex',
+													alignItems: 'center',
+													justifyContent:
+														'space-between',
+													marginBottom: '0.35rem',
+												}}
+											>
+												<div
+													style={{
+														display: 'flex',
+														alignItems: 'center',
+														gap: '0.35rem',
+													}}
+												>
+													<Coins
+														size={12}
+														color={barColor}
+													/>
+													<span
+														style={{
+															fontSize: '0.72rem',
+															fontWeight: 600,
+															color: barColor,
+														}}
+													>
+														{credits.display_credits.toLocaleString()}{' '}
+														credits
+													</span>
+												</div>
+												<span
+													style={{
+														fontSize: '0.68rem',
+														color: 'var(--text-secondary)',
+													}}
+												>
+													/ {credits.initial_credits}
+												</span>
+											</div>
+											<div
+												style={{
+													height: '4px',
+													borderRadius: '999px',
+													background:
+														'var(--outline-variant)',
+													overflow: 'hidden',
+												}}
+											>
+												<div
+													style={{
+														height: '100%',
+														width: `${pct}%`,
+														borderRadius: '999px',
+														background: barColor,
+														transition:
+															'width 0.3s ease',
+													}}
+												/>
+											</div>
+										</div>
+									);
+								})()}
 							<button
 								className="sidebar-nav-btn"
 								onClick={() => {
@@ -756,7 +857,10 @@ function Sidebar() {
 							/>
 							<button
 								className="sidebar-nav-btn"
-								onClick={() => setProfileOpen(false)}
+								onClick={() => {
+									setSettingsOpen(true);
+									setProfileOpen(false);
+								}}
 								style={{ width: '100%', borderRadius: 0 }}
 							>
 								<Settings size={14} />
@@ -833,6 +937,10 @@ function Sidebar() {
 			<InfoModal
 				open={infoOpen}
 				onClose={() => setInfoOpen(false)}
+			/>
+			<SettingsModal
+				open={settingsOpen}
+				onClose={() => setSettingsOpen(false)}
 			/>
 		</>
 	);

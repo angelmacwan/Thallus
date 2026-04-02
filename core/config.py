@@ -21,3 +21,27 @@ ALLOWED_EMAILS = {
     "saskia.oditt@staticalabs.com",
     "saskia.oditt@test.com",
 }
+
+# ── Billing & Credits ─────────────────────────────────────────────────────────
+
+# Gemini API pricing (USD per 1M tokens) — Paid Tier
+GEMINI_INPUT_PRICE_PER_1M_USD: float = 0.10
+GEMINI_OUTPUT_PRICE_PER_1M_USD: float = 0.40
+
+# Gemini Search Grounding (USD per 1,000 grounded prompts)
+GEMINI_GROUNDING_PRICE_PER_1K_USD: float = 35.0
+
+# Profit multiplier: charges users more than raw API cost (e.g. 3.0 = 3× markup)
+PROFIT_MULTIPLIER: float = 3.0
+
+# Credits granted to each user on signup (stored internally as USD float)
+FREE_CREDITS_ON_SIGNUP_USD: float = 1.00
+
+# Display conversion: 1 USD = this many user-facing credits shown in the UI
+CREDITS_PER_USD: int = 100
+
+# OASIS / camel-ai token estimation (per agent per round).
+# Exact values are unavailable since camel-ai calls Gemini internally
+# without exposing response.usage_metadata.
+OASIS_EST_INPUT_TOKENS_PER_AGENT_ROUND: int = 800
+OASIS_EST_OUTPUT_TOKENS_PER_AGENT_ROUND: int = 300
