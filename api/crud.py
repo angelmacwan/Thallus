@@ -215,3 +215,65 @@ def get_scenario_events(db: Session, scenario_db_id: int):
         .order_by(models.ScenarioEvent.id)
         .all()
     )
+
+
+# ── Promo code redemption ──────────────────────────────────────────────────────
+
+def redeem_promo_code(
+    db: Session,
+    user: models.User,
+    code: str,
+) -> tuple[bool, str, int]:
+    """
+    Attempt to redeem a promo code for a user.
+
+    Returns (success, message, credits_added_display).
+    credits_added_display is in display units (i.e. val from config).
+    """
+    from core.config import promo_codes, CREDITS_PER_USD
+
+    code = code.strip()
+
+    # Validate code exists in config
+    if code not in promo_codes:
+        return False, "Invalid promo code.", 0
+
+    config = promo_codes[code]
+    max_users: int = config["users"]
+    display_val: int = config["val"]
+
+    # Check if this user already used this code
+    already_used = (
+        db.query(models.PromoCodeUsage)
+        .filter(
+            models.PromoCodeUsage.user_id == user.id,
+            models.PromoCodeUsage.code == code,
+        )
+        .first()
+    )
+    if already_used:
+        return False, "You have already used this promo code.", 0
+
+    # Check global usage count
+    usage_count: int = (
+        db.query(models.PromoCodeUsage)
+        .filter(models.PromoCodeUsage.code == code)
+        .count()
+    )
+    if usage_count >= max_users:
+        return False, "This promo code has reached its maximum number of uses.", 0
+
+    # All checks passed — apply credits and record usage
+    amount_usd: float = display_val / CREDITS_PER_USD
+    user.credits = (user.credits or 0.0) + amount_usd
+
+    usage = models.PromoCodeUsage(
+        user_id=user.id,
+        email=user.email,
+        code=code,
+    )
+    db.add(usage)
+    db.commit()
+    db.refresh(user)
+
+    return True, f"Successfully redeemed {display_val} credits.", display_val

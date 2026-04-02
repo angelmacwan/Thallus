@@ -45,3 +45,14 @@ CREDITS_PER_USD: int = 100
 # without exposing response.usage_metadata.
 OASIS_EST_INPUT_TOKENS_PER_AGENT_ROUND: int = 800
 OASIS_EST_OUTPUT_TOKENS_PER_AGENT_ROUND: int = 300
+
+# ── Promo Codes ───────────────────────────────────────────────────────────────
+# Each key is the promo code string.
+# "val"   – credits (in display units, i.e. divided by CREDITS_PER_USD) to add.
+# "users" – maximum number of distinct users allowed to redeem this code.
+promo_codes: dict = {
+    "WELCOME100": {
+        "val": 100,
+        "users": 5,
+    },
+}

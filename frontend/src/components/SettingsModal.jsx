@@ -1,19 +1,44 @@
 import React, { useEffect, useState } from 'react';
-import { X, Coins, User } from 'lucide-react';
+import { X, Coins, User, Tag } from 'lucide-react';
 import api from '../api';
 
 export default function SettingsModal({ open, onClose }) {
 	const [userData, setUserData] = useState(null);
 	const [loading, setLoading] = useState(false);
+	const [promoCode, setPromoCode] = useState('');
+	const [promoLoading, setPromoLoading] = useState(false);
+	const [promoMsg, setPromoMsg] = useState(null); // { type: 'success'|'error', text: string }
 
 	useEffect(() => {
 		if (!open) return;
 		setLoading(true);
+		setPromoMsg(null);
+		setPromoCode('');
 		api.get('/user/me')
 			.then((res) => setUserData(res.data))
 			.catch(() => setUserData(null))
 			.finally(() => setLoading(false));
 	}, [open]);
+
+	function handleRedeemCode() {
+		if (!promoCode.trim()) return;
+		setPromoLoading(true);
+		setPromoMsg(null);
+		api.post('/user/redeem-code', { code: promoCode.trim() })
+			.then((res) => {
+				setPromoMsg({ type: 'success', text: res.data.message });
+				setPromoCode('');
+				// Refresh credits display
+				return api.get('/user/me');
+			})
+			.then((res) => res && setUserData(res.data))
+			.catch((err) => {
+				const detail =
+					err.response?.data?.detail || 'Failed to redeem code.';
+				setPromoMsg({ type: 'error', text: detail });
+			})
+			.finally(() => setPromoLoading(false));
+	}
 
 	if (!open) return null;
 
@@ -243,6 +268,133 @@ export default function SettingsModal({ open, onClose }) {
 									insights until your balance is topped up.
 								</div>
 							)}
+						</div>
+
+						{/* Promo code section */}
+						<div style={{ marginTop: '1.5rem' }}>
+							<div
+								style={{
+									fontSize: '0.68rem',
+									fontWeight: 700,
+									textTransform: 'uppercase',
+									letterSpacing: '0.08em',
+									color: 'var(--text-secondary)',
+									marginBottom: '0.65rem',
+								}}
+							>
+								Promo Code
+							</div>
+							<div
+								style={{
+									padding: '1rem',
+									borderRadius: '10px',
+									background: 'var(--surface-container-high)',
+								}}
+							>
+								<div
+									style={{
+										display: 'flex',
+										gap: '0.5rem',
+									}}
+								>
+									<div
+										style={{
+											position: 'relative',
+											flex: 1,
+										}}
+									>
+										<Tag
+											size={14}
+											color="var(--text-secondary)"
+											style={{
+												position: 'absolute',
+												left: '0.65rem',
+												top: '50%',
+												transform: 'translateY(-50%)',
+												pointerEvents: 'none',
+											}}
+										/>
+										<input
+											type="text"
+											value={promoCode}
+											onChange={(e) =>
+												setPromoCode(e.target.value)
+											}
+											onKeyDown={(e) =>
+												e.key === 'Enter' &&
+												handleRedeemCode()
+											}
+											placeholder="Enter code…"
+											disabled={promoLoading}
+											style={{
+												width: '100%',
+												paddingLeft: '2rem',
+												paddingRight: '0.75rem',
+												paddingTop: '0.5rem',
+												paddingBottom: '0.5rem',
+												borderRadius: '8px',
+												border: '1px solid var(--outline-variant)',
+												background: 'var(--surface)',
+												color: 'var(--text-primary)',
+												fontSize: '0.85rem',
+												outline: 'none',
+												boxSizing: 'border-box',
+											}}
+										/>
+									</div>
+									<button
+										onClick={handleRedeemCode}
+										disabled={
+											promoLoading || !promoCode.trim()
+										}
+										style={{
+											padding: '0.5rem 1rem',
+											borderRadius: '8px',
+											border: 'none',
+											background: 'var(--primary)',
+											color: 'var(--on-primary)',
+											fontSize: '0.85rem',
+											fontWeight: 600,
+											cursor:
+												promoLoading ||
+												!promoCode.trim()
+													? 'not-allowed'
+													: 'pointer',
+											opacity:
+												promoLoading ||
+												!promoCode.trim()
+													? 0.55
+													: 1,
+											whiteSpace: 'nowrap',
+										}}
+									>
+										{promoLoading ? 'Redeeming…' : 'Redeem'}
+									</button>
+								</div>
+
+								{promoMsg && (
+									<div
+										style={{
+											marginTop: '0.65rem',
+											padding: '0.55rem 0.75rem',
+											borderRadius: '6px',
+											fontSize: '0.78rem',
+											lineHeight: 1.5,
+											background:
+												promoMsg.type === 'success'
+													? 'rgba(22,163,74,0.1)'
+													: 'rgba(220,38,38,0.08)',
+											border: `1px solid ${promoMsg.type === 'success' ? '#16a34a' : '#dc2626'}`,
+											color:
+												promoMsg.type === 'success'
+													? '#16a34a'
+													: '#dc2626',
+										}}
+									>
+										{promoMsg.text}
+									</div>
+								)}
+							</div>
 						</div>
 					</>
 				)}

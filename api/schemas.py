@@ -306,6 +306,16 @@ class CreditsResponse(BaseModel):
     initial_credits: int   # FREE_CREDITS_ON_SIGNUP_USD * CREDITS_PER_USD
 
 
+class PromoCodeRedeemRequest(BaseModel):
+    code: str
+
+
+class PromoCodeRedeemResponse(BaseModel):
+    success: bool
+    message: str
+    credits_added: int = 0       # display credits added
+
+
 # ── Question-Based Metrics (Idea #2) ─────────────────────────────────────────
 
 class EvidenceResponse(BaseModel):

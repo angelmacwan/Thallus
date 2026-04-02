@@ -29,6 +29,13 @@ _MIGRATIONS = [
         session_id INTEGER REFERENCES sessions(id),
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )""",
+    """CREATE TABLE IF NOT EXISTS promo_code_usages (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL REFERENCES users(id),
+        email VARCHAR NOT NULL,
+        code VARCHAR NOT NULL,
+        redeemed_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )""",
 ]
 with engine.connect() as _conn:
     for _sql in _MIGRATIONS:

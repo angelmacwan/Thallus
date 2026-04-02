@@ -20,6 +20,7 @@ class User(Base):
     scenarios = relationship("Scenario", back_populates="owner")
     insights = relationship("InsightRecord", back_populates="owner")
     credit_transactions = relationship("CreditTransaction", back_populates="user")
+    promo_code_usages = relationship("PromoCodeUsage", back_populates="user")
 
 
 class Session(Base):
@@ -186,3 +187,15 @@ class CreditTransaction(Base):
 
     user = relationship("User", back_populates="credit_transactions")
     session = relationship("Session")
+
+
+class PromoCodeUsage(Base):
+    __tablename__ = "promo_code_usages"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    email = Column(String, nullable=False, index=True)
+    code = Column(String, nullable=False, index=True)
+    redeemed_at = Column(DateTime, default=datetime.utcnow)
+
+    user = relationship("User", back_populates="promo_code_usages")
