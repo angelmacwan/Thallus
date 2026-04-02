@@ -226,24 +226,29 @@ SAMPLE POSTS FROM THE SIMULATION:
 {top_posts_text}
 
 TASK:
-Based on the user's query and the simulation data above, generate 3-5 specific, trackable \
-insight observations that directly answer or relate to the query. Each insight should be a \
-clear, evidence-grounded observation from the simulation.
+Extract the following structured intelligence from the simulation data above, directly addressing the user's query:
 
-When analyzing, explicitly consider these SOFT METRICS:
-- **Sentiment Shifts**: How did emotional tone evolve? Did posts become increasingly positive/negative/polarized?
-- **Influence Spread**: Which agents' ideas were echoed or built upon by others? How did ideas cascade?
-- **Decision Cascades**: Did agent actions trigger follow-up actions by other agents? What chains of behavior emerged?
-- **Stability vs Volatility**: Were agent positions consistent or did they shift significantly? How stable were group dynamics?
-- **Consensus Formation**: Did agents converge toward shared views, or diverge into opposing camps?
-- **Polarization Patterns**: Did opinion clusters emerge? How distinct were agent positions from each other?
-- **Thought Leadership**: Which agents drove narrative direction? Whose ideas garnered most engagement?
+1. OUTCOME DISTRIBUTION — What specific outcomes are the agents predicting? \
+Estimate the approximate % of agents predicting each outcome (e.g., churn increase, revenue growth, \
+public backlash, long-term success, regulatory response, etc.).
 
-Return a JSON array of insight objects. Each object must have:
+2. TOP RISKS — The 3 most significant risks or negative outcomes surfacing across the agent population.
+
+3. TOP OPPORTUNITIES — The 3 most significant positive outcomes or opportunities identified.
+
+4. KEY DISAGREEMENTS — The biggest point of disagreement between agent clusters \
+(i.e., where agents are most split). Name the opposing camps.
+
+5. BEHAVIORAL PATTERNS — Notable patterns in how agents engaged with the topic \
+(e.g., influence cascades, polarization, consensus formation, thought leaders).
+
+Return a JSON array of 4-6 insight objects. Each object must have:
 - "id": "i_0", "i_1", etc.
-- "text": the insight observation statement (1-2 sentences), optionally referencing one or more soft metrics above
-- "answer_text": a direct synthesized answer to the query from this insight's perspective (1-2 sentences)
-- "soft_metrics_noted": an optional array of the specific soft metrics this insight touches on (e.g., ["sentiment_shifts", "influence_spread"])
+- "category": one of "outcome_distribution" | "risk" | "opportunity" | "disagreement" | "behavioral_pattern"
+- "text": the insight statement (1-2 sentences, evidence-grounded and specific)
+- "answer_text": a direct answer to the query from this insight's perspective (1-2 sentences)
+- "soft_metrics_noted": array of relevant soft metrics touched on \
+(e.g., ["sentiment_shifts", "influence_spread", "consensus_formation", "polarization"])
 
 Return ONLY the JSON array, no other text."""
 
@@ -257,15 +262,17 @@ Return ONLY the JSON array, no other text."""
                         if isinstance(item, dict):
                             validated.append({
                                 "id": item.get("id", f"i_{i}"),
+                                "category": str(item.get("category", "")).strip(),
                                 "text": str(item.get("text", "")).strip(),
                                 "answer_text": str(item.get("answer_text", "")).strip(),
+                                "soft_metrics_noted": item.get("soft_metrics_noted") or [],
                             })
                     if validated:
                         return validated
             except Exception as e:
                 print(f"[InsightsEngine] Failed to parse insights: {e}")
 
-        return [{"id": "i_0", "text": "Analysis completed.", "answer_text": "LLM insight generation unavailable."}]
+        return [{"id": "i_0", "category": "behavioral_pattern", "text": "Analysis completed.", "answer_text": "LLM insight generation unavailable.", "soft_metrics_noted": []}]
 
     # ── Phase C: Initial agent positions ──────────────────────────────────────
 
@@ -311,9 +318,12 @@ When formulating positions, consider how each agent might view:
 Return a JSON array — one entry per agent — each with:
 - "agent_id": the agent's id string (e.g. "0", "1", ...)
 - "agent_name": the agent's name
-- "position": the agent's answer/stance on the query (1-3 sentences, authentic to their character)
+- "position": the agent's stance ("support" | "oppose" | "neutral") followed by 1-2 sentences of authentic character voice
+- "prediction": a specific, concrete outcome this agent predicts (1 sentence, e.g. \
+  "Churn will increase ~15% in the first 3 months among casual users.")
 - "reasoning": why they hold this position, grounded in their profile or posts (1-2 sentences)
-- "conviction_level": 'strong', 'moderate', or 'weak' — how certain or firm this agent is in their position
+- "confidence": 'high' | 'medium' | 'low' — how confident this agent is in their prediction
+- "conviction_level": 'strong' | 'moderate' | 'weak' — how firm their stance is
 
 Return ONLY the JSON array. No other text."""
 
@@ -329,7 +339,10 @@ Return ONLY the JSON array. No other text."""
                                 "agent_id": str(item.get("agent_id", "")),
                                 "agent_name": str(item.get("agent_name", "")),
                                 "position": str(item.get("position", "")).strip()[:1000],
+                                "prediction": str(item.get("prediction", "")).strip()[:500],
                                 "reasoning": str(item.get("reasoning", "")).strip()[:600],
+                                "confidence": str(item.get("confidence", "medium")).strip(),
+                                "conviction_level": str(item.get("conviction_level", "moderate")).strip(),
                             })
                     if validated:
                         return validated
@@ -341,7 +354,10 @@ Return ONLY the JSON array. No other text."""
                 "agent_id": a["agent_id"],
                 "agent_name": a["agent_name"],
                 "position": "No position generated.",
+                "prediction": "",
                 "reasoning": "",
+                "confidence": "low",
+                "conviction_level": "weak",
             }
             for a in agent_summaries
         ]
@@ -387,9 +403,11 @@ Pay attention to SOFT METRICS as agents update:
 Return a JSON array — one entry per agent — each with:
 - "agent_id": same id as above
 - "agent_name": same name as above
-- "position": updated position after this debate round (1-3 sentences)
+- "position": updated stance ("support" | "oppose" | "neutral") plus 1-2 sentences of updated reasoning
+- "prediction": updated specific outcome prediction (may refine based on others' arguments)
 - "reasoning": updated reasoning, possibly referencing other agents by name (1-2 sentences)
-- "conviction_change": 'stronger', 'same', or 'weaker' — how did conviction evolve this round?
+- "confidence": 'high' | 'medium' | 'low' — updated confidence level
+- "conviction_change": 'stronger' | 'same' | 'weaker' — how did conviction evolve this round?
 - "influenced_by": optional array of agent names whose arguments influenced this update
 
 Return ONLY the JSON array. No other text."""
@@ -402,11 +420,20 @@ Return ONLY the JSON array. No other text."""
                     validated = []
                     for item in updated:
                         if isinstance(item, dict):
+                            # Carry forward prediction/confidence from previous round if LLM omits them
+                            prev = next(
+                                (p for p in current_positions if str(p.get("agent_id")) == str(item.get("agent_id"))),
+                                {}
+                            )
                             validated.append({
                                 "agent_id": str(item.get("agent_id", "")),
                                 "agent_name": str(item.get("agent_name", "")),
                                 "position": str(item.get("position", "")).strip()[:1000],
+                                "prediction": str(item.get("prediction") or prev.get("prediction", "")).strip()[:500],
                                 "reasoning": str(item.get("reasoning", "")).strip()[:600],
+                                "confidence": str(item.get("confidence") or prev.get("confidence", "medium")).strip(),
+                                "conviction_change": str(item.get("conviction_change", "same")).strip(),
+                                "influenced_by": item.get("influenced_by") or [],
                             })
                     if validated:
                         return validated
@@ -441,26 +468,34 @@ TASK:
 Synthesize these positions into a coherent result. Group agents by similarity of position, \
 and analyze the SOFT METRICS that shaped the outcome:
 
-**Key soft metrics to assess:**
-- **Consensus Formation**: Did agents converge toward shared views? Are there clear consensus clusters or deep polarization?
-- **Influence & Cascading**: Did certain agent viewpoints dominate and cascade through the group? Who were the thought leaders?
-- **Sentiment Evolution**: What was the overall emotional/sentiment arc? Did discussion become more heated, unified, or nuanced?
-- **Stability Patterns**: How stable were final positions? Did conviction levels strengthen, weaken, or remain unchanged?
-- **Polarization**: How distinct are the agent groups? Are they close together in opinion or far apart?
+**Key metrics to assess:**
+- **Consensus vs Polarization**: Did agents converge or split into opposing camps? How distinct are the factions?
+- **Thought Leaders**: Which agents drove the narrative? Whose predictions were most influential?
+- **Sentiment Trajectory**: How did emotional tone evolve? More heated, unified, or nuanced by the end?
+- **Prediction Confidence**: Were agents generally confident or uncertain? Did confidence shift during debate?
+- **Outcome Distribution**: What % broadly predict each outcome (churn, revenue, backlash, success)?
 
 Return a single JSON object with:
-- "overall_verdict": a balanced, synthesized answer to the user's query (2-4 sentences), \
-  representing the collective intelligence that emerged from the debate
+- "overall_verdict": a balanced, synthesized answer to the user's query (2-4 sentences) \
+  representing the collective intelligence that emerged from the debate — must reference \
+  specific outcomes (not vague sentiment summaries)
+- "short_term_outlook": concrete prediction for 0-3 months — what happens immediately? \
+  (1-2 sentences covering likely user reactions, churn, sentiment)
+- "long_term_outlook": concrete prediction for 3-12+ months — equilibrium outcome? \
+  (1-2 sentences covering revenue trajectory, market position, sustained sentiment)
+- "key_metrics": {{
+    "churn": "increase" | "decrease" | "neutral",
+    "revenue": "increase" | "decrease" | "neutral",
+    "sentiment": "positive" | "negative" | "mixed"
+  }}
 - "score": {{ "agree": float, "disagree": float, "other": float }} — fractions of agents \
-  that broadly agree vs disagree vs hold a neutral/other position (must sum to 1.0). \
-  Assign based on the direction of each agent's final position relative to the query.
-- "soft_metrics_summary": a brief synthesis (2-3 sentences) of the key soft metrics patterns observed. \
-  Mention: level of consensus/polarization, any thought leaders that emerged, sentiment trajectory, \
-  and stability of the positions
+  that broadly support vs oppose the decision being analyzed (must sum to 1.0)
+- "soft_metrics_summary": 2-3 sentences on key patterns: consensus/polarization level, \
+  thought leaders that emerged, sentiment arc, and how stable final positions were
 - "answer_groups": array of 2-4 distinct clusters of agents with similar positions:
   - "group_id": "g_0", "g_1", etc.
   - "label": short label for this group's shared stance (3-8 words)
-  - "summary": what agents in this group believe (1-2 sentences)
+  - "summary": what agents in this group believe and predict (1-2 sentences)
   - "agent_ids": array of agent_id strings in this group (cover ALL agents across all groups)
 
 Return ONLY the JSON object. No other text."""
@@ -492,7 +527,11 @@ Return ONLY the JSON object. No other text."""
 
                     return {
                         "overall_verdict": str(data.get("overall_verdict", "")),
+                        "short_term_outlook": str(data.get("short_term_outlook", "")),
+                        "long_term_outlook": str(data.get("long_term_outlook", "")),
+                        "key_metrics": data.get("key_metrics") or {},
                         "score": {"agree": round(agree, 4), "disagree": round(disagree, 4), "other": round(other, 4)},
+                        "soft_metrics_summary": str(data.get("soft_metrics_summary", "")),
                         "answer_groups": answer_groups,
                     }
             except Exception as e:
@@ -500,7 +539,11 @@ Return ONLY the JSON object. No other text."""
 
         return {
             "overall_verdict": "Unable to compile results — LLM unavailable.",
+            "short_term_outlook": "",
+            "long_term_outlook": "",
+            "key_metrics": {},
             "score": {"agree": 0.5, "disagree": 0.3, "other": 0.2},
+            "soft_metrics_summary": "",
             "answer_groups": [],
         }
 
@@ -596,7 +639,9 @@ Return ONLY the JSON object. No other text."""
                             position_history.append({
                                 "round": round_idx,
                                 "position": p["position"],
+                                "prediction": p.get("prediction", ""),
                                 "reasoning": p["reasoning"],
+                                "confidence": p.get("confidence", ""),
                             })
                             break
 
@@ -606,7 +651,9 @@ Return ONLY the JSON object. No other text."""
                     "influence_score": influence_score,
                     "position_history": position_history,
                     "final_position": pos["position"],
+                    "final_prediction": pos.get("prediction", ""),
                     "final_reasoning": pos["reasoning"],
+                    "final_confidence": pos.get("confidence", ""),
                 })
 
             result = {
@@ -617,7 +664,11 @@ Return ONLY the JSON object. No other text."""
                 "debate_rounds": debate_rounds,
                 "insights": insights,
                 "overall_verdict": compiled["overall_verdict"],
+                "short_term_outlook": compiled.get("short_term_outlook", ""),
+                "long_term_outlook": compiled.get("long_term_outlook", ""),
+                "key_metrics": compiled.get("key_metrics", {}),
                 "score": compiled["score"],
+                "soft_metrics_summary": compiled.get("soft_metrics_summary", ""),
                 "answer_groups": answer_groups,
                 "agents": agent_records,
                 "aggregate": aggregate,

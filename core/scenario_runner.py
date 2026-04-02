@@ -31,12 +31,14 @@ class ScenarioRunner:
         scenario_description: str,
         user_label: str = "You",
         emit_event=None,
+        objective: str = "",
     ):
         self.agents_path = agents_path
         self.db_path = db_path
         self.log_path = log_path
         self.scenario_description = scenario_description
         self.user_label = user_label
+        self.objective = objective.strip()
         self._emit = emit_event if callable(emit_event) else (lambda t, m: None)
         self._usage = UsageSummary()
 
@@ -117,6 +119,20 @@ class ScenarioRunner:
             sim_profiles = json.load(fh)
 
         combined_profiles = [user_profile] + sim_profiles
+
+        # Inject objective into every non-seed agent's persona so the simulation
+        # stays anchored to the topic being scenario-tested.
+        if self.objective:
+            for profile in combined_profiles:
+                if not profile.get("is_seed_user"):
+                    existing = (profile.get("persona") or "").strip()
+                    profile["persona"] = (
+                        f"{existing}\n\n"
+                        f"SIMULATION FOCUS: {self.objective}\n"
+                        "You MUST stay strictly within this topic in every post and comment. "
+                        "Do NOT introduce unrelated subjects."
+                    ).strip()
+            print(f"Objective injected into {len(combined_profiles) - 1} scenario agent persona(s).")
 
         # Persist so InsightsEngine reads correct indices + can identify seed user
         scenario_dir = os.path.dirname(self.log_path)

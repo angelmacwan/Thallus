@@ -88,7 +88,7 @@ def run_simulation_task(session_id: int, session_uuid: str, inputs_path: str, ou
         emit("stage", "Generating agent profiles…")
         agents_path = os.path.join(outputs_path, "agents.json")
         pg = ProfileGenerator(graph)
-        profiles = pg.generate_profiles(output_path=agents_path, target_count=agent_count)
+        profiles = pg.generate_profiles(output_path=agents_path, target_count=agent_count, objective=objective)
         usage += pg._usage
         n_agents = len(profiles) if isinstance(profiles, list) else "?"
         emit("stage", f"{n_agents} agent profile(s) generated")
@@ -101,6 +101,7 @@ def run_simulation_task(session_id: int, session_uuid: str, inputs_path: str, ou
             db_path=db_path,
             log_path=log_path,
             emit_event=emit,
+            objective=objective,
         )
         sr.run(rounds)
         usage += sr._usage

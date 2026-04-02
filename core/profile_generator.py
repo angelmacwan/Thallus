@@ -45,8 +45,27 @@ class ProfileGenerator:
         self.client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
         self._usage = UsageSummary()
 
-    def generate_profiles(self, output_path: str = "data/agents.json", target_count: int = None) -> list:
-        # Generate core agents from graph entities
+    def generate_profiles(self, output_path: str = "data/agents.json", target_count: int = None, objective: str = "") -> list:
+        objective = (objective or "").strip()
+
+        # When an objective is provided, generate agents designed for that topic
+        # instead of extracting named entities from the documents.
+        if objective:
+            print(f"Objective-driven agent generation enabled for: {objective[:80]}…")
+            agents = self._generate_objective_agents(objective, target_count)
+            if agents:
+                # Skip entity-extraction entirely — write and return directly
+                dir_name = os.path.dirname(output_path)
+                if dir_name:
+                    os.makedirs(dir_name, exist_ok=True)
+                with open(output_path, "w", encoding="utf-8") as fh:
+                    json.dump(agents, fh, indent=2, ensure_ascii=False)
+                print(f"Saved {len(agents)} objective-driven agent profile(s) → {output_path}")
+                return agents
+            # Fallback: LLM call failed, continue to entity extraction below
+            print("Falling back to entity-extraction mode.")
+
+        # ── Legacy: extract named entities from the knowledge graph ──────
         agents = []
 
         for name, ent_data in self.graph.entities.items():
@@ -78,8 +97,6 @@ class ProfileGenerator:
         if target_count and target_count > core_count:
             additional_needed = target_count - core_count
             print(f"Generating {additional_needed} additional synthetic agents to reach target of {target_count}...")
-            
-            # Extract topics from graph entities to create diverse agents
             topics = self._extract_topics_from_graph()
             synthetic_agents = self._generate_synthetic_agents(additional_needed, topics, core_count)
             agents.extend(synthetic_agents)
@@ -93,6 +110,122 @@ class ProfileGenerator:
 
         print(f"Saved {len(agents)} OASIS agent profile(s) → {output_path}")
         return agents
+
+    # ------------------------------------------------------------------
+    def _generate_objective_agents(self, objective: str, target_count: int = None) -> list[dict]:
+        """
+        Generate a realistic population of agents designed specifically for the
+        given simulation objective.  The LLM decides the population breakdown
+        (majority: regular users/consumers; minority: insiders/stakeholders) and
+        produces full agent profiles in one batched call.
+        """
+        count = target_count or 20
+
+        # Build a brief document-context summary to inform the LLM
+        entity_lines = [
+            f"{name} ({data.get('type', 'entity')})"
+            for name, data in list(self.graph.entities.items())[:25]
+        ]
+        relation_lines = [
+            f"{r['source']} {r['type']} {r['target']}"
+            for r in self.graph.relations[:15]
+        ]
+        doc_context = "Key entities: " + ", ".join(entity_lines)
+        if relation_lines:
+            doc_context += "\nRelationships: " + "; ".join(relation_lines)
+
+        prompt = f"""You are designing a realistic agent population for a multi-agent social simulation.
+
+SIMULATION OBJECTIVE:
+"{objective}"
+
+DOCUMENT CONTEXT (knowledge graph extracted from uploaded materials):
+{doc_context}
+
+POPULATION DESIGN RULES:
+1. The majority (60-70%) must be regular people directly affected by the topic:
+   - Heavy users / power users
+   - Casual users (e.g. once a month)
+   - Long-term loyal users
+   - Budget-conscious users / price-sensitive subscribers
+   - Family plan users / account sharers
+   - Students and young adults
+   - Elderly or less tech-savvy users
+   Include real demographic variety: ages 18-70, multiple countries, different income levels.
+
+2. The minority (30-40%) should be relevant insiders and industry observers:
+   - Company executives / product leads / engineers
+   - Investors / financial analysts
+   - Industry journalists / media commentators
+   - Competing service executives
+   - Regulators / policy researchers (if relevant)
+   Each should have a clear professional stake in the objective.
+
+3. Every agent's PERSONA must reflect their likely attitude toward the simulation objective:
+   - Some should be supportive, some opposed, some uncertain
+   - Their persona should foreshadow their debate position
+   - Personas must be authentic, specific, and grounded in their role
+
+Generate exactly {count} agent profiles.
+Return ONLY a JSON array of {count} objects, each with these exact keys:
+  "realname"          – unique full name (string)
+  "username"          – unique social-media handle: lowercase letters, digits, underscores only
+  "bio"               – 1-2 sentence social-media bio (string)
+  "persona"           – 2-3 sentence character description including their stance on the topic (string)
+  "age"               – integer between 18-75
+  "gender"            – "male" | "female" | "non-binary"
+  "mbti"              – Myers-Briggs type code, e.g. "INTJ"
+  "country"           – country of residence
+  "profession"        – profession
+  "interested_topics" – list of 2-4 interest topics directly related to the objective
+"""
+
+        try:
+            response = self.client.models.generate_content(
+                model=MODEL_NAME,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                    temperature=0.85,
+                ),
+            )
+            if response.usage_metadata:
+                self._usage.add(
+                    input_tokens=response.usage_metadata.prompt_token_count or 0,
+                    output_tokens=response.usage_metadata.candidates_token_count or 0,
+                )
+            agents = json.loads(response.text)
+            if not isinstance(agents, list):
+                raise ValueError("LLM did not return a JSON array")
+
+            # Normalise each profile (same coercions as _generate_one)
+            validated = []
+            for i, a in enumerate(agents):
+                if not isinstance(a, dict):
+                    continue
+                a.setdefault("realname", f"Agent {i}")
+                a.setdefault("username", f"agent_{i}")
+                a.setdefault("bio", "")
+                a.setdefault("persona", "")
+                a.setdefault("age", 30)
+                a.setdefault("gender", "non-binary")
+                a.setdefault("mbti", "INTJ")
+                a.setdefault("country", "US")
+                a.setdefault("profession", "professional")
+                a.setdefault("interested_topics", [])
+                try:
+                    a["age"] = int(a["age"])
+                except (TypeError, ValueError):
+                    a["age"] = 30
+                validated.append(a)
+
+            print(f"Objective-driven generation produced {len(validated)} agent(s).")
+            return validated
+
+        except Exception as exc:
+            print(f"Warning: objective-driven agent generation failed ({exc}); falling back to entity extraction.")
+            # Graceful fallback: empty list signals the caller to use the legacy path
+            return []
 
     # ------------------------------------------------------------------
     def _extract_topics_from_graph(self) -> list[str]:

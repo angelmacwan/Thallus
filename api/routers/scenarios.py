@@ -147,6 +147,13 @@ def _run_scenario_task(
         db_path = os.path.join(scenario_outputs_path, "simulation.db")
         log_path = os.path.join(scenario_outputs_path, "actions.jsonl")
 
+        # Inherit the parent session's objective so agents stay on-topic
+        objective = ""
+        obj_path = os.path.join(session_outputs_path, "objective.txt")
+        if os.path.exists(obj_path):
+            with open(obj_path, encoding="utf-8") as _f:
+                objective = _f.read().strip()
+
         sr = ScenarioRunner(
             agents_path=agents_path,
             db_path=db_path,
@@ -154,6 +161,7 @@ def _run_scenario_task(
             scenario_description=description,
             user_label=user_label,
             emit_event=emit,
+            objective=objective,
         )
         sr.run(rounds)
         usage += sr._usage
