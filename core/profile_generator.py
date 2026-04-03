@@ -48,24 +48,8 @@ class ProfileGenerator:
     def generate_profiles(self, output_path: str = "data/agents.json", target_count: int = None, objective: str = "") -> list:
         objective = (objective or "").strip()
 
-        # When an objective is provided, generate agents designed for that topic
-        # instead of extracting named entities from the documents.
-        if objective:
-            print(f"Objective-driven agent generation enabled for: {objective[:80]}…")
-            agents = self._generate_objective_agents(objective, target_count)
-            if agents:
-                # Skip entity-extraction entirely — write and return directly
-                dir_name = os.path.dirname(output_path)
-                if dir_name:
-                    os.makedirs(dir_name, exist_ok=True)
-                with open(output_path, "w", encoding="utf-8") as fh:
-                    json.dump(agents, fh, indent=2, ensure_ascii=False)
-                print(f"Saved {len(agents)} objective-driven agent profile(s) → {output_path}")
-                return agents
-            # Fallback: LLM call failed, continue to entity extraction below
-            print("Falling back to entity-extraction mode.")
-
-        # ── Legacy: extract named entities from the knowledge graph ──────
+        # ── Step 1: Always extract agents from named entities in the seed documents ──
+        print("Extracting agents from seed document entities…")
         agents = []
 
         for name, ent_data in self.graph.entities.items():
@@ -86,21 +70,29 @@ class ProfileGenerator:
                         continue
                     ent_type = "person"  # Default fallback
 
-            profile = self._generate_one(name, ent_type)
+            profile = self._generate_one(name, ent_type, objective=objective)
             if profile:
                 agents.append(profile)
 
         core_count = len(agents)
-        print(f"Generated {core_count} core agent(s) from graph entities")
+        print(f"Generated {core_count} core seed agent(s) from graph entities")
 
-        # Generate additional synthetic agents if target_count is specified
-        if target_count and target_count > core_count:
-            additional_needed = target_count - core_count
-            print(f"Generating {additional_needed} additional synthetic agents to reach target of {target_count}...")
-            topics = self._extract_topics_from_graph()
-            synthetic_agents = self._generate_synthetic_agents(additional_needed, topics, core_count)
-            agents.extend(synthetic_agents)
-            print(f"Generated {len(synthetic_agents)} synthetic agent(s)")
+        # ── Step 2: If a force count is specified, add that many additional agents ──
+        if target_count:
+            print(f"Force-generating {target_count} additional agent(s) on top of {core_count} seed agents…")
+            existing_names = {a.get("realname", "") for a in agents}
+            additional = self._generate_objective_agents(objective, target_count, existing_names=existing_names)
+            agents.extend(additional)
+            print(f"Total: {len(agents)} agent(s) ({core_count} seed + {len(additional)} force-generated)")
+
+        # ── Step 3: If seed extraction yielded nothing and no force count, fall back ──
+        elif core_count == 0:
+            print("No named entities found in seed documents; using objective-driven generation as fallback…")
+            agents = self._generate_objective_agents(objective, target_count=None)
+            if not agents:
+                # Last resort: generic synthetic agents
+                topics = self._extract_topics_from_graph()
+                agents = self._generate_synthetic_agents(20, topics, 0, objective=objective)
 
         dir_name = os.path.dirname(output_path)
         if dir_name:
@@ -108,16 +100,16 @@ class ProfileGenerator:
         with open(output_path, "w", encoding="utf-8") as fh:
             json.dump(agents, fh, indent=2, ensure_ascii=False)
 
-        print(f"Saved {len(agents)} OASIS agent profile(s) → {output_path}")
+        print(f"Saved {len(agents)} agent profile(s) → {output_path}")
         return agents
 
     # ------------------------------------------------------------------
-    def _generate_objective_agents(self, objective: str, target_count: int = None) -> list[dict]:
+    def _generate_objective_agents(self, objective: str, target_count: int = None, existing_names: set[str] | None = None) -> list[dict]:
         """
         Generate a realistic population of agents designed specifically for the
-        given simulation objective.  The LLM decides the population breakdown
-        (majority: regular users/consumers; minority: insiders/stakeholders) and
-        produces full agent profiles in one batched call.
+        given simulation objective.  When existing_names is provided these are
+        treated as force-generated additions — the LLM is told not to duplicate
+        those names and to complement the existing cast.
         """
         count = target_count or 20
 
@@ -134,13 +126,27 @@ class ProfileGenerator:
         if relation_lines:
             doc_context += "\nRelationships: " + "; ".join(relation_lines)
 
+        # When adding on top of existing seed agents, frame the request accordingly
+        if existing_names:
+            role_note = (
+                f"These agents are ADDITIONAL participants being added to a simulation that already has "
+                f"{len(existing_names)} agents extracted from the seed documents "
+                f"({', '.join(list(existing_names)[:15])}{'…' if len(existing_names) > 15 else ''}). "
+                "Do NOT duplicate any of those names. Generate complementary perspectives."
+            )
+        else:
+            role_note = "Generate the full agent population for this simulation."
+
         prompt = f"""You are designing a realistic agent population for a multi-agent social simulation.
 
 SIMULATION OBJECTIVE:
-"{objective}"
+"{objective if objective else '(no specific objective — generate a diverse, relevant population)'}"
 
 DOCUMENT CONTEXT (knowledge graph extracted from uploaded materials):
 {doc_context}
+
+TASK:
+{role_note}
 
 POPULATION DESIGN RULES:
 1. The majority (60-70%) must be regular people directly affected by the topic:
@@ -285,7 +291,7 @@ Return ONLY a JSON array of {count} objects, each with these exact keys:
         entity_names = list(self.graph.entities.keys())[:20]
         return entity_names if entity_names else ["technology", "politics", "science", "business"]
 
-    def _generate_synthetic_agents(self, count: int, topics: list[str], start_index: int) -> list[dict]:
+    def _generate_synthetic_agents(self, count: int, topics: list[str], start_index: int, objective: str = "") -> list[dict]:
         """
         Generate synthetic agents with diverse profiles based on graph topics.
         
@@ -293,6 +299,7 @@ Return ONLY a JSON array of {count} objects, each with these exact keys:
             count: Number of synthetic agents to generate
             topics: List of topics to use for agent diversity
             start_index: Starting index for naming synthetic agents
+            objective: Simulation objective for grounding personas
         
         Returns:
             List of agent profile dictionaries
@@ -310,6 +317,11 @@ Return ONLY a JSON array of {count} objects, each with these exact keys:
         genders = ["male", "female", "non-binary"]
         mbti_types = ["INTJ", "ENTP", "INFP", "ESTJ", "ISFJ", "ENFJ", "ISTP", "ESFP"]
         
+        objective_context = (
+            f"\nSimulation objective: \"{objective}\"\nPersonas and bios must reflect the agents' stance on this objective.\n"
+            if objective else ""
+        )
+
         # Generate agents in batches using LLM
         batch_size = 10
         for i in range(0, count, batch_size):
@@ -317,7 +329,7 @@ Return ONLY a JSON array of {count} objects, each with these exact keys:
             
             prompt = f"""Generate {batch_count} diverse social media user profiles for a simulation.
 
-Base these profiles on the following context topics: {', '.join(topics[:10])}
+Base these profiles on the following context topics: {', '.join(topics[:10])}{objective_context}
 
 Return ONLY a JSON array of {batch_count} objects, each with these exact keys:
   "realname"         – unique full name (string)
@@ -479,8 +491,13 @@ Role:"""
         return None
 
     # ------------------------------------------------------------------
-    def _generate_one(self, name: str, ent_type: str) -> dict | None:
-        prompt = f"""Generate an OASIS social-media user profile for {name}, a {ent_type}.
+    def _generate_one(self, name: str, ent_type: str, objective: str = "") -> dict | None:
+        objective_context = (
+            f"\n\nSimulation objective: \"{objective}\"\n"
+            "The bio and persona must reflect this person's likely stance or involvement with this objective."
+            if objective else ""
+        )
+        prompt = f"""Generate an OASIS social-media user profile for {name}, a {ent_type}.{objective_context}
 
 Return ONLY a JSON object with exactly these keys:
   "realname"         – full real name (string)
