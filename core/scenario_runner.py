@@ -203,7 +203,7 @@ class ScenarioRunner:
             OASIS_EST_INPUT_TOKENS_PER_AGENT_ROUND,
             OASIS_EST_OUTPUT_TOKENS_PER_AGENT_ROUND,
         )
-        n_agents = len(profiles)
+        n_agents = len(combined_profiles)
         self._usage.add(
             input_tokens=n_agents * rounds * OASIS_EST_INPUT_TOKENS_PER_AGENT_ROUND,
             output_tokens=n_agents * rounds * OASIS_EST_OUTPUT_TOKENS_PER_AGENT_ROUND,

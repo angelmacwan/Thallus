@@ -2777,9 +2777,15 @@ export default function SessionView() {
 	// Scenario state
 	const [scenarios, setScenarios] = useState([]);
 	const [showCreateScenario, setShowCreateScenario] = useState(false);
-	const [selectedPill, setSelectedPill] = useState('main'); // 'main' or scenario_id
+	const [selectedPill, setSelectedPill] = useState('main'); // 'main' or scenario_id (used in non-chat tabs only)
 	const [scenarioLiveLogs, setScenarioLiveLogs] = useState({}); // { scenario_uuid: [...events] }
 	const [scenarioReportTarget, setScenarioReportTarget] = useState(null);
+
+	// Chat hashtag autocomplete
+	const [chatTags, setChatTags] = useState([]); // [{tag, label, type}]
+	const [acSuggestions, setAcSuggestions] = useState([]);
+	const [acTagStart, setAcTagStart] = useState(-1);
+	const queryInputRef = useRef(null);
 
 	const messagesEndRef = useRef(null);
 	const logEndRef = useRef(null);
@@ -2874,6 +2880,13 @@ export default function SessionView() {
 				} catch {
 					/* non-fatal */
 				}
+				// Fetch hashtag autocomplete tags
+				try {
+					const tagsRes = await api.get(`/simulation/tags/${id}`);
+					setChatTags(tagsRes.data?.tags || []);
+				} catch {
+					/* non-fatal */
+				}
 			}
 		} catch (err) {
 			console.error(err);
@@ -2886,6 +2899,13 @@ export default function SessionView() {
 		try {
 			const res = await api.get(`/scenarios/session/${id}`);
 			setScenarios(res.data || []);
+			// Refresh tags so newly completed scenarios appear in autocomplete
+			try {
+				const tagsRes = await api.get(`/simulation/tags/${id}`);
+				setChatTags(tagsRes.data?.tags || []);
+			} catch {
+				/* non-fatal */
+			}
 		} catch {
 			/* noop */
 		}
@@ -2934,11 +2954,49 @@ export default function SessionView() {
 		es.onerror = () => es.close();
 	};
 
+	const handleQueryChange = (e) => {
+		const val = e.target.value;
+		setQuery(val);
+
+		// Detect if cursor is immediately after a #word
+		const cursor = e.target.selectionStart ?? val.length;
+		const before = val.slice(0, cursor);
+		const hashMatch = before.match(/#(\w*)$/);
+
+		if (hashMatch && chatTags.length > 0) {
+			const partial = hashMatch[1].toLowerCase();
+			const filtered = chatTags.filter(
+				(t) =>
+					t.tag.startsWith(partial) ||
+					t.label.toLowerCase().includes(partial),
+			);
+			setAcSuggestions(filtered.slice(0, 8));
+			setAcTagStart(hashMatch.index);
+		} else {
+			setAcSuggestions([]);
+			setAcTagStart(-1);
+		}
+	};
+
+	const handleAcSelect = (tagItem) => {
+		const cursor = queryInputRef.current?.selectionStart ?? query.length;
+		const before = query.slice(0, cursor);
+		const after = query.slice(cursor);
+		const hashIdx = before.lastIndexOf('#');
+		const newQuery =
+			before.slice(0, hashIdx) + '#' + tagItem.tag + ' ' + after;
+		setQuery(newQuery);
+		setAcSuggestions([]);
+		setAcTagStart(-1);
+		setTimeout(() => queryInputRef.current?.focus(), 0);
+	};
+
 	const handleChat = async (e) => {
 		e.preventDefault();
 		if (!query.trim()) return;
 		const userQ = query;
 		setQuery('');
+		setAcSuggestions([]);
 		setMessages((prev) => [
 			...prev,
 			{ text: userQ, is_user: true, id: Date.now() },
@@ -2947,27 +3005,12 @@ export default function SessionView() {
 		try {
 			const formData = new URLSearchParams();
 			formData.append('query', userQ);
-
-			let res;
-			if (selectedPill && selectedPill !== 'main') {
-				// Chat in scenario context
-				res = await api.post(
-					`/scenarios/${selectedPill}/chat`,
-					formData,
-					{
-						headers: {
-							'Content-Type': 'application/x-www-form-urlencoded',
-						},
-					},
-				);
-			} else {
-				// Chat with main simulation
-				res = await api.post(`/simulation/chat/${id}`, formData, {
-					headers: {
-						'Content-Type': 'application/x-www-form-urlencoded',
-					},
-				});
-			}
+			// Always use the global simulation chat endpoint
+			const res = await api.post(`/simulation/chat/${id}`, formData, {
+				headers: {
+					'Content-Type': 'application/x-www-form-urlencoded',
+				},
+			});
 			setMessages((prev) => [...prev, res.data]);
 		} catch (err) {
 			console.error(err);
@@ -3217,10 +3260,11 @@ export default function SessionView() {
 								overflow: 'hidden',
 							}}
 						>
-							{/* ── Scenario pill bar (shown on feed tab and always) ── */}
+							{/* ── Scenario pill bar (shown on feed, scenarios, and insights tabs) ── */}
 							{scenarios.length > 0 &&
 								(activeTab === 'feed' ||
-									activeTab === 'scenarios') && (
+									activeTab === 'scenarios' ||
+									activeTab === 'insights') && (
 									<div
 										style={{
 											display: 'flex',
@@ -3238,8 +3282,6 @@ export default function SessionView() {
 										<button
 											onClick={() => {
 												setSelectedPill('main');
-												if (activeTab !== 'feed')
-													setActiveTab('feed');
 											}}
 											style={{
 												padding: '0.2rem 0.75rem',
@@ -3269,8 +3311,6 @@ export default function SessionView() {
 													setSelectedPill(
 														s.scenario_id,
 													);
-													if (activeTab !== 'feed')
-														setActiveTab('feed');
 												}}
 												title={s.description}
 												style={{
@@ -3901,94 +3941,11 @@ export default function SessionView() {
 								flex: 1,
 								minHeight: '480px',
 								background: 'var(--surface-container-lowest)',
-								border: `1px solid ${selectedPill && selectedPill !== 'main' ? 'rgba(124,58,237,0.35)' : 'var(--outline-variant)'}`,
+								border: '1px solid var(--outline-variant)',
 								borderRadius: '12px',
 								overflow: 'hidden',
 							}}
 						>
-							{/* Scenario pill context header */}
-							{scenarios.length > 0 && (
-								<div
-									style={{
-										padding: '0.6rem 1rem',
-										borderBottom:
-											'1px solid var(--outline-variant)',
-										background:
-											'var(--surface-container-low)',
-										display: 'flex',
-										gap: '0.4rem',
-										flexWrap: 'wrap',
-										alignItems: 'center',
-									}}
-								>
-									<span
-										style={{
-											fontSize: '0.7rem',
-											fontWeight: 600,
-											color: 'var(--text-secondary)',
-											marginRight: '0.2rem',
-										}}
-									>
-										Chat context:
-									</span>
-									<button
-										onClick={() => setSelectedPill('main')}
-										style={{
-											padding: '0.15rem 0.6rem',
-											borderRadius: '999px',
-											fontSize: '0.7rem',
-											fontWeight: 700,
-											border: `1.5px solid ${selectedPill === 'main' ? 'var(--accent-color)' : 'var(--outline-variant)'}`,
-											background:
-												selectedPill === 'main'
-													? 'var(--accent-color)'
-													: 'transparent',
-											color:
-												selectedPill === 'main'
-													? '#fff'
-													: 'var(--text-secondary)',
-											cursor: 'pointer',
-											transition: 'all 0.15s',
-										}}
-									>
-										Main
-									</button>
-									{scenarios
-										.filter((s) => s.status === 'completed')
-										.map((s) => (
-											<button
-												key={s.scenario_id}
-												onClick={() =>
-													setSelectedPill(
-														s.scenario_id,
-													)
-												}
-												title={s.description}
-												style={{
-													padding: '0.15rem 0.6rem',
-													borderRadius: '999px',
-													fontSize: '0.7rem',
-													fontWeight: 700,
-													border: `1.5px solid ${selectedPill === s.scenario_id ? '#7c3aed' : 'var(--outline-variant)'}`,
-													background:
-														selectedPill ===
-														s.scenario_id
-															? '#7c3aed'
-															: 'transparent',
-													color:
-														selectedPill ===
-														s.scenario_id
-															? '#fff'
-															: 'var(--text-secondary)',
-													cursor: 'pointer',
-													transition: 'all 0.15s',
-												}}
-											>
-												{s.name}
-											</button>
-										))}
-								</div>
-							)}
 							<div
 								style={{
 									flex: 1,
@@ -4016,8 +3973,18 @@ export default function SessionView() {
 											💬
 										</div>
 										<p style={{ fontSize: '0.9rem' }}>
-											Ask the Report Agent anything about
-											this simulation.
+											Ask anything about this simulation —
+											covers all scenarios.
+										</p>
+										<p
+											style={{
+												fontSize: '0.78rem',
+												marginTop: '0.4rem',
+												opacity: 0.65,
+											}}
+										>
+											Type <code>#</code> to tag a
+											scenario or agent.
 										</p>
 									</div>
 								)}
@@ -4063,17 +4030,124 @@ export default function SessionView() {
 									borderTop:
 										'1px solid var(--outline-variant)',
 									background: 'var(--surface-container-low)',
+									position: 'relative',
 								}}
 							>
+								{/* Hashtag autocomplete dropdown */}
+								{acSuggestions.length > 0 && (
+									<div
+										style={{
+											position: 'absolute',
+											bottom: '100%',
+											left: '0.85rem',
+											right: '0.85rem',
+											background:
+												'var(--surface-container)',
+											border: '1px solid var(--outline-variant)',
+											borderRadius: '8px',
+											boxShadow:
+												'0 -4px 16px rgba(0,0,0,0.12)',
+											overflowY: 'auto',
+											maxHeight: '220px',
+											zIndex: 99,
+										}}
+									>
+										<div
+											style={{
+												padding: '0.35rem 0.75rem',
+												fontSize: '0.68rem',
+												fontWeight: 700,
+												color: 'var(--text-secondary)',
+												letterSpacing: '0.04em',
+												borderBottom:
+													'1px solid var(--outline-variant)',
+											}}
+										>
+											TAG AUTOCOMPLETE
+										</div>
+										{acSuggestions.map((t) => (
+											<button
+												key={t.tag}
+												type="button"
+												onMouseDown={(e) => {
+													e.preventDefault();
+													handleAcSelect(t);
+												}}
+												style={{
+													display: 'flex',
+													alignItems: 'center',
+													gap: '0.6rem',
+													width: '100%',
+													padding: '0.45rem 0.75rem',
+													background: 'none',
+													border: 'none',
+													cursor: 'pointer',
+													textAlign: 'left',
+													color: 'var(--text-primary)',
+													fontSize: '0.82rem',
+												}}
+												onMouseEnter={(e) =>
+													(e.currentTarget.style.background =
+														'var(--surface-container-high)')
+												}
+												onMouseLeave={(e) =>
+													(e.currentTarget.style.background =
+														'none')
+												}
+											>
+												<span
+													style={{
+														fontSize: '0.65rem',
+														fontWeight: 700,
+														padding:
+															'0.1rem 0.4rem',
+														borderRadius: '4px',
+														background:
+															t.type ===
+															'scenario'
+																? 'rgba(124,58,237,0.15)'
+																: 'rgba(16,185,129,0.15)',
+														color:
+															t.type ===
+															'scenario'
+																? '#7c3aed'
+																: '#059669',
+														flexShrink: 0,
+													}}
+												>
+													{t.type === 'scenario'
+														? 'SCN'
+														: 'AGT'}
+												</span>
+												<span
+													style={{ fontWeight: 600 }}
+												>
+													#{t.tag}
+												</span>
+												<span
+													style={{
+														color: 'var(--text-secondary)',
+														fontSize: '0.78rem',
+													}}
+												>
+													{t.label}
+												</span>
+											</button>
+										))}
+									</div>
+								)}
 								<input
+									ref={queryInputRef}
 									className="input-field"
 									value={query}
-									onChange={(e) => setQuery(e.target.value)}
-									placeholder={
-										selectedPill && selectedPill !== 'main'
-											? `Ask about scenario: ${scenarios.find((s) => s.scenario_id === selectedPill)?.name || ''}…`
-											: 'Ask a question about the simulation…'
+									onChange={handleQueryChange}
+									onBlur={() =>
+										setTimeout(
+											() => setAcSuggestions([]),
+											150,
+										)
 									}
+									placeholder="Ask anything — covers all scenarios. Type # to tag…"
 									disabled={chatLoading}
 									style={{ flex: 1 }}
 								/>
@@ -4081,15 +4155,7 @@ export default function SessionView() {
 									type="submit"
 									className="btn"
 									disabled={chatLoading}
-									style={{
-										padding: '0.7rem',
-										flexShrink: 0,
-										background:
-											selectedPill &&
-											selectedPill !== 'main'
-												? '#7c3aed'
-												: undefined,
-									}}
+									style={{ padding: '0.7rem', flexShrink: 0 }}
 								>
 									<Send size={18} />
 								</button>

@@ -205,6 +205,49 @@ async def upload_and_simulate(
     return db_session
 
 
+@router.get("/tags/{session_uuid}")
+def get_chat_tags(
+    session_uuid: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """Return taggable entities (scenarios + agents) for hashtag autocomplete."""
+    import re as _re
+
+    def _normalize(name: str) -> str:
+        return _re.sub(r'\s+', '_', name.strip()).lower()
+
+    db_session = crud.get_session(db, session_uuid)
+    if not db_session or db_session.user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    scenarios = (
+        db.query(models.Scenario)
+        .filter(models.Scenario.session_id == db_session.id)
+        .all()
+    )
+    scenario_tags = [
+        {"tag": _normalize(s.name), "label": s.name, "type": "scenario", "status": s.status}
+        for s in scenarios
+    ]
+
+    agents_path = os.path.join(db_session.outputs_path, "agents.json")
+    agent_tags: list[dict] = []
+    if os.path.exists(agents_path):
+        with open(agents_path, encoding="utf-8") as fh:
+            agents_data = _json.load(fh)
+        for a in agents_data:
+            username = a.get("username") or a.get("realname")
+            if username:
+                agent_tags.append({
+                    "tag": _normalize(username),
+                    "label": username,
+                    "type": "agent",
+                })
+
+    return {"tags": scenario_tags + agent_tags}
+
+
 @router.post("/chat/{session_uuid}", response_model=schemas.ChatMessageResponse)
 def chat_with_report_agent(
     session_uuid: str,
@@ -212,10 +255,18 @@ def chat_with_report_agent(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
 ):
+    """Global simulation chat — aggregates context from main sim + all completed scenarios.
+    Supports #hashtag mentions to focus on a specific scenario or agent.
+    """
+    import re as _re
+
+    def _normalize(name: str) -> str:
+        return _re.sub(r'\s+', '_', name.strip()).lower()
+
     db_session = crud.get_session(db, session_uuid)
     if not db_session or db_session.user_id != current_user.id:
         raise HTTPException(status_code=404, detail="Session not found")
-    
+
     if db_session.status != "completed":
         raise HTTPException(status_code=400, detail="Simulation must be completed before chatting")
 
@@ -226,16 +277,91 @@ def chat_with_report_agent(
     graph = LocalGraphMemory(storage_path=os.path.join(outputs_path, "graph.json"))
     log_path = os.path.join(outputs_path, "actions.jsonl")
 
+    # ── Load all completed scenarios for this session ─────────────────────────
+    all_scenarios = (
+        db.query(models.Scenario)
+        .filter(
+            models.Scenario.session_id == db_session.id,
+            models.Scenario.status == "completed",
+        )
+        .all()
+    )
+
+    # ── Load agents for hashtag resolution ────────────────────────────────────
+    agents_path = os.path.join(outputs_path, "agents.json")
+    agents: list[dict] = []
+    if os.path.exists(agents_path):
+        with open(agents_path, encoding="utf-8") as fh:
+            agents = _json.load(fh)
+
+    scenario_map = {_normalize(s.name): s for s in all_scenarios}
+    agent_map = {
+        _normalize(a.get("username") or a.get("realname", "")): a
+        for a in agents
+        if a.get("username") or a.get("realname")
+    }
+
+    # ── Parse hashtags from query ─────────────────────────────────────────────
+    hashtags = set(_re.findall(r'#(\w+)', query))
+
+    # ── Build extra context ───────────────────────────────────────────────────
+    extra_parts: list[str] = []
+
+    # Hashtag-focused context first
+    focus_lines: list[str] = []
+    for tag in hashtags:
+        if tag in scenario_map:
+            s = scenario_map[tag]
+            focus_lines.append(
+                f"- **#{tag}** refers to scenario **'{s.name}'**: {s.description}"
+            )
+        elif tag in agent_map:
+            a = agent_map[tag]
+            name = a.get("username") or a.get("realname")
+            bio = a.get("persona") or a.get("bio") or ""
+            focus_lines.append(
+                f"- **#{tag}** refers to agent **{name}** — {bio[:250]}"
+            )
+    if focus_lines:
+        extra_parts.append(
+            "## Hashtag Focus\n"
+            "The user has specifically tagged the following entities — prioritise them in the answer:\n"
+            + "\n".join(focus_lines)
+        )
+
+    # All scenarios context
+    if all_scenarios:
+        scenario_sections: list[str] = []
+        for scen in all_scenarios:
+            scen_log_path = (
+                os.path.join(scen.outputs_path, "actions.jsonl")
+                if scen.outputs_path else None
+            )
+            scen_logs_str = "(no logs)"
+            if scen_log_path and os.path.exists(scen_log_path):
+                with open(scen_log_path, encoding="utf-8") as fh:
+                    scen_lines = [ln.strip() for ln in fh if ln.strip()]
+                scen_logs_str = "\n".join(scen_lines[-40:])
+            scenario_sections.append(
+                f"### Scenario: {scen.name}\n"
+                f"Description: {scen.description}\n\n"
+                f"Scenario Logs (last 40 entries):\n```\n{scen_logs_str}\n```"
+            )
+        extra_parts.append(
+            "## All Scenarios in This Simulation\n"
+            + "\n\n".join(scenario_sections)
+        )
+
+    extra_context = "\n\n".join(extra_parts)
+
     ra = ReportAgent(graph, log_path=log_path)
-    
+
     # Save user message
     user_msg = models.ChatMessage(session_id=db_session.id, is_user=True, text=query)
     db.add(user_msg)
     db.commit()
-    
-    # Generate report
-    report_output_path = os.path.join(outputs_path, f"report_{uuid.uuid4().hex[:8]}.md")
-    report_text = ra.generate_report(query, output_path=report_output_path)
+
+    report_text = ra.generate_report(query, output_path=None, extra_context=extra_context)
 
     # Save agent message
     agent_msg = models.ChatMessage(session_id=db_session.id, is_user=False, text=report_text)

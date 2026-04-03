@@ -35,10 +35,12 @@ class ReportAgent:
         except Exception:
             return "(graph data unavailable)"
 
-    def generate_report(self, query: str, output_path: str | None = None) -> str:
+    def generate_report(self, query: str, output_path: str | None = None, extra_context: str = "") -> str:
         """Ad-hoc chat query against simulation data."""
         logs_str = self._load_logs()
         graph_str = self._graph_summary()
+
+        extra_ctx_block = f"\n\n{extra_context.strip()}" if extra_context.strip() else ""
 
         prompt = f"""You are the ReportAgent for a digital social-media sandbox simulation.
 Based on the simulation data below, write a comprehensive Markdown response answering:
@@ -49,7 +51,7 @@ Based on the simulation data below, write a comprehensive Markdown response answ
 {graph_str}
 
 ## Simulation Action Logs
-{logs_str}
+{logs_str}{extra_ctx_block}
 
 Requirements:
 - Use formal analytical language with clear section headings.
