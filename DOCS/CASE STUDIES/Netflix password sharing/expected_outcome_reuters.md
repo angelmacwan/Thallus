@@ -1,13 +1,3 @@
-![Image](https://upload.wikimedia.org/wikipedia/commons/8/8d/Reuters_Logo.svg)
-
-![Image](https://upload.wikimedia.org/wikipedia/commons/d/d6/YY_London_%2830_South_Colonade%29.jpg)
-
-![Image](https://www.reuters.com/resizer/v2/https%3A%2F%2Farchive-images.prod.global.a201836.reutersmedia.net%2F2013%2F06%2F04%2F2013-06-04T021013Z_02_GM1E9640IV801_RTRRPP_0_VENEZUELA.JPG?auth=11bb3ba74654c1a8f73bdbdfc082fab00d9648f5c76b435945575c7354f41cb3&quality=80&width=1920)
-
-![Image](https://www.reuters.com/resizer/v2/https%3A%2F%2Farchive-images.prod.global.a201836.reutersmedia.net%2F2013%2F06%2F04%2F2013-06-04T021013Z_02_LM1E87C189U01_RTRRPP_0_BRITAIN-BBC.JPG?auth=21173ad49ccbd45a295f22a59a92b61cc669c2196dbadcd38b38e7d295a0b8ff&quality=80&width=1920)
-
-![Image](https://reutersinstitute.politics.ox.ac.uk/sites/default/files/2018-01/800px-Al_Jazeera_English_Newsroom.jpg)
-
 ## Reuters
 
 Reuters is a global news agency founded in London in 1851 by German-born entrepreneur Paul Julius Reuter. It is now the news and media division of Thomson Reuters and one of the largest international multimedia news providers, renowned for accuracy, speed, and adherence to its Trust Principles of integrity, independence, and freedom from bias.
