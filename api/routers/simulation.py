@@ -301,6 +301,38 @@ def chat_with_report_agent(
         if a.get("username") or a.get("realname")
     }
 
+    # ID → display name lookup used to resolve agent_ids in insight answer_groups
+    agent_id_to_name: dict[str, str] = {
+        str(idx): (a.get("username") or a.get("realname") or a.get("name") or f"Agent_{idx}")
+        for idx, a in enumerate(agents)
+    }
+
+    def _fmt_insight_block(ins_data: dict) -> str:
+        """Serialize an insight record into a rich text block for the chat LLM."""
+        lines: list[str] = [f"  Insight query: \"{ins_data.get('query', '')}\""]
+        if ins_data.get("overall_verdict"):
+            lines.append(f"  Verdict: {ins_data['overall_verdict']}")
+        # Numbered observations so the LLM can reference "Observation #N"
+        for i, obs in enumerate(ins_data.get("insights", [])[:6], 1):
+            obs_text = obs.get("answer_text") or obs.get("text", "")
+            lines.append(f"  Observation #{i}: {obs_text}")
+        # Answer groups with names resolved from the agents roster
+        for grp in ins_data.get("answer_groups", []):
+            label = grp.get("label", "")
+            summary = grp.get("summary", "")
+            names = [
+                agent_id_to_name.get(str(aid), f"Agent {aid}")
+                for aid in grp.get("agent_ids", [])
+            ]
+            lines.append(
+                f"  Group \"{label}\": {summary} — Members: {', '.join(names)}"
+            )
+        if ins_data.get("short_term_outlook"):
+            lines.append(f"  Short-term: {ins_data['short_term_outlook']}")
+        if ins_data.get("soft_metrics_summary"):
+            lines.append(f"  Soft metrics: {ins_data['soft_metrics_summary']}")
+        return "\n".join(lines)
+
     # ── Parse hashtags from query ─────────────────────────────────────────────
     hashtags = set(_re.findall(r'#(\w+)', query))
 
@@ -329,7 +361,7 @@ def chat_with_report_agent(
             + "\n".join(focus_lines)
         )
 
-    # All scenarios context
+    # All scenarios context (logs + insights)
     if all_scenarios:
         scenario_sections: list[str] = []
         for scen in all_scenarios:
@@ -342,15 +374,65 @@ def chat_with_report_agent(
                 with open(scen_log_path, encoding="utf-8") as fh:
                     scen_lines = [ln.strip() for ln in fh if ln.strip()]
                 scen_logs_str = "\n".join(scen_lines[-40:])
-            scenario_sections.append(
+
+            # Insights for this scenario
+            scen_insight_parts: list[str] = []
+            scen_insights = (
+                db.query(models.InsightRecord)
+                .filter(
+                    models.InsightRecord.scenario_id == scen.id,
+                    models.InsightRecord.status == "complete",
+                )
+                .all()
+            )
+            for ins in scen_insights:
+                if ins.file_path and os.path.exists(ins.file_path):
+                    try:
+                        with open(ins.file_path, encoding="utf-8") as fh:
+                            ins_data = _json.load(fh)
+                        if ins_data.get("status") == "complete":
+                            scen_insight_parts.append(_fmt_insight_block(ins_data))
+                    except Exception:
+                        pass
+
+            scen_block = (
                 f"### Scenario: {scen.name}\n"
                 f"Description: {scen.description}\n\n"
                 f"Scenario Logs (last 40 entries):\n```\n{scen_logs_str}\n```"
             )
+            if scen_insight_parts:
+                scen_block += "\n\nScenario Insights:\n" + "\n".join(scen_insight_parts)
+            scenario_sections.append(scen_block)
         extra_parts.append(
             "## All Scenarios in This Simulation\n"
             + "\n\n".join(scenario_sections)
         )
+
+    # Main simulation insights
+    main_insights = (
+        db.query(models.InsightRecord)
+        .filter(
+            models.InsightRecord.session_id == db_session.id,
+            models.InsightRecord.scenario_id == None,  # noqa: E711
+            models.InsightRecord.status == "complete",
+        )
+        .all()
+    )
+    if main_insights:
+        main_insight_parts: list[str] = []
+        for ins in main_insights:
+            if ins.file_path and os.path.exists(ins.file_path):
+                try:
+                    with open(ins.file_path, encoding="utf-8") as fh:
+                        ins_data = _json.load(fh)
+                    if ins_data.get("status") == "complete":
+                        main_insight_parts.append(_fmt_insight_block(ins_data))
+                except Exception:
+                    pass
+        if main_insight_parts:
+            extra_parts.append(
+                "## Main Simulation Insights\n" + "\n".join(main_insight_parts)
+            )
 
     extra_context = "\n\n".join(extra_parts)
 

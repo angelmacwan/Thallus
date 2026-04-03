@@ -42,31 +42,23 @@ class ReportAgent:
 
         extra_ctx_block = f"\n\n{extra_context.strip()}" if extra_context.strip() else ""
 
-        prompt = f"""You are the ReportAgent for a digital social-media sandbox simulation.
-Based on the simulation data below, write a comprehensive Markdown response answering:
+        prompt = f"""You are a simulation analyst assistant. Answer the user's question directly and concisely based on the simulation data below.
 
-"{query}"
+User question: "{query}"
 
-## Graph Knowledge Base
+## Knowledge Graph
 {graph_str}
 
-## Simulation Action Logs
+## Simulation Logs
 {logs_str}{extra_ctx_block}
 
-Requirements:
-- Use formal analytical language with clear section headings.
-- Surface behavioural patterns, emerging narratives, and agent interactions.
-- Include direct quotes or paraphrases from agent posts/comments where relevant.
-
-IMPORTANT: Analyze SOFT METRICS in your response:
-- **Sentiment Shifts**: Track emotional/tonal evolution across posts. Did sentiment become more positive, negative, or polarized?
-- **Influence Spread**: Identify which agents' ideas propagated through the network and how other agents echoed or built upon them.
-- **Decision Cascades**: Trace chains of actions—how did one agent's action trigger follow-up actions by others?
-- **Stability vs Volatility**: Note whether agent positions remained consistent or shifted significantly over time.
-- **Consensus Formation**: Describe whether agents converged toward agreement or diverged into opposing camps.
-- **Thought Leadership**: Identify agents who emerged as narrative drivers or whose ideas garnered most engagement.
-
-End with a concise Prediction/Conclusion section that synthesizes soft metrics trends alongside substantive findings.
+Rules:
+- Be direct. Answer the question first, then add supporting detail only if needed.
+- Keep responses short — 1 to 4 short paragraphs maximum.
+- Do NOT use heavy section headers or turn every answer into a formal report.
+- Use bullet points only when listing multiple distinct items.
+- If asked about a specific agent or scenario, focus there; otherwise synthesise across everything.
+- Avoid filler phrases like "Certainly!" or "Based on the data provided".
 """
 
         try:
