@@ -511,11 +511,6 @@ function Sidebar() {
 											label: 'Info',
 										},
 										{
-											id: 'reports',
-											icon: <FileText size={15} />,
-											label: `Reports${sessionNav.reportsCount ? ` (${sessionNav.reportsCount})` : ''}`,
-										},
-										{
 											id: 'insights',
 											icon: <Sparkles size={15} />,
 											label: 'Insights',
@@ -550,16 +545,14 @@ function Sidebar() {
 												'error';
 											return (
 												<>
-													{!sessionNav.onCreateReport && (
-														<div
-															style={{
-																height: '1px',
-																background:
-																	'var(--outline-variant)',
-																margin: '0.5rem 0.85rem',
-															}}
-														/>
-													)}
+													<div
+														style={{
+															height: '1px',
+															background:
+																'var(--outline-variant)',
+															margin: '0.5rem 0.85rem',
+														}}
+													/>
 													<button
 														className="sidebar-nav-btn"
 														onClick={
@@ -572,6 +565,8 @@ function Sidebar() {
 															fontWeight: isFailed
 																? 700
 																: 500,
+															backgroundColor:
+																'#fee2e2',
 														}}
 													>
 														{isFailed ? (
