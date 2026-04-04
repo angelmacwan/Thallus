@@ -1,0 +1,942 @@
+"""
+small_world_worlds.py – World CRUD, scenario management, SSE streaming,
+health check, and scenario diff endpoints for Small World.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import queue as _queue
+import shutil
+import sqlite3
+import threading
+import uuid as _uuid
+from typing import Any
+
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
+from fastapi.responses import StreamingResponse
+from sqlalchemy.orm import Session
+
+from .. import models, schemas
+from ..deps import get_current_user, get_db
+
+router = APIRouter(prefix="/api/small-world", tags=["small-world-worlds"])
+
+# Per-scenario SSE queues
+_scenario_queues: dict[str, _queue.Queue] = {}
+
+
+# ── Auth helper for EventSource (JWT via query param) ─────────────────────────
+
+def _get_current_user_query(
+    token: str = Query(...),
+    db: Session = Depends(get_db),
+):
+    from jose import JWTError, jwt
+    from .. import auth as _auth
+
+    err = HTTPException(status_code=401, detail="Could not validate credentials")
+    try:
+        payload = jwt.decode(token, _auth.SECRET_KEY, algorithms=[_auth.ALGORITHM])
+        email: str = payload.get("sub")
+        if not email:
+            raise err
+    except JWTError:
+        raise err
+    from .. import crud
+    user = crud.get_user_by_email(db, email=email)
+    if not user:
+        raise err
+    return user
+
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+def _world_response(world: models.SmallWorld, db: Session) -> schemas.WorldResponse:
+    agent_count = db.query(models.WorldMember).filter(models.WorldMember.world_id == world.id).count()
+    scenario_count = db.query(models.WorldScenario).filter(models.WorldScenario.world_id == world.id).count()
+    return schemas.WorldResponse(
+        id=world.id,
+        world_id=world.world_id,
+        name=world.name,
+        description=world.description,
+        created_at=world.created_at,
+        agent_count=agent_count,
+        scenario_count=scenario_count,
+    )
+
+
+def _scenario_response(scenario: models.WorldScenario, db: Session, include_children: bool = True) -> schemas.WorldScenarioResponse:
+    parent_uuid = None
+    if scenario.parent_scenario_id:
+        parent = db.query(models.WorldScenario).get(scenario.parent_scenario_id)
+        if parent:
+            parent_uuid = parent.scenario_id
+
+    world = db.query(models.SmallWorld).get(scenario.world_id)
+
+    children = []
+    if include_children:
+        child_records = db.query(models.WorldScenario).filter(
+            models.WorldScenario.parent_scenario_id == scenario.id
+        ).all()
+        children = [_scenario_response(c, db, include_children=True) for c in child_records]
+
+    return schemas.WorldScenarioResponse(
+        id=scenario.id,
+        scenario_id=scenario.scenario_id,
+        world_id=world.world_id if world else "",
+        name=scenario.name,
+        seed_text=scenario.seed_text,
+        parent_scenario_id=parent_uuid,
+        depth=scenario.depth,
+        status=scenario.status,
+        outputs_path=scenario.outputs_path,
+        report_path=scenario.report_path,
+        created_at=scenario.created_at,
+        children=children,
+    )
+
+
+def _get_world_or_404(world_id: str, user_id: int, db: Session) -> models.SmallWorld:
+    world = db.query(models.SmallWorld).filter(
+        models.SmallWorld.world_id == world_id,
+        models.SmallWorld.user_id == user_id,
+    ).first()
+    if not world:
+        raise HTTPException(status_code=404, detail="World not found")
+    return world
+
+
+def _get_scenario_or_404(scenario_id: str, world_db_id: int, db: Session) -> models.WorldScenario:
+    scenario = db.query(models.WorldScenario).filter(
+        models.WorldScenario.scenario_id == scenario_id,
+        models.WorldScenario.world_id == world_db_id,
+    ).first()
+    if not scenario:
+        raise HTTPException(status_code=404, detail="Scenario not found")
+    return scenario
+
+
+def _get_user_data_base(user_email: str) -> str:
+    safe_email = user_email.replace("@", "_at_").replace(".", "_")
+    return os.path.join("users_data", safe_email)
+
+
+# ── World CRUD ────────────────────────────────────────────────────────────────
+
+@router.post("/worlds/", response_model=schemas.WorldResponse, status_code=201)
+def create_world(
+    body: schemas.WorldCreate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    world = models.SmallWorld(
+        user_id=current_user.id,
+        name=body.name,
+        description=body.description,
+    )
+    db.add(world)
+    db.flush()
+
+    # Add agents
+    for agent_id in body.agent_ids:
+        agent = db.query(models.SmallWorldAgent).filter(
+            models.SmallWorldAgent.agent_id == agent_id,
+            models.SmallWorldAgent.user_id == current_user.id,
+        ).first()
+        if agent:
+            member = models.WorldMember(world_id=world.id, agent_id=agent.id)
+            db.add(member)
+
+    db.commit()
+    db.refresh(world)
+    return _world_response(world, db)
+
+
+@router.get("/worlds/", response_model=list[schemas.WorldResponse])
+def list_worlds(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    worlds = db.query(models.SmallWorld).filter(
+        models.SmallWorld.user_id == current_user.id
+    ).order_by(models.SmallWorld.created_at.desc()).all()
+    return [_world_response(w, db) for w in worlds]
+
+
+@router.get("/worlds/{world_id}", response_model=schemas.WorldResponse)
+def get_world(
+    world_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    world = _get_world_or_404(world_id, current_user.id, db)
+    return _world_response(world, db)
+
+
+@router.get("/worlds/{world_id}/agents", response_model=list[schemas.AgentResponse])
+def get_world_agents(
+    world_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    world = _get_world_or_404(world_id, current_user.id, db)
+    members = db.query(models.WorldMember).filter(models.WorldMember.world_id == world.id).all()
+
+    from .small_world_agents import _agent_to_response
+    result = []
+    for m in members:
+        agent = db.query(models.SmallWorldAgent).get(m.agent_id)
+        if agent:
+            result.append(_agent_to_response(agent, db))
+    return result
+
+
+@router.put("/worlds/{world_id}", response_model=schemas.WorldResponse)
+def update_world(
+    world_id: str,
+    body: schemas.WorldUpdate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    world = _get_world_or_404(world_id, current_user.id, db)
+
+    if body.name is not None:
+        world.name = body.name
+    if body.description is not None:
+        world.description = body.description
+
+    if body.agent_ids is not None:
+        # Replace members
+        db.query(models.WorldMember).filter(models.WorldMember.world_id == world.id).delete()
+        for agent_id in body.agent_ids:
+            agent = db.query(models.SmallWorldAgent).filter(
+                models.SmallWorldAgent.agent_id == agent_id,
+                models.SmallWorldAgent.user_id == current_user.id,
+            ).first()
+            if agent:
+                member = models.WorldMember(world_id=world.id, agent_id=agent.id)
+                db.add(member)
+
+    db.commit()
+    db.refresh(world)
+    return _world_response(world, db)
+
+
+@router.delete("/worlds/{world_id}", status_code=204)
+def delete_world(
+    world_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    world = _get_world_or_404(world_id, current_user.id, db)
+    db.delete(world)
+    db.commit()
+
+
+# ── Scenarios ────────────────────────────────────────────────────────────────
+
+@router.post("/worlds/{world_id}/scenarios/", response_model=schemas.WorldScenarioResponse, status_code=201)
+def create_scenario(
+    world_id: str,
+    body: schemas.WorldScenarioCreate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    world = _get_world_or_404(world_id, current_user.id, db)
+
+    parent_db_id: int | None = None
+    depth = 0
+    if body.parent_scenario_id:
+        parent = db.query(models.WorldScenario).filter(
+            models.WorldScenario.scenario_id == body.parent_scenario_id,
+            models.WorldScenario.world_id == world.id,
+        ).first()
+        if not parent:
+            raise HTTPException(status_code=404, detail="Parent scenario not found")
+        if parent.status != "completed":
+            raise HTTPException(status_code=400, detail="Parent scenario must be completed before branching")
+        parent_db_id = parent.id
+        depth = parent.depth + 1
+
+    scenario = models.WorldScenario(
+        world_id=world.id,
+        user_id=current_user.id,
+        name=body.name,
+        seed_text=body.seed_text,
+        parent_scenario_id=parent_db_id,
+        depth=depth,
+    )
+    db.add(scenario)
+    db.commit()
+    db.refresh(scenario)
+    return _scenario_response(scenario, db)
+
+
+@router.get("/worlds/{world_id}/scenarios/", response_model=list[schemas.WorldScenarioResponse])
+def list_scenarios(
+    world_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """Return only root scenarios (depth=0); children are nested within each."""
+    world = _get_world_or_404(world_id, current_user.id, db)
+    roots = db.query(models.WorldScenario).filter(
+        models.WorldScenario.world_id == world.id,
+        models.WorldScenario.parent_scenario_id == None,  # noqa: E711
+    ).order_by(models.WorldScenario.created_at).all()
+    return [_scenario_response(s, db, include_children=True) for s in roots]
+
+
+@router.get("/worlds/{world_id}/scenarios/{scenario_id}", response_model=schemas.WorldScenarioResponse)
+def get_scenario(
+    world_id: str,
+    scenario_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    world = _get_world_or_404(world_id, current_user.id, db)
+    scenario = _get_scenario_or_404(scenario_id, world.id, db)
+    return _scenario_response(scenario, db)
+
+
+# ── Run Scenario ──────────────────────────────────────────────────────────────
+
+@router.post("/worlds/{world_id}/scenarios/{scenario_id}/run", status_code=202)
+def run_scenario(
+    world_id: str,
+    scenario_id: str,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    world = _get_world_or_404(world_id, current_user.id, db)
+    scenario = _get_scenario_or_404(scenario_id, world.id, db)
+
+    if scenario.status == "running":
+        raise HTTPException(status_code=400, detail="Scenario is already running")
+
+    members = db.query(models.WorldMember).filter(models.WorldMember.world_id == world.id).all()
+    if not members:
+        raise HTTPException(status_code=400, detail="World has no agents")
+
+    # Collect agent data
+    agent_dicts = []
+    agent_db_ids = []
+    for m in members:
+        agent = db.query(models.SmallWorldAgent).get(m.agent_id)
+        if agent:
+            agent_dicts.append({
+                "agent_id": agent.agent_id,
+                "name": agent.name,
+                "age": agent.age,
+                "gender": agent.gender,
+                "location": agent.location,
+                "profession": agent.profession,
+                "job_title": agent.job_title,
+                "organization": agent.organization,
+                "personality_traits": agent.personality_traits,
+                "behavioral_attributes": agent.behavioral_attributes,
+                "contextual_state": agent.contextual_state,
+                "external_factors": agent.external_factors,
+            })
+            agent_db_ids.append(agent.id)
+
+    # Collect user-defined relationships for this world's agents
+    rel_records = db.query(models.AgentRelationship).filter(
+        models.AgentRelationship.source_agent_id.in_(agent_db_ids)
+    ).all()
+    agent_by_db_id = {
+        m.agent_id: db.query(models.SmallWorldAgent).get(m.agent_id)
+        for m in members
+    }
+    relationship_dicts = []
+    for r in rel_records:
+        src = agent_by_db_id.get(r.source_agent_id)
+        tgt = db.query(models.SmallWorldAgent).get(r.target_agent_id)
+        if src and tgt:
+            relationship_dicts.append({
+                "source_agent_id": src.agent_id,
+                "source_name": src.name,
+                "target_agent_id": tgt.agent_id,
+                "target_name": tgt.name,
+                "type": r.type,
+                "strength": r.strength,
+                "sentiment": r.sentiment,
+                "influence_direction": r.influence_direction,
+            })
+
+    # Compute output path
+    base = _get_user_data_base(current_user.email)
+    output_dir = os.path.join(base, "worlds", world.world_id, "scenarios", scenario.scenario_id, "output")
+    os.makedirs(output_dir, exist_ok=True)
+
+    # Parent output dir for branching
+    parent_output_dir: str | None = None
+    if scenario.parent_scenario_id:
+        parent = db.query(models.WorldScenario).get(scenario.parent_scenario_id)
+        if parent and parent.outputs_path:
+            parent_output_dir = parent.outputs_path
+
+    scenario.status = "running"
+    scenario.outputs_path = output_dir
+    db.commit()
+
+    # Queue for SSE
+    q: _queue.Queue = _queue.Queue()
+    _scenario_queues[scenario.scenario_id] = q
+
+    background_tasks.add_task(
+        _run_scenario_background,
+        scenario_db_id=scenario.id,
+        scenario_uuid=scenario.scenario_id,
+        world_description=world.description or "",
+        scenario_name=scenario.name,
+        seed_text=scenario.seed_text or "",
+        agents=agent_dicts,
+        relationships=relationship_dicts,
+        output_dir=output_dir,
+        parent_output_dir=parent_output_dir,
+        q=q,
+    )
+
+    return {"status": "started", "scenario_id": scenario.scenario_id}
+
+
+def _run_scenario_background(
+    scenario_db_id: int,
+    scenario_uuid: str,
+    world_description: str,
+    scenario_name: str,
+    seed_text: str,
+    agents: list[dict],
+    relationships: list[dict],
+    output_dir: str,
+    parent_output_dir: str | None,
+    q: _queue.Queue,
+) -> None:
+    from ..database import SessionLocal
+
+    db = SessionLocal()
+    try:
+        scenario = db.query(models.WorldScenario).get(scenario_db_id)
+
+        def emit(etype: str, msg: str) -> None:
+            event = models.WorldSimEvent(
+                scenario_id=scenario_db_id,
+                type=etype,
+                message=msg,
+            )
+            db.add(event)
+            db.commit()
+            q.put_nowait({"type": etype, "message": msg})
+
+        from core.small_world_runner import SmallWorldRunner
+
+        runner = SmallWorldRunner(
+            agents=agents,
+            relationships=relationships,
+            world_description=world_description,
+            scenario_name=scenario_name,
+            seed_text=seed_text,
+            output_dir=output_dir,
+            emit_event=emit,
+            parent_output_dir=parent_output_dir,
+            rounds=2,
+        )
+        runner.run()
+
+        # Generate report inline so scenario is only marked complete once it's ready
+        emit("stage", "Generating report…")
+        try:
+            from core.small_world_report import generate_report as _gen_report
+            agent_profiles = [
+                {
+                    "name": a.get("name", ""),
+                    "job_title": a.get("job_title", ""),
+                    "profession": a.get("profession", ""),
+                }
+                for a in agents
+            ]
+            report = _gen_report(
+                output_dir=output_dir,
+                world_description=world_description,
+                scenario_name=scenario_name,
+                seed_text=seed_text,
+                agent_profiles=agent_profiles,
+            )
+            report_path = os.path.join(output_dir, "report.json")
+            with open(report_path, "w", encoding="utf-8") as f:
+                json.dump(report, f, ensure_ascii=False, indent=2)
+            if scenario:
+                scenario.report_path = report_path
+            emit("stage", "Report ready")
+        except Exception as rep_exc:
+            emit("warning", f"Report generation failed: {rep_exc}")
+
+        if scenario:
+            scenario.status = "completed"
+            scenario.outputs_path = output_dir
+            db.commit()
+
+        emit("done", "Simulation complete")
+
+    except Exception as exc:
+        db_inner = SessionLocal()
+        try:
+            s = db_inner.query(models.WorldScenario).get(scenario_db_id)
+            if s:
+                s.status = "error"
+                db_inner.commit()
+            ev = models.WorldSimEvent(
+                scenario_id=scenario_db_id,
+                type="error",
+                message=str(exc),
+            )
+            db_inner.add(ev)
+            db_inner.commit()
+            q.put_nowait({"type": "error", "message": str(exc)})
+        finally:
+            db_inner.close()
+        emit("done", "Simulation complete")
+    finally:
+        db.close()
+
+
+# ── SSE Stream ────────────────────────────────────────────────────────────────
+
+@router.get("/worlds/{world_id}/scenarios/{scenario_id}/stream")
+def stream_scenario_events(
+    world_id: str,
+    scenario_id: str,
+    token: str = Query(...),
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(_get_current_user_query),
+):
+    world = _get_world_or_404(world_id, current_user.id, db)
+    scenario = _get_scenario_or_404(scenario_id, world.id, db)
+
+    # Replay stored events first
+    stored = db.query(models.WorldSimEvent).filter(
+        models.WorldSimEvent.scenario_id == scenario.id
+    ).order_by(models.WorldSimEvent.id).all()
+
+    def _generate():
+        for ev in stored:
+            data = json.dumps({"type": ev.type, "message": ev.message})
+            yield f"data: {data}\n\n"
+
+        if scenario.status in ("completed", "error"):
+            yield f"data: {json.dumps({'type': 'done', 'message': 'stream_end'})}\n\n"
+            return
+
+        q = _scenario_queues.get(scenario.scenario_id)
+        if not q:
+            yield f"data: {json.dumps({'type': 'done', 'message': 'stream_end'})}\n\n"
+            return
+
+        while True:
+            try:
+                event = q.get(timeout=30)
+                data = json.dumps(event)
+                yield f"data: {data}\n\n"
+                if event.get("type") == "done":
+                    break
+            except _queue.Empty:
+                yield "data: {\"type\": \"ping\", \"message\": \"\"}\n\n"
+
+    return StreamingResponse(_generate(), media_type="text/event-stream")
+
+
+# ── Chat ──────────────────────────────────────────────────────────────────────
+
+@router.post("/worlds/{world_id}/scenarios/{scenario_id}/chat")
+def post_chat_message(
+    world_id: str,
+    scenario_id: str,
+    body: schemas.WorldScenarioChatMessage,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    world = _get_world_or_404(world_id, current_user.id, db)
+    scenario = _get_scenario_or_404(scenario_id, world.id, db)
+
+    if scenario.status != "completed":
+        raise HTTPException(status_code=400, detail="Chat is only available after simulation completes")
+
+    # Store user message
+    user_msg = models.WorldScenarioChat(
+        scenario_id=scenario.id,
+        is_user=True,
+        text=body.text,
+    )
+    db.add(user_msg)
+    db.flush()
+
+    # Generate AI response
+    ai_text = _generate_chat_response(scenario, body.text, db)
+
+    ai_msg = models.WorldScenarioChat(
+        scenario_id=scenario.id,
+        is_user=False,
+        text=ai_text,
+    )
+    db.add(ai_msg)
+    db.commit()
+    db.refresh(ai_msg)
+
+    return schemas.WorldScenarioChatResponse(
+        id=ai_msg.id,
+        is_user=False,
+        text=ai_msg.text,
+        timestamp=ai_msg.timestamp,
+    )
+
+
+def _generate_chat_response(
+    scenario: models.WorldScenario,
+    question: str,
+    db: Session,
+) -> str:
+    """Use Gemini to answer a question about a completed scenario."""
+    import os
+    from google import genai as _genai
+    from core.config import MODEL_NAME
+
+    # Load report if available
+    report_context = ""
+    if scenario.report_path and os.path.exists(scenario.report_path):
+        try:
+            with open(scenario.report_path, encoding="utf-8") as f:
+                report_data = json.load(f)
+            report_context = json.dumps(report_data, indent=2)[:3000]
+        except Exception:
+            pass
+
+    # Load recent actions
+    actions_context = ""
+    if scenario.outputs_path:
+        log_path = os.path.join(scenario.outputs_path, "actions.jsonl")
+        if os.path.exists(log_path):
+            lines = []
+            with open(log_path, encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if line:
+                        lines.append(line)
+            actions_context = "\n".join(lines[:50])
+
+    # Load previous chat history
+    history = db.query(models.WorldScenarioChat).filter(
+        models.WorldScenarioChat.scenario_id == scenario.id
+    ).order_by(models.WorldScenarioChat.id.desc()).limit(10).all()
+    history_text = "\n".join(
+        f"{'User' if m.is_user else 'Assistant'}: {m.text}"
+        for m in reversed(history)
+    )
+
+    prompt = f"""You are an expert analyst for a multi-agent simulation called "{scenario.name}".
+
+Scenario seed: {scenario.seed_text or 'No seed provided'}
+
+Simulation report:
+{report_context or 'No report generated yet'}
+
+Recent simulation activity (sample):
+{actions_context or 'No activity data'}
+
+Conversation history:
+{history_text}
+
+User question: {question}
+
+Answer specifically about this scenario's simulation results. Be concise, insightful, and grounded in the data.
+"""
+
+    client = _genai.Client(api_key=os.environ["GEMINI_API_KEY"])
+    response = client.models.generate_content(model=MODEL_NAME, contents=prompt)
+    return response.text.strip()
+
+
+@router.get("/worlds/{world_id}/scenarios/{scenario_id}/chat", response_model=list[schemas.WorldScenarioChatResponse])
+def get_chat_history(
+    world_id: str,
+    scenario_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    world = _get_world_or_404(world_id, current_user.id, db)
+    scenario = _get_scenario_or_404(scenario_id, world.id, db)
+    messages = db.query(models.WorldScenarioChat).filter(
+        models.WorldScenarioChat.scenario_id == scenario.id
+    ).order_by(models.WorldScenarioChat.id).all()
+    return [
+        schemas.WorldScenarioChatResponse(id=m.id, is_user=m.is_user, text=m.text, timestamp=m.timestamp)
+        for m in messages
+    ]
+
+
+# ── Report ────────────────────────────────────────────────────────────────────
+
+@router.post("/worlds/{world_id}/scenarios/{scenario_id}/report")
+def generate_report(
+    world_id: str,
+    scenario_id: str,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    world = _get_world_or_404(world_id, current_user.id, db)
+    scenario = _get_scenario_or_404(scenario_id, world.id, db)
+
+    if scenario.status != "completed":
+        raise HTTPException(status_code=400, detail="Scenario must be completed before generating a report")
+    if not scenario.outputs_path:
+        raise HTTPException(status_code=400, detail="Scenario output not found")
+
+    members = db.query(models.WorldMember).filter(models.WorldMember.world_id == world.id).all()
+    agent_profiles = []
+    for m in members:
+        agent = db.query(models.SmallWorldAgent).get(m.agent_id)
+        if agent:
+            agent_profiles.append({"name": agent.name, "job_title": agent.job_title, "profession": agent.profession})
+
+    background_tasks.add_task(
+        _generate_report_background,
+        scenario_db_id=scenario.id,
+        output_dir=scenario.outputs_path,
+        world_description=world.description or "",
+        scenario_name=scenario.name,
+        seed_text=scenario.seed_text or "",
+        agent_profiles=agent_profiles,
+    )
+
+    return {"status": "generating"}
+
+
+def _generate_report_background(
+    scenario_db_id: int,
+    output_dir: str,
+    world_description: str,
+    scenario_name: str,
+    seed_text: str,
+    agent_profiles: list[dict],
+) -> None:
+    from ..database import SessionLocal
+    from core.small_world_report import generate_report
+
+    db = SessionLocal()
+    try:
+        report = generate_report(
+            output_dir=output_dir,
+            world_description=world_description,
+            scenario_name=scenario_name,
+            seed_text=seed_text,
+            agent_profiles=agent_profiles,
+        )
+        report_path = os.path.join(output_dir, "report.json")
+        with open(report_path, "w", encoding="utf-8") as f:
+            json.dump(report, f, ensure_ascii=False, indent=2)
+
+        scenario = db.query(models.WorldScenario).get(scenario_db_id)
+        if scenario:
+            scenario.report_path = report_path
+            db.commit()
+    except Exception as exc:
+        print(f"Report generation failed: {exc}")
+    finally:
+        db.close()
+
+
+@router.get("/worlds/{world_id}/scenarios/{scenario_id}/events", response_model=list[schemas.WorldScenarioEventResponse])
+def get_scenario_events(
+    world_id: str,
+    scenario_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    world = _get_world_or_404(world_id, current_user.id, db)
+    scenario = _get_scenario_or_404(scenario_id, world.id, db)
+    return (
+        db.query(models.WorldSimEvent)
+        .filter(models.WorldSimEvent.scenario_id == scenario.id)
+        .order_by(models.WorldSimEvent.id)
+        .all()
+    )
+
+
+@router.get("/worlds/{world_id}/scenarios/{scenario_id}/feed")
+def get_scenario_feed(
+    world_id: str,
+    scenario_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """Return social-media feed (posts + comments) from the OASIS simulation DB."""
+    world = _get_world_or_404(world_id, current_user.id, db)
+    scenario = _get_scenario_or_404(scenario_id, world.id, db)
+
+    agents: list[dict] = []
+    result: dict = {"posts": [], "comments": [], "agents": agents}
+
+    if not scenario.outputs_path:
+        return result
+
+    sim_db_path = os.path.join(scenario.outputs_path, "simulation.db")
+    agents_path = os.path.join(scenario.outputs_path, "agents.json")
+
+    if os.path.exists(agents_path):
+        with open(agents_path, encoding="utf-8") as fh:
+            agents = json.load(fh)
+        result["agents"] = agents
+
+    agent_by_id: dict = {}
+    for i, a in enumerate(agents):
+        agent_by_id[i] = a
+        agent_by_id[str(i)] = a
+
+    if not os.path.exists(sim_db_path):
+        return result
+
+    try:
+        conn = sqlite3.connect(sim_db_path)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        tables = {row[0].lower() for row in cursor.fetchall()}
+
+        def _read_table(candidates: list[str]) -> list[dict]:
+            for tbl in candidates:
+                if tbl in tables:
+                    cursor.execute(f"SELECT * FROM {tbl}")  # noqa: S608
+                    cols = [d[0] for d in cursor.description]
+                    rows = []
+                    for row in cursor.fetchall():
+                        entry = dict(zip(cols, row))
+                        uid = entry.get("user_id", entry.get("agent_id"))
+                        if uid is not None:
+                            agent = agent_by_id.get(uid) or agent_by_id.get(str(uid))
+                            if agent is None and isinstance(uid, int):
+                                agent = agent_by_id.get(uid - 1)
+                            if agent:
+                                entry["_agent"] = agent
+                        rows.append(entry)
+                    return rows
+            return []
+
+        result["posts"] = _read_table(["post", "posts"])
+        result["comments"] = _read_table(["comment", "comments"])
+        conn.close()
+    except Exception as exc:
+        print(f"SW feed read error: {exc}")
+
+    return result
+
+
+@router.get("/worlds/{world_id}/scenarios/{scenario_id}/report")
+def get_report(
+    world_id: str,
+    scenario_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    world = _get_world_or_404(world_id, current_user.id, db)
+    scenario = _get_scenario_or_404(scenario_id, world.id, db)
+
+    if not scenario.report_path or not os.path.exists(scenario.report_path):
+        return {"available": False}
+
+    with open(scenario.report_path, encoding="utf-8") as f:
+        report = json.load(f)
+    report["available"] = True
+    return report
+
+
+# ── Health Check ──────────────────────────────────────────────────────────────
+
+@router.get("/worlds/{world_id}/health-check", response_model=list[schemas.HealthCheckItem])
+def health_check(
+    world_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    from core.world_health_check import run_health_check
+
+    world = _get_world_or_404(world_id, current_user.id, db)
+    members = db.query(models.WorldMember).filter(models.WorldMember.world_id == world.id).all()
+
+    agents_data = []
+    for m in members:
+        agent = db.query(models.SmallWorldAgent).get(m.agent_id)
+        if agent:
+            agents_data.append({
+                "agent_id": agent.agent_id,
+                "name": agent.name,
+                "profession": agent.profession,
+                "job_title": agent.job_title,
+                "organization": agent.organization,
+                "location": agent.location,
+                "personality_traits": agent.personality_traits,
+            })
+
+    # Get all relationships for these agents
+    agent_db_ids = [m.agent_id for m in members]
+    rels = db.query(models.AgentRelationship).filter(
+        models.AgentRelationship.source_agent_id.in_(agent_db_ids)
+    ).all()
+    rels_data = [
+        {
+            "source_agent_id": db.query(models.SmallWorldAgent).get(r.source_agent_id).agent_id if db.query(models.SmallWorldAgent).get(r.source_agent_id) else "",
+            "target_agent_id": db.query(models.SmallWorldAgent).get(r.target_agent_id).agent_id if db.query(models.SmallWorldAgent).get(r.target_agent_id) else "",
+            "sentiment": r.sentiment,
+        }
+        for r in rels
+    ]
+
+    items = run_health_check(agents_data, rels_data)
+    return [schemas.HealthCheckItem(**item) for item in items]
+
+
+# ── Scenario Diff ─────────────────────────────────────────────────────────────
+
+@router.post("/worlds/{world_id}/scenarios/diff")
+def scenario_diff(
+    world_id: str,
+    body: schemas.ScenarioDiffRequest,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    from core.scenario_diff import compute_diff
+
+    world = _get_world_or_404(world_id, current_user.id, db)
+
+    scenario_a = _get_scenario_or_404(body.scenario_id_a, world.id, db)
+    scenario_b = _get_scenario_or_404(body.scenario_id_b, world.id, db)
+
+    if not scenario_a.outputs_path or not scenario_b.outputs_path:
+        raise HTTPException(status_code=400, detail="Both scenarios must have completed before diffing")
+
+    # Load reports if available
+    def _load_report(path: str | None) -> dict | None:
+        if not path:
+            return None
+        report_file = os.path.join(path, "report.json")
+        if os.path.exists(report_file):
+            with open(report_file, encoding="utf-8") as f:
+                return json.load(f)
+        return None
+
+    report_a = _load_report(scenario_a.outputs_path)
+    report_b = _load_report(scenario_b.outputs_path)
+
+    return compute_diff(
+        output_dir_a=scenario_a.outputs_path,
+        output_dir_b=scenario_b.outputs_path,
+        scenario_name_a=scenario_a.name,
+        scenario_name_b=scenario_b.name,
+        report_a=report_a,
+        report_b=report_b,
+    )

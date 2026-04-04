@@ -37,11 +37,13 @@ import {
 	UploadCloud,
 	Zap,
 	Coins,
+	Globe,
 } from 'lucide-react';
 import { SidebarCtx } from './SidebarContext';
 import Auth from './views/Auth';
 import Home from './views/Home';
 import SessionView from './views/Session';
+import SmallWorldView from './views/SmallWorld';
 import NewSimulationModal from './components/NewSimulationModal';
 import SettingsModal from './components/SettingsModal';
 
@@ -719,6 +721,20 @@ function Sidebar() {
 					) : (
 						<>
 							<SidebarSessionList navigate={navigate} />
+							<div
+								style={{
+									height: '1px',
+									background: 'var(--outline-variant)',
+									margin: '0.3rem 0',
+								}}
+							/>
+							<button
+								className="sidebar-nav-btn"
+								onClick={() => navigate('/small-world')}
+							>
+								<Globe size={14} />
+								Small World
+							</button>
 						</>
 					)}
 				</nav>
@@ -949,6 +965,14 @@ function AppLayout() {
 							element={
 								<PrivateRoute>
 									<SessionView />
+								</PrivateRoute>
+							}
+						/>
+						<Route
+							path="/small-world"
+							element={
+								<PrivateRoute>
+									<SmallWorldView />
 								</PrivateRoute>
 							}
 						/>

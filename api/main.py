@@ -10,6 +10,7 @@ from . import models
 
 from .routers import auth, sessions, simulation, reports
 from .routers import scenarios, insights, users
+from .routers import small_world_agents, small_world_worlds
 
 # Create database tables
 Base.metadata.create_all(bind=engine)
@@ -35,6 +36,79 @@ _MIGRATIONS = [
         email VARCHAR NOT NULL,
         code VARCHAR NOT NULL,
         redeemed_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )""",
+    # Small World migrations (idempotent via IF NOT EXISTS)
+    """CREATE TABLE IF NOT EXISTS sw_agents (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        agent_id VARCHAR UNIQUE NOT NULL,
+        user_id INTEGER NOT NULL REFERENCES users(id),
+        name VARCHAR NOT NULL,
+        age INTEGER,
+        gender VARCHAR,
+        location VARCHAR,
+        profession VARCHAR,
+        job_title VARCHAR,
+        organization VARCHAR,
+        personality_traits TEXT,
+        behavioral_attributes TEXT,
+        contextual_state TEXT,
+        external_factors TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )""",
+    """CREATE TABLE IF NOT EXISTS sw_agent_relationships (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        rel_id VARCHAR UNIQUE NOT NULL,
+        source_agent_id INTEGER NOT NULL REFERENCES sw_agents(id),
+        target_agent_id INTEGER NOT NULL REFERENCES sw_agents(id),
+        type VARCHAR NOT NULL,
+        strength FLOAT DEFAULT 0.5,
+        sentiment VARCHAR DEFAULT 'neutral',
+        influence_direction VARCHAR DEFAULT 'both',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )""",
+    """CREATE TABLE IF NOT EXISTS sw_worlds (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        world_id VARCHAR UNIQUE NOT NULL,
+        user_id INTEGER NOT NULL REFERENCES users(id),
+        name VARCHAR NOT NULL,
+        description TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )""",
+    """CREATE TABLE IF NOT EXISTS sw_world_members (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        world_id INTEGER NOT NULL REFERENCES sw_worlds(id),
+        agent_id INTEGER NOT NULL REFERENCES sw_agents(id)
+    )""",
+    """CREATE TABLE IF NOT EXISTS sw_world_scenarios (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        scenario_id VARCHAR UNIQUE NOT NULL,
+        world_id INTEGER NOT NULL REFERENCES sw_worlds(id),
+        user_id INTEGER REFERENCES users(id),
+        name VARCHAR NOT NULL,
+        seed_text TEXT,
+        seed_files_path VARCHAR,
+        parent_scenario_id INTEGER REFERENCES sw_world_scenarios(id),
+        depth INTEGER DEFAULT 0,
+        status VARCHAR DEFAULT 'created',
+        outputs_path VARCHAR,
+        report_path VARCHAR,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )""",
+    """CREATE TABLE IF NOT EXISTS sw_world_scenario_chats (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        scenario_id INTEGER NOT NULL REFERENCES sw_world_scenarios(id),
+        is_user BOOLEAN NOT NULL,
+        text TEXT NOT NULL,
+        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+    )""",
+    """CREATE TABLE IF NOT EXISTS sw_world_sim_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        scenario_id INTEGER NOT NULL REFERENCES sw_world_scenarios(id),
+        type VARCHAR NOT NULL,
+        message TEXT NOT NULL,
+        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
     )""",
 ]
 with engine.connect() as _conn:
@@ -62,6 +136,8 @@ app.include_router(reports.router)
 app.include_router(scenarios.router)
 app.include_router(insights.router)
 app.include_router(users.router)
+app.include_router(small_world_agents.router)
+app.include_router(small_world_worlds.router)
 
 APP_VERSION = "internal alpha 1.3"
 

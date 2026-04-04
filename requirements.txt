@@ -15,3 +15,5 @@ python-dateutil
 python-louvain
 networkx
 numpy
+openpyxl
+pandas

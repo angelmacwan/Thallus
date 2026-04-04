@@ -199,3 +199,126 @@ class PromoCodeUsage(Base):
     redeemed_at = Column(DateTime, default=datetime.utcnow)
 
     user = relationship("User", back_populates="promo_code_usages")
+
+
+# ── Small World ───────────────────────────────────────────────────────────────
+
+class SmallWorldAgent(Base):
+    __tablename__ = "sw_agents"
+
+    id = Column(Integer, primary_key=True, index=True)
+    agent_id = Column(String, unique=True, index=True, default=lambda: str(uuid.uuid4()))
+    user_id = Column(Integer, ForeignKey("users.id"), index=True)
+    # Core Identity
+    name = Column(String, nullable=False)
+    age = Column(Integer, nullable=True)
+    gender = Column(String, nullable=True)
+    location = Column(String, nullable=True)
+    profession = Column(String, nullable=True)
+    job_title = Column(String, nullable=True)
+    organization = Column(String, nullable=True)
+    # Complex fields stored as JSON strings
+    personality_traits = Column(Text, nullable=True)       # {openness, conscientiousness, extraversion, agreeableness, neuroticism, risk_tolerance, decision_style, motivation_drivers, core_beliefs, biases}
+    behavioral_attributes = Column(Text, nullable=True)    # {communication_style, influence_level, adaptability, loyalty, stress_response}
+    contextual_state = Column(Text, nullable=True)         # {current_goals, current_frustrations, incentives, constraints}
+    external_factors = Column(Text, nullable=True)         # {salary, work_environment, market_exposure}
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    user = relationship("User")
+    relationships_from = relationship("AgentRelationship", foreign_keys="AgentRelationship.source_agent_id", back_populates="source_agent", cascade="all, delete-orphan")
+    relationships_to = relationship("AgentRelationship", foreign_keys="AgentRelationship.target_agent_id", back_populates="target_agent", cascade="all, delete-orphan")
+    world_memberships = relationship("WorldMember", back_populates="agent", cascade="all, delete-orphan")
+
+
+class AgentRelationship(Base):
+    __tablename__ = "sw_agent_relationships"
+
+    id = Column(Integer, primary_key=True, index=True)
+    rel_id = Column(String, unique=True, index=True, default=lambda: str(uuid.uuid4()))
+    source_agent_id = Column(Integer, ForeignKey("sw_agents.id"), nullable=False, index=True)
+    target_agent_id = Column(Integer, ForeignKey("sw_agents.id"), nullable=False, index=True)
+    type = Column(String, nullable=False)                  # manager, peer, competitor, customer, etc.
+    strength = Column(Float, default=0.5)                  # 0.0 (weak) to 1.0 (strong)
+    sentiment = Column(String, default="neutral")          # positive, neutral, negative
+    influence_direction = Column(String, default="both")   # source_to_target, target_to_source, both
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    source_agent = relationship("SmallWorldAgent", foreign_keys=[source_agent_id], back_populates="relationships_from")
+    target_agent = relationship("SmallWorldAgent", foreign_keys=[target_agent_id], back_populates="relationships_to")
+
+
+class SmallWorld(Base):
+    __tablename__ = "sw_worlds"
+
+    id = Column(Integer, primary_key=True, index=True)
+    world_id = Column(String, unique=True, index=True, default=lambda: str(uuid.uuid4()))
+    user_id = Column(Integer, ForeignKey("users.id"), index=True)
+    name = Column(String, nullable=False)
+    description = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    user = relationship("User")
+    members = relationship("WorldMember", back_populates="world", cascade="all, delete-orphan")
+    scenarios = relationship("WorldScenario", back_populates="world", cascade="all, delete-orphan")
+
+
+class WorldMember(Base):
+    __tablename__ = "sw_world_members"
+
+    id = Column(Integer, primary_key=True, index=True)
+    world_id = Column(Integer, ForeignKey("sw_worlds.id"), nullable=False, index=True)
+    agent_id = Column(Integer, ForeignKey("sw_agents.id"), nullable=False, index=True)
+
+    world = relationship("SmallWorld", back_populates="members")
+    agent = relationship("SmallWorldAgent", back_populates="world_memberships")
+
+
+class WorldScenario(Base):
+    __tablename__ = "sw_world_scenarios"
+
+    id = Column(Integer, primary_key=True, index=True)
+    scenario_id = Column(String, unique=True, index=True, default=lambda: str(uuid.uuid4()))
+    world_id = Column(Integer, ForeignKey("sw_worlds.id"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), index=True)
+    name = Column(String, nullable=False)
+    seed_text = Column(Text, nullable=True)
+    seed_files_path = Column(String, nullable=True)
+    parent_scenario_id = Column(Integer, ForeignKey("sw_world_scenarios.id"), nullable=True)
+    depth = Column(Integer, default=0)
+    status = Column(String, default="created")  # created, running, completed, error
+    outputs_path = Column(String, nullable=True)
+    report_path = Column(String, nullable=True)  # path to report JSON
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    world = relationship("SmallWorld", back_populates="scenarios")
+    user = relationship("User")
+    parent = relationship("WorldScenario", remote_side=[id], back_populates="children")
+    children = relationship("WorldScenario", back_populates="parent")
+    chat_messages = relationship("WorldScenarioChat", back_populates="scenario", cascade="all, delete-orphan")
+    events = relationship("WorldSimEvent", back_populates="scenario", order_by="WorldSimEvent.id", cascade="all, delete-orphan")
+
+
+class WorldScenarioChat(Base):
+    __tablename__ = "sw_world_scenario_chats"
+
+    id = Column(Integer, primary_key=True, index=True)
+    scenario_id = Column(Integer, ForeignKey("sw_world_scenarios.id"), nullable=False, index=True)
+    is_user = Column(Boolean, nullable=False)
+    text = Column(Text, nullable=False)
+    timestamp = Column(DateTime, default=datetime.utcnow)
+
+    scenario = relationship("WorldScenario", back_populates="chat_messages")
+
+
+class WorldSimEvent(Base):
+    __tablename__ = "sw_world_sim_events"
+
+    id = Column(Integer, primary_key=True, index=True)
+    scenario_id = Column(Integer, ForeignKey("sw_world_scenarios.id"), nullable=False, index=True)
+    type = Column(String, nullable=False)   # stage, agent, action, round, error, done
+    message = Column(Text, nullable=False)
+    timestamp = Column(DateTime, default=datetime.utcnow)
+
+    scenario = relationship("WorldScenario", back_populates="events")
