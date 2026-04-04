@@ -25,6 +25,9 @@ import {
 	Play,
 	Plus,
 	Tag,
+	Globe,
+	FolderOpen,
+	File,
 } from 'lucide-react';
 
 mermaid.initialize({ startOnLoad: false, theme: 'neutral' });
@@ -60,317 +63,211 @@ function MermaidBlock({ code }) {
 	);
 }
 
-// ─── Session Reports Tab ──────────────────────────────────────────────────────
-function SessionReportsList({ sessionId, onCountChange }) {
-	const [reports, setReports] = useState([]);
+// ─── Seed Data Tab ───────────────────────────────────────────────────────────
+function SeedDataPanel({ sessionId }) {
+	const [docs, setDocs] = useState([]);
 	const [loading, setLoading] = useState(true);
-	const [selected, setSelected] = useState(null);
-	const [content, setContent] = useState(null);
-	const [contentLoading, setContentLoading] = useState(false);
-	const [deleting, setDeleting] = useState(null);
-
-	const fetchReports = async () => {
-		setLoading(true);
-		try {
-			const res = await api.get(`/reports/session/${sessionId}`);
-			setReports(res.data);
-			onCountChange(res.data.length);
-		} catch {
-			/* noop */
-		} finally {
-			setLoading(false);
-		}
-	};
 
 	useEffect(() => {
-		fetchReports();
+		setLoading(true);
+		api.get(`/simulation/seed-docs/${sessionId}`)
+			.then((res) => setDocs(res.data.documents || []))
+			.catch(() => {})
+			.finally(() => setLoading(false));
 	}, [sessionId]);
 
-	const openReport = async (report) => {
-		setSelected(report);
-		setContent(null);
-		setContentLoading(true);
-		try {
-			const res = await api.get(`/reports/${report.report_id}/content`, {
-				responseType: 'text',
-				transformResponse: [(d) => d],
-			});
-			setContent(res.data);
-		} catch {
-			setContent(null);
-		} finally {
-			setContentLoading(false);
-		}
+	const formatBytes = (bytes) => {
+		if (bytes < 1024) return `${bytes} B`;
+		if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+		return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 	};
 
-	const deleteReport = async (report, e) => {
-		e.stopPropagation();
-		setDeleting(report.report_id);
-		try {
-			await api.delete(`/reports/${report.report_id}`);
-			const next = reports.filter(
-				(r) => r.report_id !== report.report_id,
-			);
-			setReports(next);
-			onCountChange(next.length);
-			if (selected?.report_id === report.report_id) {
-				setSelected(null);
-				setContent(null);
-			}
-		} catch {
-			/* noop */
-		} finally {
-			setDeleting(null);
-		}
-	};
+	const userDocs = docs.filter((d) => !d.is_web_result);
+	const webDocs = docs.filter((d) => d.is_web_result);
 
-	const mdComponents = {
-		code({ node, inline, className, children, ...props }) {
-			const lang = (className || '').replace('language-', '');
-			if (!inline && lang === 'mermaid')
-				return <MermaidBlock code={String(children).trim()} />;
-			return inline ? (
-				<code
+	if (loading)
+		return (
+			<div
+				style={{
+					textAlign: 'center',
+					padding: '2rem',
+					color: 'var(--text-secondary)',
+					fontSize: '0.85rem',
+				}}
+			>
+				Loading…
+			</div>
+		);
+
+	const DocRow = ({ doc }) => (
+		<div
+			style={{
+				display: 'flex',
+				alignItems: 'center',
+				gap: '0.6rem',
+				padding: '0.6rem 0.75rem',
+				borderRadius: '8px',
+				border: '1px solid var(--outline-variant)',
+				background: 'var(--surface-container-low)',
+			}}
+		>
+			<div style={{ flexShrink: 0 }}>
+				{doc.is_web_result ? (
+					<Globe
+						size={15}
+						color="var(--accent-color)"
+					/>
+				) : (
+					<File
+						size={15}
+						color="var(--text-secondary)"
+					/>
+				)}
+			</div>
+			<div style={{ flex: 1, minWidth: 0 }}>
+				<div
 					style={{
-						background: 'var(--surface-container)',
-						padding: '0.1em 0.35em',
-						borderRadius: '4px',
-						fontSize: '0.85em',
-					}}
-					{...props}
-				>
-					{children}
-				</code>
-			) : (
-				<pre
-					style={{
-						background: 'var(--surface-container)',
-						padding: '1rem',
-						borderRadius: '8px',
-						overflowX: 'auto',
+						fontWeight: 600,
 						fontSize: '0.82rem',
-						lineHeight: 1.6,
+						whiteSpace: 'nowrap',
+						overflow: 'hidden',
+						textOverflow: 'ellipsis',
+					}}
+					title={doc.filename}
+				>
+					{doc.display_name}
+				</div>
+				<div
+					style={{
+						fontSize: '0.7rem',
+						color: 'var(--text-secondary)',
+						marginTop: '0.1rem',
 					}}
 				>
-					<code {...props}>{children}</code>
-				</pre>
-			);
-		},
-	};
+					{formatBytes(doc.size_bytes)}
+					{doc.is_web_result && (
+						<span
+							style={{
+								marginLeft: '0.5rem',
+								padding: '0.1rem 0.45rem',
+								borderRadius: '999px',
+								background: 'rgba(37,99,235,0.1)',
+								color: 'var(--accent-color)',
+								fontWeight: 700,
+								fontSize: '0.65rem',
+							}}
+						>
+							WEB
+						</span>
+					)}
+				</div>
+			</div>
+		</div>
+	);
 
 	return (
 		<div
 			style={{
 				display: 'flex',
-				flex: 1,
-				minHeight: 0,
+				flexDirection: 'column',
 				gap: '1rem',
-				overflow: 'hidden',
+				flex: 1,
+				overflowY: 'auto',
 			}}
 		>
-			{/* List */}
-			<div
-				style={{
-					width: selected ? '280px' : '100%',
-					flexShrink: 0,
-					display: 'flex',
-					flexDirection: 'column',
-					gap: '0.5rem',
-					overflowY: 'auto',
-					transition: 'width 0.25s ease',
-					paddingRight: '0.25rem',
-				}}
-			>
-				{loading && (
-					<div
-						style={{
-							textAlign: 'center',
-							color: 'var(--text-secondary)',
-							padding: '2rem',
-							fontSize: '0.85rem',
-						}}
-					>
-						Loading…
-					</div>
-				)}
-				{!loading && reports.length === 0 && (
-					<div
-						style={{
-							textAlign: 'center',
-							color: 'var(--text-secondary)',
-							padding: '2.5rem 1rem',
-							fontSize: '0.85rem',
-						}}
-					>
-						<FileText
-							size={28}
-							style={{ marginBottom: '0.5rem', opacity: 0.4 }}
-						/>
-						<div>No reports yet.</div>
-						<div
-							style={{ fontSize: '0.75rem', marginTop: '0.3rem' }}
-						>
-							Generate one using the button above.
-						</div>
-					</div>
-				)}
-				{reports.map((r) => (
-					<div
-						key={r.report_id}
-						onClick={() => openReport(r)}
-						style={{
-							padding: '0.75rem 0.85rem',
-							borderRadius: '8px',
-							border: `1px solid ${selected?.report_id === r.report_id ? 'var(--accent-color)' : 'var(--outline-variant)'}`,
-							background:
-								selected?.report_id === r.report_id
-									? 'rgba(var(--accent-rgb, 37,99,235),0.07)'
-									: 'var(--surface-container-low)',
-							cursor: 'pointer',
-							display: 'flex',
-							alignItems: 'flex-start',
-							gap: '0.65rem',
-							transition: 'border-color 0.15s, background 0.15s',
-						}}
-					>
-						<FileText
-							size={16}
-							color="var(--accent-color)"
-							style={{ marginTop: '0.1rem', flexShrink: 0 }}
-						/>
-						<div style={{ flex: 1, minWidth: 0 }}>
-							<div
-								style={{
-									fontWeight: 600,
-									fontSize: '0.83rem',
-									whiteSpace: 'nowrap',
-									overflow: 'hidden',
-									textOverflow: 'ellipsis',
-								}}
-							>
-								{r.title}
-							</div>
-							<div
-								style={{
-									fontSize: '0.71rem',
-									color: 'var(--text-secondary)',
-									marginTop: '0.15rem',
-								}}
-							>
-								{new Date(r.created_at).toLocaleString()}
-							</div>
-						</div>
-						<button
-							onClick={(e) => deleteReport(r, e)}
-							disabled={deleting === r.report_id}
-							style={{
-								background: 'none',
-								border: 'none',
-								cursor: 'pointer',
-								color: 'var(--text-secondary)',
-								padding: '0.15rem',
-								borderRadius: '4px',
-								flexShrink: 0,
-								opacity: deleting === r.report_id ? 0.4 : 1,
-							}}
-						>
-							<Trash2 size={13} />
-						</button>
-					</div>
-				))}
-			</div>
-
-			{/* Viewer */}
-			{selected && (
+			{/* Uploaded documents */}
+			<div>
 				<div
 					style={{
-						flex: 1,
 						display: 'flex',
-						flexDirection: 'column',
-						minHeight: 0,
-						background: 'var(--surface-container-low)',
-						border: '1px solid var(--outline-variant)',
-						borderRadius: '10px',
-						overflow: 'hidden',
+						alignItems: 'center',
+						gap: '0.4rem',
+						fontSize: '0.73rem',
+						fontWeight: 700,
+						color: 'var(--text-secondary)',
+						textTransform: 'uppercase',
+						letterSpacing: '0.05em',
+						marginBottom: '0.5rem',
 					}}
 				>
+					<FolderOpen size={13} />
+					Uploaded ({userDocs.length})
+				</div>
+				{userDocs.length === 0 ? (
+					<div
+						style={{
+							fontSize: '0.8rem',
+							color: 'var(--text-secondary)',
+							padding: '0.5rem 0',
+						}}
+					>
+						No uploaded files.
+					</div>
+				) : (
 					<div
 						style={{
 							display: 'flex',
-							alignItems: 'center',
-							justifyContent: 'space-between',
-							padding: '0.75rem 1rem',
-							borderBottom: '1px solid var(--outline-variant)',
-							flexShrink: 0,
+							flexDirection: 'column',
+							gap: '0.4rem',
 						}}
 					>
-						<div
-							style={{
-								fontWeight: 700,
-								fontSize: '0.9rem',
-								overflow: 'hidden',
-								textOverflow: 'ellipsis',
-								whiteSpace: 'nowrap',
-							}}
-						>
-							{selected.title}
-						</div>
-						<button
-							onClick={() => {
-								setSelected(null);
-								setContent(null);
-							}}
-							style={{
-								background: 'none',
-								border: 'none',
-								cursor: 'pointer',
-								color: 'var(--text-secondary)',
-								display: 'flex',
-								padding: '0.2rem',
-								borderRadius: '4px',
-							}}
-						>
-							<X size={16} />
-						</button>
+						{userDocs.map((d) => (
+							<DocRow
+								key={d.filename}
+								doc={d}
+							/>
+						))}
 					</div>
+				)}
+			</div>
+
+			{/* Web search results */}
+			<div>
+				<div
+					style={{
+						display: 'flex',
+						alignItems: 'center',
+						gap: '0.4rem',
+						fontSize: '0.73rem',
+						fontWeight: 700,
+						color: 'var(--text-secondary)',
+						textTransform: 'uppercase',
+						letterSpacing: '0.05em',
+						marginBottom: '0.5rem',
+					}}
+				>
+					<Globe size={13} />
+					Web Search Results ({webDocs.length})
+				</div>
+				{webDocs.length === 0 ? (
 					<div
 						style={{
-							flex: 1,
-							overflowY: 'auto',
-							padding: '1.25rem 1.5rem',
+							fontSize: '0.8rem',
+							color: 'var(--text-secondary)',
+							padding: '0.5rem 0',
 						}}
 					>
-						{contentLoading && (
-							<div
-								style={{
-									color: 'var(--text-secondary)',
-									fontSize: '0.85rem',
-								}}
-							>
-								Loading…
-							</div>
-						)}
-						{!contentLoading && content && (
-							<ReactMarkdown
-								remarkPlugins={[remarkGfm]}
-								components={mdComponents}
-							>
-								{content}
-							</ReactMarkdown>
-						)}
-						{!contentLoading && !content && (
-							<div
-								style={{
-									color: 'var(--text-secondary)',
-									fontSize: '0.85rem',
-								}}
-							>
-								Could not load report content.
-							</div>
-						)}
+						No web search results. Enable{' '}
+						<em>Web Search Grounding</em> when creating a new
+						simulation.
 					</div>
-				</div>
-			)}
+				) : (
+					<div
+						style={{
+							display: 'flex',
+							flexDirection: 'column',
+							gap: '0.4rem',
+						}}
+					>
+						{webDocs.map((d) => (
+							<DocRow
+								key={d.filename}
+								doc={d}
+							/>
+						))}
+					</div>
+				)}
+			</div>
 		</div>
 	);
 }
@@ -1408,6 +1305,7 @@ function ResimulateModal({ sessionUuid, session, onClose, onSuccess }) {
 	const [existingFiles, setExistingFiles] = useState([]);
 	const [filesToRemove, setFilesToRemove] = useState(new Set());
 	const [newFiles, setNewFiles] = useState([]);
+	const [useWebSearch, setUseWebSearch] = useState(false);
 	const [submitting, setSubmitting] = useState(false);
 	const [error, setError] = useState(null);
 	const [dragging, setDragging] = useState(false);
@@ -1422,6 +1320,7 @@ function ResimulateModal({ sessionUuid, session, onClose, onSuccess }) {
 				setSeedInfo(res.data);
 				setRounds(res.data.rounds || 3);
 				setObjective(res.data.objective || '');
+				// Only show user-uploaded files (backend now excludes _web_results.md)
 				setExistingFiles(res.data.files || []);
 			})
 			.catch(() => {})
@@ -1461,6 +1360,7 @@ function ResimulateModal({ sessionUuid, session, onClose, onSuccess }) {
 			if (agentCount > 0) formData.append('agent_count', agentCount);
 			if (objective.trim())
 				formData.append('objective', objective.trim());
+			formData.append('enable_web_search', useWebSearch);
 			if (filesToRemove.size > 0)
 				formData.append(
 					'remove_files',
@@ -1880,6 +1780,66 @@ function ResimulateModal({ sessionUuid, session, onClose, onSuccess }) {
 								}}
 							/>
 						</div>
+
+						{/* Web Search Grounding */}
+						<div
+							style={{
+								display: 'flex',
+								alignItems: 'flex-start',
+								gap: '0.75rem',
+								padding: '0.85rem 1rem',
+								background: useWebSearch
+									? 'rgba(var(--accent-rgb, 99,102,241), 0.08)'
+									: 'var(--surface-container-high)',
+								border: `1px solid ${useWebSearch ? 'var(--accent-color)' : 'var(--outline-variant)'}`,
+								borderRadius: '10px',
+								cursor: 'pointer',
+								transition: 'all 0.15s',
+							}}
+							onClick={() => setUseWebSearch((v) => !v)}
+						>
+							<input
+								type="checkbox"
+								id="web-search-checkbox"
+								checked={useWebSearch}
+								onChange={(e) =>
+									setUseWebSearch(e.target.checked)
+								}
+								onClick={(e) => e.stopPropagation()}
+								style={{
+									marginTop: '0.15rem',
+									accentColor: 'var(--accent-color)',
+									width: '15px',
+									height: '15px',
+									flexShrink: 0,
+									cursor: 'pointer',
+								}}
+							/>
+							<div>
+								<label
+									htmlFor="web-search-checkbox"
+									style={{
+										fontSize: '0.85rem',
+										fontWeight: 600,
+										color: 'var(--text-primary)',
+										cursor: 'pointer',
+									}}
+								>
+									Web Search Grounding
+								</label>
+								<p
+									style={{
+										margin: '0.2rem 0 0',
+										fontSize: '0.78rem',
+										color: 'var(--text-secondary)',
+										lineHeight: 1.4,
+									}}
+								>
+									Enrich seed documents with live web search
+									results before running the simulation.
+								</p>
+							</div>
+						</div>
 					</>
 				)}
 
@@ -1951,205 +1911,6 @@ function ResimulateModal({ sessionUuid, session, onClose, onSuccess }) {
 						{submitting ? 'Starting…' : 'Resimulate'}
 					</button>
 				</div>
-			</div>
-		</div>
-	);
-}
-
-// ─── Create Report Modal ──────────────────────────────────────────────────────
-function CreateReportModal({ sessionId, onClose, onCreated }) {
-	const [description, setDescription] = useState('');
-	const [generating, setGenerating] = useState(false);
-	const [error, setError] = useState(null);
-
-	const handleSubmit = async (e) => {
-		e.preventDefault();
-		if (!description.trim()) return;
-		setGenerating(true);
-		setError(null);
-		try {
-			const res = await api.post(`/reports/generate/${sessionId}`, {
-				description: description.trim(),
-			});
-			onCreated(res.data);
-			onClose();
-		} catch (err) {
-			setError(
-				err?.response?.data?.detail || 'Failed to generate report.',
-			);
-		} finally {
-			setGenerating(false);
-		}
-	};
-
-	return (
-		<div
-			style={{
-				position: 'fixed',
-				inset: 0,
-				background: 'rgba(0,0,0,0.45)',
-				display: 'flex',
-				alignItems: 'center',
-				justifyContent: 'center',
-				zIndex: 1000,
-				padding: '1rem',
-			}}
-			onClick={(e) => {
-				if (e.target === e.currentTarget) onClose();
-			}}
-		>
-			<div
-				style={{
-					background: 'var(--surface)',
-					borderRadius: '14px',
-					padding: '2rem',
-					width: '100%',
-					maxWidth: '560px',
-					display: 'flex',
-					flexDirection: 'column',
-					gap: '1.25rem',
-					boxShadow: '0 8px 32px rgba(0,0,0,0.22)',
-					border: '1px solid var(--outline-variant)',
-				}}
-			>
-				{/* Header */}
-				<div
-					style={{
-						display: 'flex',
-						alignItems: 'center',
-						justifyContent: 'space-between',
-					}}
-				>
-					<div
-						style={{
-							display: 'flex',
-							alignItems: 'center',
-							gap: '0.6rem',
-						}}
-					>
-						<FileText
-							size={20}
-							color="var(--accent-color)"
-						/>
-						<h3 style={{ margin: 0, fontSize: '1rem' }}>
-							Generate Report
-						</h3>
-					</div>
-					<button
-						onClick={onClose}
-						style={{
-							background: 'none',
-							border: 'none',
-							cursor: 'pointer',
-							color: 'var(--text-secondary)',
-							display: 'flex',
-							alignItems: 'center',
-							padding: '0.25rem',
-							borderRadius: '6px',
-						}}
-					>
-						<X size={18} />
-					</button>
-				</div>
-
-				{/* Body */}
-				<p
-					style={{
-						margin: 0,
-						fontSize: '0.85rem',
-						color: 'var(--text-secondary)',
-						lineHeight: 1.6,
-					}}
-				>
-					Describe the focus or question for this report. The agent
-					will use the simulation data, knowledge graph, and chat
-					history to produce an enterprise-grade Markdown report with
-					diagrams.
-				</p>
-
-				<form
-					onSubmit={handleSubmit}
-					style={{
-						display: 'flex',
-						flexDirection: 'column',
-						gap: '1rem',
-					}}
-				>
-					<textarea
-						className="input-field"
-						value={description}
-						onChange={(e) => setDescription(e.target.value)}
-						placeholder="e.g. Analyse information spread patterns and identify key influencers in this simulation…"
-						rows={5}
-						disabled={generating}
-						style={{
-							resize: 'vertical',
-							fontFamily: 'inherit',
-							fontSize: '0.88rem',
-							lineHeight: 1.6,
-						}}
-					/>
-
-					{error && (
-						<div
-							style={{
-								padding: '0.65rem 0.85rem',
-								background: 'rgba(220,38,38,0.08)',
-								border: '1px solid rgba(220,38,38,0.2)',
-								borderRadius: '8px',
-								color: 'var(--danger-color)',
-								fontSize: '0.82rem',
-							}}
-						>
-							{error}
-						</div>
-					)}
-
-					<div
-						style={{
-							display: 'flex',
-							gap: '0.75rem',
-							justifyContent: 'flex-end',
-						}}
-					>
-						<button
-							type="button"
-							className="btn btn-secondary"
-							onClick={onClose}
-							disabled={generating}
-						>
-							Cancel
-						</button>
-						<button
-							type="submit"
-							className="btn"
-							disabled={generating || !description.trim()}
-							style={{
-								display: 'flex',
-								alignItems: 'center',
-								gap: '0.45rem',
-							}}
-						>
-							{generating ? (
-								<>
-									<RefreshCw
-										size={14}
-										style={{
-											animation:
-												'spin 1.4s linear infinite',
-										}}
-									/>
-									Generating…
-								</>
-							) : (
-								<>
-									<FileText size={14} />
-									Generate Report
-								</>
-							)}
-						</button>
-					</div>
-				</form>
 			</div>
 		</div>
 	);
@@ -2378,16 +2139,20 @@ export default function SessionView() {
 	});
 	const [activeTab, setActiveTab] = useState('feed');
 	const [dbEvents, setDbEvents] = useState([]);
-	const [showReportModal, setShowReportModal] = useState(false);
 	const [showResimulateModal, setShowResimulateModal] = useState(false);
-	const [reportsCount, setReportsCount] = useState(0);
 
 	// Scenario state
 	const [scenarios, setScenarios] = useState([]);
 	const [showCreateScenario, setShowCreateScenario] = useState(false);
-	const [selectedPill, setSelectedPill] = useState('main'); // 'main' or scenario_id
+	const [selectedPill, setSelectedPill] = useState('main'); // 'main' or scenario_id (used in non-chat tabs only)
 	const [scenarioLiveLogs, setScenarioLiveLogs] = useState({}); // { scenario_uuid: [...events] }
 	const [scenarioReportTarget, setScenarioReportTarget] = useState(null);
+
+	// Chat hashtag autocomplete
+	const [chatTags, setChatTags] = useState([]); // [{tag, label, type}]
+	const [acSuggestions, setAcSuggestions] = useState([]);
+	const [acTagStart, setAcTagStart] = useState(-1);
+	const queryInputRef = useRef(null);
 
 	const messagesEndRef = useRef(null);
 	const logEndRef = useRef(null);
@@ -2401,20 +2166,15 @@ export default function SessionView() {
 			setActiveTab,
 			agentCount,
 			relationCount,
-			reportsCount,
 			scenariosCount: scenarios.length,
 			session,
-			onCreateReport:
-				session?.status === 'completed'
-					? () => setShowReportModal(true)
-					: null,
 			onResimulate:
 				session?.status === 'completed' || session?.status === 'error'
 					? () => setShowResimulateModal(true)
 					: null,
 		});
 		return () => setSessionNav(null);
-	}, [activeTab, artifacts, session, reportsCount, scenarios]);
+	}, [activeTab, artifacts, session, scenarios]);
 
 	useEffect(() => {
 		fetchData();
@@ -2482,6 +2242,13 @@ export default function SessionView() {
 				} catch {
 					/* non-fatal */
 				}
+				// Fetch hashtag autocomplete tags
+				try {
+					const tagsRes = await api.get(`/simulation/tags/${id}`);
+					setChatTags(tagsRes.data?.tags || []);
+				} catch {
+					/* non-fatal */
+				}
 			}
 		} catch (err) {
 			console.error(err);
@@ -2494,6 +2261,13 @@ export default function SessionView() {
 		try {
 			const res = await api.get(`/scenarios/session/${id}`);
 			setScenarios(res.data || []);
+			// Refresh tags so newly completed scenarios appear in autocomplete
+			try {
+				const tagsRes = await api.get(`/simulation/tags/${id}`);
+				setChatTags(tagsRes.data?.tags || []);
+			} catch {
+				/* non-fatal */
+			}
 		} catch {
 			/* noop */
 		}
@@ -2542,11 +2316,49 @@ export default function SessionView() {
 		es.onerror = () => es.close();
 	};
 
+	const handleQueryChange = (e) => {
+		const val = e.target.value;
+		setQuery(val);
+
+		// Detect if cursor is immediately after a #word
+		const cursor = e.target.selectionStart ?? val.length;
+		const before = val.slice(0, cursor);
+		const hashMatch = before.match(/#(\w*)$/);
+
+		if (hashMatch && chatTags.length > 0) {
+			const partial = hashMatch[1].toLowerCase();
+			const filtered = chatTags.filter(
+				(t) =>
+					t.tag.startsWith(partial) ||
+					t.label.toLowerCase().includes(partial),
+			);
+			setAcSuggestions(filtered.slice(0, 8));
+			setAcTagStart(hashMatch.index);
+		} else {
+			setAcSuggestions([]);
+			setAcTagStart(-1);
+		}
+	};
+
+	const handleAcSelect = (tagItem) => {
+		const cursor = queryInputRef.current?.selectionStart ?? query.length;
+		const before = query.slice(0, cursor);
+		const after = query.slice(cursor);
+		const hashIdx = before.lastIndexOf('#');
+		const newQuery =
+			before.slice(0, hashIdx) + '#' + tagItem.tag + ' ' + after;
+		setQuery(newQuery);
+		setAcSuggestions([]);
+		setAcTagStart(-1);
+		setTimeout(() => queryInputRef.current?.focus(), 0);
+	};
+
 	const handleChat = async (e) => {
 		e.preventDefault();
 		if (!query.trim()) return;
 		const userQ = query;
 		setQuery('');
+		setAcSuggestions([]);
 		setMessages((prev) => [
 			...prev,
 			{ text: userQ, is_user: true, id: Date.now() },
@@ -2555,27 +2367,12 @@ export default function SessionView() {
 		try {
 			const formData = new URLSearchParams();
 			formData.append('query', userQ);
-
-			let res;
-			if (selectedPill && selectedPill !== 'main') {
-				// Chat in scenario context
-				res = await api.post(
-					`/scenarios/${selectedPill}/chat`,
-					formData,
-					{
-						headers: {
-							'Content-Type': 'application/x-www-form-urlencoded',
-						},
-					},
-				);
-			} else {
-				// Chat with main simulation
-				res = await api.post(`/simulation/chat/${id}`, formData, {
-					headers: {
-						'Content-Type': 'application/x-www-form-urlencoded',
-					},
-				});
-			}
+			// Always use the global simulation chat endpoint
+			const res = await api.post(`/simulation/chat/${id}`, formData, {
+				headers: {
+					'Content-Type': 'application/x-www-form-urlencoded',
+				},
+			});
 			setMessages((prev) => [...prev, res.data]);
 		} catch (err) {
 			console.error(err);
@@ -2630,14 +2427,6 @@ export default function SessionView() {
 		>
 			<style>{`@keyframes spin { 100% { transform: rotate(360deg); } }`}</style>
 
-			{showReportModal && session && (
-				<CreateReportModal
-					sessionId={id}
-					onClose={() => setShowReportModal(false)}
-					onCreated={() => {}}
-				/>
-			)}
-
 			{showResimulateModal && session && (
 				<ResimulateModal
 					sessionUuid={id}
@@ -2684,10 +2473,7 @@ export default function SessionView() {
 				{/* LEFT PANEL */}
 				<div
 					style={{
-						width:
-							activeTab === 'insights' || activeTab === 'reports'
-								? '70%'
-								: '42%',
+						width: activeTab === 'insights' ? '70%' : '42%',
 						transition: 'width 0.3s ease',
 						flexShrink: 0,
 						display: 'flex',
@@ -2824,10 +2610,11 @@ export default function SessionView() {
 								overflow: 'hidden',
 							}}
 						>
-							{/* ── Scenario pill bar (shown on feed tab and always) ── */}
+							{/* ── Scenario pill bar (shown on feed, scenarios, and insights tabs) ── */}
 							{scenarios.length > 0 &&
 								(activeTab === 'feed' ||
-									activeTab === 'scenarios') && (
+									activeTab === 'scenarios' ||
+									activeTab === 'insights') && (
 									<div
 										style={{
 											display: 'flex',
@@ -2845,8 +2632,6 @@ export default function SessionView() {
 										<button
 											onClick={() => {
 												setSelectedPill('main');
-												if (activeTab !== 'feed')
-													setActiveTab('feed');
 											}}
 											style={{
 												padding: '0.2rem 0.75rem',
@@ -2876,8 +2661,6 @@ export default function SessionView() {
 													setSelectedPill(
 														s.scenario_id,
 													);
-													if (activeTab !== 'feed')
-														setActiveTab('feed');
 												}}
 												title={s.description}
 												style={{
@@ -3424,12 +3207,9 @@ export default function SessionView() {
 								</div>
 							)}
 
-							{/* Reports */}
-							{activeTab === 'reports' && (
-								<SessionReportsList
-									sessionId={id}
-									onCountChange={setReportsCount}
-								/>
+							{/* Seed Data */}
+							{activeTab === 'seed_data' && (
+								<SeedDataPanel sessionId={id} />
 							)}
 
 							{activeTab === 'insights' && (
@@ -3502,94 +3282,11 @@ export default function SessionView() {
 								flex: 1,
 								minHeight: '480px',
 								background: 'var(--surface-container-lowest)',
-								border: `1px solid ${selectedPill && selectedPill !== 'main' ? 'rgba(124,58,237,0.35)' : 'var(--outline-variant)'}`,
+								border: '1px solid var(--outline-variant)',
 								borderRadius: '12px',
 								overflow: 'hidden',
 							}}
 						>
-							{/* Scenario pill context header */}
-							{scenarios.length > 0 && (
-								<div
-									style={{
-										padding: '0.6rem 1rem',
-										borderBottom:
-											'1px solid var(--outline-variant)',
-										background:
-											'var(--surface-container-low)',
-										display: 'flex',
-										gap: '0.4rem',
-										flexWrap: 'wrap',
-										alignItems: 'center',
-									}}
-								>
-									<span
-										style={{
-											fontSize: '0.7rem',
-											fontWeight: 600,
-											color: 'var(--text-secondary)',
-											marginRight: '0.2rem',
-										}}
-									>
-										Chat context:
-									</span>
-									<button
-										onClick={() => setSelectedPill('main')}
-										style={{
-											padding: '0.15rem 0.6rem',
-											borderRadius: '999px',
-											fontSize: '0.7rem',
-											fontWeight: 700,
-											border: `1.5px solid ${selectedPill === 'main' ? 'var(--accent-color)' : 'var(--outline-variant)'}`,
-											background:
-												selectedPill === 'main'
-													? 'var(--accent-color)'
-													: 'transparent',
-											color:
-												selectedPill === 'main'
-													? '#fff'
-													: 'var(--text-secondary)',
-											cursor: 'pointer',
-											transition: 'all 0.15s',
-										}}
-									>
-										Main
-									</button>
-									{scenarios
-										.filter((s) => s.status === 'completed')
-										.map((s) => (
-											<button
-												key={s.scenario_id}
-												onClick={() =>
-													setSelectedPill(
-														s.scenario_id,
-													)
-												}
-												title={s.description}
-												style={{
-													padding: '0.15rem 0.6rem',
-													borderRadius: '999px',
-													fontSize: '0.7rem',
-													fontWeight: 700,
-													border: `1.5px solid ${selectedPill === s.scenario_id ? '#7c3aed' : 'var(--outline-variant)'}`,
-													background:
-														selectedPill ===
-														s.scenario_id
-															? '#7c3aed'
-															: 'transparent',
-													color:
-														selectedPill ===
-														s.scenario_id
-															? '#fff'
-															: 'var(--text-secondary)',
-													cursor: 'pointer',
-													transition: 'all 0.15s',
-												}}
-											>
-												{s.name}
-											</button>
-										))}
-								</div>
-							)}
 							<div
 								style={{
 									flex: 1,
@@ -3617,8 +3314,18 @@ export default function SessionView() {
 											💬
 										</div>
 										<p style={{ fontSize: '0.9rem' }}>
-											Ask the Report Agent anything about
-											this simulation.
+											Ask anything about this simulation —
+											covers all scenarios.
+										</p>
+										<p
+											style={{
+												fontSize: '0.78rem',
+												marginTop: '0.4rem',
+												opacity: 0.65,
+											}}
+										>
+											Type <code>#</code> to tag a
+											scenario or agent.
 										</p>
 									</div>
 								)}
@@ -3664,17 +3371,124 @@ export default function SessionView() {
 									borderTop:
 										'1px solid var(--outline-variant)',
 									background: 'var(--surface-container-low)',
+									position: 'relative',
 								}}
 							>
+								{/* Hashtag autocomplete dropdown */}
+								{acSuggestions.length > 0 && (
+									<div
+										style={{
+											position: 'absolute',
+											bottom: '100%',
+											left: '0.85rem',
+											right: '0.85rem',
+											background:
+												'var(--surface-container)',
+											border: '1px solid var(--outline-variant)',
+											borderRadius: '8px',
+											boxShadow:
+												'0 -4px 16px rgba(0,0,0,0.12)',
+											overflowY: 'auto',
+											maxHeight: '220px',
+											zIndex: 99,
+										}}
+									>
+										<div
+											style={{
+												padding: '0.35rem 0.75rem',
+												fontSize: '0.68rem',
+												fontWeight: 700,
+												color: 'var(--text-secondary)',
+												letterSpacing: '0.04em',
+												borderBottom:
+													'1px solid var(--outline-variant)',
+											}}
+										>
+											TAG AUTOCOMPLETE
+										</div>
+										{acSuggestions.map((t) => (
+											<button
+												key={t.tag}
+												type="button"
+												onMouseDown={(e) => {
+													e.preventDefault();
+													handleAcSelect(t);
+												}}
+												style={{
+													display: 'flex',
+													alignItems: 'center',
+													gap: '0.6rem',
+													width: '100%',
+													padding: '0.45rem 0.75rem',
+													background: 'none',
+													border: 'none',
+													cursor: 'pointer',
+													textAlign: 'left',
+													color: 'var(--text-primary)',
+													fontSize: '0.82rem',
+												}}
+												onMouseEnter={(e) =>
+													(e.currentTarget.style.background =
+														'var(--surface-container-high)')
+												}
+												onMouseLeave={(e) =>
+													(e.currentTarget.style.background =
+														'none')
+												}
+											>
+												<span
+													style={{
+														fontSize: '0.65rem',
+														fontWeight: 700,
+														padding:
+															'0.1rem 0.4rem',
+														borderRadius: '4px',
+														background:
+															t.type ===
+															'scenario'
+																? 'rgba(124,58,237,0.15)'
+																: 'rgba(16,185,129,0.15)',
+														color:
+															t.type ===
+															'scenario'
+																? '#7c3aed'
+																: '#059669',
+														flexShrink: 0,
+													}}
+												>
+													{t.type === 'scenario'
+														? 'SCN'
+														: 'AGT'}
+												</span>
+												<span
+													style={{ fontWeight: 600 }}
+												>
+													#{t.tag}
+												</span>
+												<span
+													style={{
+														color: 'var(--text-secondary)',
+														fontSize: '0.78rem',
+													}}
+												>
+													{t.label}
+												</span>
+											</button>
+										))}
+									</div>
+								)}
 								<input
+									ref={queryInputRef}
 									className="input-field"
 									value={query}
-									onChange={(e) => setQuery(e.target.value)}
-									placeholder={
-										selectedPill && selectedPill !== 'main'
-											? `Ask about scenario: ${scenarios.find((s) => s.scenario_id === selectedPill)?.name || ''}…`
-											: 'Ask a question about the simulation…'
+									onChange={handleQueryChange}
+									onBlur={() =>
+										setTimeout(
+											() => setAcSuggestions([]),
+											150,
+										)
 									}
+									placeholder="Ask anything — covers all scenarios. Type # to tag…"
 									disabled={chatLoading}
 									style={{ flex: 1 }}
 								/>
@@ -3682,15 +3496,7 @@ export default function SessionView() {
 									type="submit"
 									className="btn"
 									disabled={chatLoading}
-									style={{
-										padding: '0.7rem',
-										flexShrink: 0,
-										background:
-											selectedPill &&
-											selectedPill !== 'main'
-												? '#7c3aed'
-												: undefined,
-									}}
+									style={{ padding: '0.7rem', flexShrink: 0 }}
 								>
 									<Send size={18} />
 								</button>

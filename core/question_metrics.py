@@ -72,7 +72,7 @@ class QuestionMetrics:
                 or agent.get("name")
                 or f"Agent_{idx}"
             )
-            agent_map[str(idx)] = str(name)
+            agent_map[str(idx)] = f"{name} ({idx})"
         return agent_map
 
     # ── Phase 2: Behavior summarization ──────────────────────────────────────
@@ -102,7 +102,7 @@ class QuestionMetrics:
 
         for action in actions:
             agent_id = str(action.get("user_id", action.get("agent_id", "")))
-            agent_name = agent_map.get(agent_id, f"Agent_{agent_id}")
+            agent_name = agent_map.get(agent_id, f"Agent_{agent_id} ({agent_id})")
             if agent_name not in per_agent:
                 per_agent[agent_name] = {
                     "agent_id": agent_id,
@@ -147,7 +147,7 @@ class QuestionMetrics:
             raw_agent_id = str(a.get("user_id", a.get("agent_id", "")))
             action_log_sample.append({
                 "agent_id": raw_agent_id,
-                "agent_name": agent_map.get(raw_agent_id, f"Agent_{raw_agent_id}"),
+                "agent_name": agent_map.get(raw_agent_id, f"Agent_{raw_agent_id} ({raw_agent_id})"),
                 "type": a.get("_type", ""),
                 "content": (a.get("content") or "")[:300],
                 "post_id": str(a.get("post_id", "")),

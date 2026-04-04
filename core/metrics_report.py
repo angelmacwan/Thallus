@@ -120,7 +120,7 @@ class MetricsReport:
                     for idx, agent in enumerate(agents):
                         # Map numeric index to username (or realname as fallback)
                         username = agent.get('username', agent.get('realname', f'agent_{idx}'))
-                        agent_map[str(idx)] = username
+                        agent_map[str(idx)] = f"{username} ({idx})"
             except:
                 pass
         return agent_map

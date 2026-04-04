@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import api from '../api';
-import { FileText, RefreshCw, X, Trash2 } from 'lucide-react';
+import { FileText, RefreshCw, X, Trash2, Plus, Download } from 'lucide-react';
 import mermaid from 'mermaid';
 
 mermaid.initialize({ startOnLoad: false, theme: 'neutral' });
@@ -246,6 +246,293 @@ function ReportPanel({ report, onClose }) {
 	);
 }
 
+// ─── Generate Report Modal ───────────────────────────────────────────────────
+function GenerateReportModal({ onClose, onCreated }) {
+	const [sessions, setSessions] = useState([]);
+	const [loadingSessions, setLoadingSessions] = useState(true);
+	const [selectedSession, setSelectedSession] = useState('');
+	const [description, setDescription] = useState('');
+	const [generating, setGenerating] = useState(false);
+	const [error, setError] = useState(null);
+
+	useEffect(() => {
+		api.get('/sessions/')
+			.then((res) => {
+				const completed = res.data.filter(
+					(s) => s.status === 'completed',
+				);
+				setSessions(completed);
+				if (completed.length > 0)
+					setSelectedSession(completed[0].session_id);
+			})
+			.catch(() => {})
+			.finally(() => setLoadingSessions(false));
+	}, []);
+
+	const handleSubmit = async (e) => {
+		e.preventDefault();
+		if (!selectedSession || !description.trim()) return;
+		setGenerating(true);
+		setError(null);
+		try {
+			const res = await api.post(`/reports/generate/${selectedSession}`, {
+				description: description.trim(),
+			});
+			onCreated(res.data);
+			onClose();
+		} catch (err) {
+			setError(
+				err?.response?.data?.detail || 'Failed to generate report.',
+			);
+		} finally {
+			setGenerating(false);
+		}
+	};
+
+	return (
+		<div
+			style={{
+				position: 'fixed',
+				inset: 0,
+				background: 'rgba(0,0,0,0.45)',
+				display: 'flex',
+				alignItems: 'center',
+				justifyContent: 'center',
+				zIndex: 1000,
+				padding: '1rem',
+			}}
+			onClick={(e) => {
+				if (e.target === e.currentTarget) onClose();
+			}}
+		>
+			<div
+				style={{
+					background: 'var(--surface)',
+					borderRadius: '14px',
+					padding: '2rem',
+					width: '100%',
+					maxWidth: '560px',
+					display: 'flex',
+					flexDirection: 'column',
+					gap: '1.25rem',
+					boxShadow: '0 8px 32px rgba(0,0,0,0.22)',
+					border: '1px solid var(--outline-variant)',
+				}}
+			>
+				{/* Header */}
+				<div
+					style={{
+						display: 'flex',
+						alignItems: 'center',
+						justifyContent: 'space-between',
+					}}
+				>
+					<div
+						style={{
+							display: 'flex',
+							alignItems: 'center',
+							gap: '0.6rem',
+						}}
+					>
+						<FileText
+							size={20}
+							color="var(--accent-color)"
+						/>
+						<h3 style={{ margin: 0, fontSize: '1rem' }}>
+							Generate Report
+						</h3>
+					</div>
+					<button
+						onClick={onClose}
+						style={{
+							background: 'none',
+							border: 'none',
+							cursor: 'pointer',
+							color: 'var(--text-secondary)',
+							display: 'flex',
+							padding: '0.25rem',
+							borderRadius: '6px',
+						}}
+					>
+						<X size={18} />
+					</button>
+				</div>
+
+				<p
+					style={{
+						margin: 0,
+						fontSize: '0.85rem',
+						color: 'var(--text-secondary)',
+						lineHeight: 1.6,
+					}}
+				>
+					Describe the focus or question for this report. The agent
+					will use the simulation data, knowledge graph, insights, and
+					chat history to produce an enterprise-grade Markdown report.
+				</p>
+
+				<form
+					onSubmit={handleSubmit}
+					style={{
+						display: 'flex',
+						flexDirection: 'column',
+						gap: '1rem',
+					}}
+				>
+					{/* Session picker */}
+					<div>
+						<label
+							style={{
+								fontSize: '0.78rem',
+								fontWeight: 600,
+								color: 'var(--text-secondary)',
+								display: 'block',
+								marginBottom: '0.35rem',
+							}}
+						>
+							Simulation
+						</label>
+						{loadingSessions ? (
+							<div
+								style={{
+									fontSize: '0.82rem',
+									color: 'var(--text-secondary)',
+								}}
+							>
+								Loading simulations…
+							</div>
+						) : sessions.length === 0 ? (
+							<div
+								style={{
+									fontSize: '0.82rem',
+									color: 'var(--danger-color)',
+								}}
+							>
+								No completed simulations found. Run a simulation
+								first.
+							</div>
+						) : (
+							<select
+								className="input-field"
+								value={selectedSession}
+								onChange={(e) =>
+									setSelectedSession(e.target.value)
+								}
+								disabled={generating}
+								style={{ width: '100%' }}
+							>
+								{sessions.map((s) => (
+									<option
+										key={s.session_id}
+										value={s.session_id}
+									>
+										{s.title || s.session_id}
+									</option>
+								))}
+							</select>
+						)}
+					</div>
+
+					{/* Description */}
+					<div>
+						<label
+							style={{
+								fontSize: '0.78rem',
+								fontWeight: 600,
+								color: 'var(--text-secondary)',
+								display: 'block',
+								marginBottom: '0.35rem',
+							}}
+						>
+							Report Focus
+						</label>
+						<textarea
+							className="input-field"
+							value={description}
+							onChange={(e) => setDescription(e.target.value)}
+							placeholder="e.g. Analyse information spread patterns and identify key influencers…"
+							rows={5}
+							disabled={generating}
+							style={{
+								resize: 'vertical',
+								fontFamily: 'inherit',
+								fontSize: '0.88rem',
+								lineHeight: 1.6,
+								width: '100%',
+								boxSizing: 'border-box',
+							}}
+						/>
+					</div>
+
+					{error && (
+						<div
+							style={{
+								padding: '0.65rem 0.85rem',
+								background: 'rgba(220,38,38,0.08)',
+								border: '1px solid rgba(220,38,38,0.2)',
+								borderRadius: '8px',
+								color: 'var(--danger-color)',
+								fontSize: '0.82rem',
+							}}
+						>
+							{error}
+						</div>
+					)}
+
+					<div
+						style={{
+							display: 'flex',
+							gap: '0.75rem',
+							justifyContent: 'flex-end',
+						}}
+					>
+						<button
+							type="button"
+							className="btn btn-secondary"
+							onClick={onClose}
+							disabled={generating}
+						>
+							Cancel
+						</button>
+						<button
+							type="submit"
+							className="btn"
+							disabled={
+								generating ||
+								!description.trim() ||
+								!selectedSession ||
+								sessions.length === 0
+							}
+							style={{
+								display: 'flex',
+								alignItems: 'center',
+								gap: '0.45rem',
+							}}
+						>
+							{generating ? (
+								<>
+									<RefreshCw
+										size={14}
+										style={{
+											animation:
+												'spin 1.4s linear infinite',
+										}}
+									/>{' '}
+									Generating…
+								</>
+							) : (
+								<>
+									<FileText size={14} /> Generate Report
+								</>
+							)}
+						</button>
+					</div>
+				</form>
+			</div>
+		</div>
+	);
+}
+
 // ─── Main Reports page ────────────────────────────────────────────────────────
 export default function Reports() {
 	const [reports, setReports] = useState([]);
@@ -253,6 +540,7 @@ export default function Reports() {
 	const [selected, setSelected] = useState(null);
 	const [deleting, setDeleting] = useState(null);
 	const [panelVisible, setPanelVisible] = useState(false);
+	const [showGenModal, setShowGenModal] = useState(false);
 
 	useEffect(() => {
 		api.get('/reports/')
@@ -260,6 +548,11 @@ export default function Reports() {
 			.catch(console.error)
 			.finally(() => setLoading(false));
 	}, []);
+
+	const handleReportCreated = (newReport) => {
+		setReports((prev) => [newReport, ...prev]);
+		handleSelect(newReport);
+	};
 
 	const handleSelect = (r) => {
 		setSelected(r);
@@ -287,6 +580,27 @@ export default function Reports() {
 			alert('Failed to delete report.');
 		} finally {
 			setDeleting(null);
+		}
+	};
+
+	const handleDownload = async (e, report) => {
+		e.stopPropagation();
+		try {
+			const res = await api.get(`/reports/${report.report_id}/content`, {
+				responseType: 'text',
+				transformResponse: [(data) => data],
+			});
+			const blob = new Blob([res.data], { type: 'text/markdown' });
+			const url = URL.createObjectURL(blob);
+			const link = document.createElement('a');
+			link.href = url;
+			link.download = `${report.title}.md`;
+			document.body.appendChild(link);
+			link.click();
+			document.body.removeChild(link);
+			URL.revokeObjectURL(url);
+		} catch {
+			alert('Failed to download report.');
 		}
 	};
 
@@ -338,7 +652,30 @@ export default function Reports() {
 					minHeight: 0,
 				}}
 			>
-				<h2 style={{ margin: 0, flexShrink: 0 }}>Reports</h2>
+				<div
+					style={{
+						display: 'flex',
+						alignItems: 'center',
+						justifyContent: 'space-between',
+						flexShrink: 0,
+					}}
+				>
+					<h2 style={{ margin: 0 }}>Reports</h2>
+					<button
+						className="btn"
+						onClick={() => setShowGenModal(true)}
+						style={{
+							display: 'flex',
+							alignItems: 'center',
+							gap: '0.4rem',
+							fontSize: '0.82rem',
+							padding: '0.45rem 0.85rem',
+						}}
+					>
+						<Plus size={14} />
+						Generate Report
+					</button>
+				</div>
 
 				{reports.length === 0 ? (
 					<div
@@ -484,6 +821,25 @@ export default function Reports() {
 										</div>
 									</div>
 
+									{/* Download */}
+									<button
+										onClick={(e) => handleDownload(e, r)}
+										style={{
+											background: 'none',
+											border: 'none',
+											cursor: 'pointer',
+											color: 'var(--text-secondary)',
+											padding: '0.25rem',
+											borderRadius: '6px',
+											flexShrink: 0,
+											display: 'flex',
+											alignItems: 'center',
+										}}
+										title="Download report as MD"
+									>
+										<Download size={13} />
+									</button>
+
 									{/* Delete */}
 									<button
 										onClick={(e) => handleDelete(e, r)}
@@ -519,6 +875,13 @@ export default function Reports() {
 					</div>
 				)}
 			</div>
+
+			{showGenModal && (
+				<GenerateReportModal
+					onClose={() => setShowGenModal(false)}
+					onCreated={handleReportCreated}
+				/>
+			)}
 
 			{/* ── Right: report panel ── */}
 			{selected && (

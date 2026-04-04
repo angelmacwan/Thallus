@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from typing import List
 
 from .. import crud, schemas, models
-from ..deps import get_db, get_current_user
+from ..deps import get_db, get_current_user, require_credits
 
 router = APIRouter(prefix="/api/simulation", tags=["simulation"])
 
@@ -39,9 +39,10 @@ def _get_current_user_query(
     return user
 
 
-def run_simulation_task(session_id: int, session_uuid: str, inputs_path: str, outputs_path: str, rounds: int, agent_count: int, emit):
+def run_simulation_task(session_id: int, session_uuid: str, inputs_path: str, outputs_path: str, rounds: int, agent_count: int, emit, enable_web_search: bool = False, objective: str = "", user_id: int = None):
     # Runs in background task thread
     from ..database import SessionLocal
+    from ..billing import UsageSummary, deduct_credits
     db = SessionLocal()
     db_session = db.query(models.Session).filter(models.Session.id == session_id).first()
     if not db_session:
@@ -51,6 +52,8 @@ def run_simulation_task(session_id: int, session_uuid: str, inputs_path: str, ou
     db_session.status = "running"
     db.commit()
 
+    usage = UsageSummary()
+
     try:
         from core.graph_memory import LocalGraphMemory
         from core.text_processor import TextProcessor
@@ -59,6 +62,16 @@ def run_simulation_task(session_id: int, session_uuid: str, inputs_path: str, ou
         from core.simulation_runner import SimulationRunner
 
         os.makedirs(outputs_path, exist_ok=True)
+
+        # ── Optional: Google Search Grounding ─────────────────────────────
+        if enable_web_search:
+            try:
+                from core.web_search import run_web_search_grounding
+                run_web_search_grounding(inputs_path, objective=objective, emit=emit)
+                usage.add(grounded_prompts=1)
+            except Exception as ws_exc:
+                emit("stage", f"Web search grounding skipped: {ws_exc}")
+
         emit("stage", "Processing input documents…")
         graph = LocalGraphMemory(storage_path=os.path.join(outputs_path, "graph.json"))
 
@@ -69,12 +82,14 @@ def run_simulation_task(session_id: int, session_uuid: str, inputs_path: str, ou
         emit("stage", "Generating ontology…")
         og = OntologyGenerator(graph)
         og.generate(output_path=os.path.join(outputs_path, "ontology.json"))
+        usage += og._usage
         emit("stage", "Ontology generated")
 
         emit("stage", "Generating agent profiles…")
         agents_path = os.path.join(outputs_path, "agents.json")
         pg = ProfileGenerator(graph)
-        profiles = pg.generate_profiles(output_path=agents_path, target_count=agent_count)
+        profiles = pg.generate_profiles(output_path=agents_path, target_count=agent_count, objective=objective)
+        usage += pg._usage
         n_agents = len(profiles) if isinstance(profiles, list) else "?"
         emit("stage", f"{n_agents} agent profile(s) generated")
 
@@ -86,8 +101,10 @@ def run_simulation_task(session_id: int, session_uuid: str, inputs_path: str, ou
             db_path=db_path,
             log_path=log_path,
             emit_event=emit,
+            objective=objective,
         )
         sr.run(rounds)
+        usage += sr._usage
 
         db_session.status = "completed"
         db.commit()
@@ -98,6 +115,16 @@ def run_simulation_task(session_id: int, session_uuid: str, inputs_path: str, ou
         emit("error", f"Simulation failed: {e}")
         print(f"Simulation error: {e}")
     finally:
+        # Deduct regardless of success/failure (partial usage still costs)
+        if user_id and (usage.input_tokens > 0 or usage.output_tokens > 0):
+            try:
+                deduct_credits(
+                    db, user_id, usage,
+                    description=f"Simulation {session_uuid}",
+                    session_db_id=session_id,
+                )
+            except Exception as billing_exc:
+                print(f"[billing] deduct_credits failed: {billing_exc}")
         emit("done", "Stream closed")
         _session_queues.pop(session_uuid, None)
         db.close()
@@ -110,9 +137,10 @@ async def upload_and_simulate(
     agent_count: int = Form(None),  # Optional: only force inflate if specified
     title: str = Form(None),
     objective: str = Form(None),
+    enable_web_search: bool = Form(False),
     files: List[UploadFile] = File(...),
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user)
+    current_user: models.User = Depends(require_credits)
 ):
     email_safe = current_user.email.replace("@", "_at_").replace(".", "_")
     session_uuid = str(uuid.uuid4())
@@ -169,9 +197,55 @@ async def upload_and_simulate(
         rounds,
         agent_count,
         emit,
+        enable_web_search,
+        objective or "",
+        current_user.id,
     )
 
     return db_session
+
+
+@router.get("/tags/{session_uuid}")
+def get_chat_tags(
+    session_uuid: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """Return taggable entities (scenarios + agents) for hashtag autocomplete."""
+    import re as _re
+
+    def _normalize(name: str) -> str:
+        return _re.sub(r'\s+', '_', name.strip()).lower()
+
+    db_session = crud.get_session(db, session_uuid)
+    if not db_session or db_session.user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    scenarios = (
+        db.query(models.Scenario)
+        .filter(models.Scenario.session_id == db_session.id)
+        .all()
+    )
+    scenario_tags = [
+        {"tag": _normalize(s.name), "label": s.name, "type": "scenario", "status": s.status}
+        for s in scenarios
+    ]
+
+    agents_path = os.path.join(db_session.outputs_path, "agents.json")
+    agent_tags: list[dict] = []
+    if os.path.exists(agents_path):
+        with open(agents_path, encoding="utf-8") as fh:
+            agents_data = _json.load(fh)
+        for a in agents_data:
+            username = a.get("username") or a.get("realname")
+            if username:
+                agent_tags.append({
+                    "tag": _normalize(username),
+                    "label": username,
+                    "type": "agent",
+                })
+
+    return {"tags": scenario_tags + agent_tags}
 
 
 @router.post("/chat/{session_uuid}", response_model=schemas.ChatMessageResponse)
@@ -181,10 +255,18 @@ def chat_with_report_agent(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
 ):
+    """Global simulation chat — aggregates context from main sim + all completed scenarios.
+    Supports #hashtag mentions to focus on a specific scenario or agent.
+    """
+    import re as _re
+
+    def _normalize(name: str) -> str:
+        return _re.sub(r'\s+', '_', name.strip()).lower()
+
     db_session = crud.get_session(db, session_uuid)
     if not db_session or db_session.user_id != current_user.id:
         raise HTTPException(status_code=404, detail="Session not found")
-    
+
     if db_session.status != "completed":
         raise HTTPException(status_code=400, detail="Simulation must be completed before chatting")
 
@@ -195,16 +277,173 @@ def chat_with_report_agent(
     graph = LocalGraphMemory(storage_path=os.path.join(outputs_path, "graph.json"))
     log_path = os.path.join(outputs_path, "actions.jsonl")
 
+    # ── Load all completed scenarios for this session ─────────────────────────
+    all_scenarios = (
+        db.query(models.Scenario)
+        .filter(
+            models.Scenario.session_id == db_session.id,
+            models.Scenario.status == "completed",
+        )
+        .all()
+    )
+
+    # ── Load agents for hashtag resolution ────────────────────────────────────
+    agents_path = os.path.join(outputs_path, "agents.json")
+    agents: list[dict] = []
+    if os.path.exists(agents_path):
+        with open(agents_path, encoding="utf-8") as fh:
+            agents = _json.load(fh)
+
+    scenario_map = {_normalize(s.name): s for s in all_scenarios}
+    agent_map = {
+        _normalize(a.get("username") or a.get("realname", "")): a
+        for a in agents
+        if a.get("username") or a.get("realname")
+    }
+
+    # ID → display name lookup used to resolve agent_ids in insight answer_groups
+    agent_id_to_name: dict[str, str] = {
+        str(idx): (a.get("username") or a.get("realname") or a.get("name") or f"Agent_{idx}")
+        for idx, a in enumerate(agents)
+    }
+
+    def _fmt_insight_block(ins_data: dict) -> str:
+        """Serialize an insight record into a rich text block for the chat LLM."""
+        lines: list[str] = [f"  Insight query: \"{ins_data.get('query', '')}\""]
+        if ins_data.get("overall_verdict"):
+            lines.append(f"  Verdict: {ins_data['overall_verdict']}")
+        # Numbered observations so the LLM can reference "Observation #N"
+        for i, obs in enumerate(ins_data.get("insights", [])[:6], 1):
+            obs_text = obs.get("answer_text") or obs.get("text", "")
+            lines.append(f"  Observation #{i}: {obs_text}")
+        # Answer groups with names resolved from the agents roster
+        for grp in ins_data.get("answer_groups", []):
+            label = grp.get("label", "")
+            summary = grp.get("summary", "")
+            names = [
+                agent_id_to_name.get(str(aid), f"Agent {aid}")
+                for aid in grp.get("agent_ids", [])
+            ]
+            lines.append(
+                f"  Group \"{label}\": {summary} — Members: {', '.join(names)}"
+            )
+        if ins_data.get("short_term_outlook"):
+            lines.append(f"  Short-term: {ins_data['short_term_outlook']}")
+        if ins_data.get("soft_metrics_summary"):
+            lines.append(f"  Soft metrics: {ins_data['soft_metrics_summary']}")
+        return "\n".join(lines)
+
+    # ── Parse hashtags from query ─────────────────────────────────────────────
+    hashtags = set(_re.findall(r'#(\w+)', query))
+
+    # ── Build extra context ───────────────────────────────────────────────────
+    extra_parts: list[str] = []
+
+    # Hashtag-focused context first
+    focus_lines: list[str] = []
+    for tag in hashtags:
+        if tag in scenario_map:
+            s = scenario_map[tag]
+            focus_lines.append(
+                f"- **#{tag}** refers to scenario **'{s.name}'**: {s.description}"
+            )
+        elif tag in agent_map:
+            a = agent_map[tag]
+            name = a.get("username") or a.get("realname")
+            bio = a.get("persona") or a.get("bio") or ""
+            focus_lines.append(
+                f"- **#{tag}** refers to agent **{name}** — {bio[:250]}"
+            )
+    if focus_lines:
+        extra_parts.append(
+            "## Hashtag Focus\n"
+            "The user has specifically tagged the following entities — prioritise them in the answer:\n"
+            + "\n".join(focus_lines)
+        )
+
+    # All scenarios context (logs + insights)
+    if all_scenarios:
+        scenario_sections: list[str] = []
+        for scen in all_scenarios:
+            scen_log_path = (
+                os.path.join(scen.outputs_path, "actions.jsonl")
+                if scen.outputs_path else None
+            )
+            scen_logs_str = "(no logs)"
+            if scen_log_path and os.path.exists(scen_log_path):
+                with open(scen_log_path, encoding="utf-8") as fh:
+                    scen_lines = [ln.strip() for ln in fh if ln.strip()]
+                scen_logs_str = "\n".join(scen_lines[-40:])
+
+            # Insights for this scenario
+            scen_insight_parts: list[str] = []
+            scen_insights = (
+                db.query(models.InsightRecord)
+                .filter(
+                    models.InsightRecord.scenario_id == scen.id,
+                    models.InsightRecord.status == "complete",
+                )
+                .all()
+            )
+            for ins in scen_insights:
+                if ins.file_path and os.path.exists(ins.file_path):
+                    try:
+                        with open(ins.file_path, encoding="utf-8") as fh:
+                            ins_data = _json.load(fh)
+                        if ins_data.get("status") == "complete":
+                            scen_insight_parts.append(_fmt_insight_block(ins_data))
+                    except Exception:
+                        pass
+
+            scen_block = (
+                f"### Scenario: {scen.name}\n"
+                f"Description: {scen.description}\n\n"
+                f"Scenario Logs (last 40 entries):\n```\n{scen_logs_str}\n```"
+            )
+            if scen_insight_parts:
+                scen_block += "\n\nScenario Insights:\n" + "\n".join(scen_insight_parts)
+            scenario_sections.append(scen_block)
+        extra_parts.append(
+            "## All Scenarios in This Simulation\n"
+            + "\n\n".join(scenario_sections)
+        )
+
+    # Main simulation insights
+    main_insights = (
+        db.query(models.InsightRecord)
+        .filter(
+            models.InsightRecord.session_id == db_session.id,
+            models.InsightRecord.scenario_id == None,  # noqa: E711
+            models.InsightRecord.status == "complete",
+        )
+        .all()
+    )
+    if main_insights:
+        main_insight_parts: list[str] = []
+        for ins in main_insights:
+            if ins.file_path and os.path.exists(ins.file_path):
+                try:
+                    with open(ins.file_path, encoding="utf-8") as fh:
+                        ins_data = _json.load(fh)
+                    if ins_data.get("status") == "complete":
+                        main_insight_parts.append(_fmt_insight_block(ins_data))
+                except Exception:
+                    pass
+        if main_insight_parts:
+            extra_parts.append(
+                "## Main Simulation Insights\n" + "\n".join(main_insight_parts)
+            )
+
+    extra_context = "\n\n".join(extra_parts)
+
     ra = ReportAgent(graph, log_path=log_path)
-    
+
     # Save user message
     user_msg = models.ChatMessage(session_id=db_session.id, is_user=True, text=query)
     db.add(user_msg)
     db.commit()
-    
-    # Generate report
-    report_output_path = os.path.join(outputs_path, f"report_{uuid.uuid4().hex[:8]}.md")
-    report_text = ra.generate_report(query, output_path=report_output_path)
+
+    report_text = ra.generate_report(query, output_path=None, extra_context=extra_context)
 
     # Save agent message
     agent_msg = models.ChatMessage(session_id=db_session.id, is_user=False, text=report_text)
@@ -347,9 +586,15 @@ def get_seed_info(
     inputs_path = db_session.inputs_path
     outputs_path = db_session.outputs_path
 
-    files: list[str] = []
+    user_files: list[str] = []
+    web_files: list[str] = []
     if os.path.exists(inputs_path):
-        files = [f for f in os.listdir(inputs_path) if os.path.isfile(os.path.join(inputs_path, f))]
+        for f in os.listdir(inputs_path):
+            if os.path.isfile(os.path.join(inputs_path, f)):
+                if f.endswith("_web_results.md"):
+                    web_files.append(f)
+                else:
+                    user_files.append(f)
 
     objective = ""
     objective_path = os.path.join(outputs_path, "objective.txt")
@@ -358,11 +603,49 @@ def get_seed_info(
             objective = fh.read().strip()
 
     return {
-        "files": sorted(files),
+        "files": sorted(user_files),
+        "web_files": sorted(web_files),
         "rounds": db_session.rounds,
         "objective": objective,
         "title": db_session.title,
     }
+
+
+@router.get("/seed-docs/{session_uuid}")
+def get_seed_docs(
+    session_uuid: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """Return a rich list of all seed documents for a session, including web search results."""
+    db_session = crud.get_session(db, session_uuid)
+    if not db_session or db_session.user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    inputs_path = db_session.inputs_path
+    docs: list[dict] = []
+
+    if os.path.exists(inputs_path):
+        for fname in sorted(os.listdir(inputs_path)):
+            fpath = os.path.join(inputs_path, fname)
+            if not os.path.isfile(fpath):
+                continue
+            stat = os.stat(fpath)
+            is_web = fname.endswith("_web_results.md")
+            # Derive a human-readable display name
+            if is_web:
+                display = fname.replace("_web_results.md", "").replace("_", " ").title()
+            else:
+                display = fname
+            docs.append({
+                "filename": fname,
+                "display_name": display,
+                "size_bytes": stat.st_size,
+                "is_web_result": is_web,
+                "modified_at": stat.st_mtime,
+            })
+
+    return {"documents": docs}
 
 
 @router.post("/resimulate/{session_uuid}", response_model=schemas.SessionResponse)
@@ -372,6 +655,7 @@ async def resimulate(
     rounds: int = Form(...),
     agent_count: int = Form(None),
     objective: str = Form(None),
+    enable_web_search: bool = Form(False),
     add_files: List[UploadFile] = File(default=[]),
     remove_files: str = Form(None),  # JSON array of filenames to remove
     db: Session = Depends(get_db),
@@ -397,6 +681,16 @@ async def resimulate(
                     os.remove(safe_path)
         except Exception as exc:
             print(f"Warning: could not remove some input files: {exc}")
+
+    # 1b. Always delete previously generated web-search files so they are not
+    #     carried over regardless of whether web search is re-enabled.
+    if os.path.exists(inputs_path):
+        for fname in os.listdir(inputs_path):
+            if fname.endswith("_web_results.md"):
+                try:
+                    os.remove(os.path.join(inputs_path, fname))
+                except Exception as exc:
+                    print(f"Warning: could not remove web-search file {fname}: {exc}")
 
     # 2. Add new seed files
     for file in add_files:
@@ -486,6 +780,8 @@ async def resimulate(
         rounds,
         agent_count,
         emit,
+        enable_web_search,
+        objective or "",
     )
 
     return db_session

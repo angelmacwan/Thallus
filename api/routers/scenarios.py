@@ -10,7 +10,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from .. import crud, models, schemas
-from ..deps import get_current_user, get_db
+from ..deps import get_current_user, get_db, require_credits
 
 router = APIRouter(prefix="/api/scenarios", tags=["scenarios"])
 
@@ -121,8 +121,10 @@ def _run_scenario_task(
     description: str,
     emit,
     user_label: str = "You",
+    user_id: int = None,
 ):
     from ..database import SessionLocal
+    from ..billing import UsageSummary, deduct_credits
 
     db = SessionLocal()
     scenario = db.query(models.Scenario).filter(models.Scenario.id == scenario_db_id).first()
@@ -134,6 +136,8 @@ def _run_scenario_task(
     scenario.outputs_path = scenario_outputs_path
     db.commit()
 
+    usage = UsageSummary()
+
     try:
         from core.scenario_runner import ScenarioRunner
 
@@ -143,6 +147,13 @@ def _run_scenario_task(
         db_path = os.path.join(scenario_outputs_path, "simulation.db")
         log_path = os.path.join(scenario_outputs_path, "actions.jsonl")
 
+        # Inherit the parent session's objective so agents stay on-topic
+        objective = ""
+        obj_path = os.path.join(session_outputs_path, "objective.txt")
+        if os.path.exists(obj_path):
+            with open(obj_path, encoding="utf-8") as _f:
+                objective = _f.read().strip()
+
         sr = ScenarioRunner(
             agents_path=agents_path,
             db_path=db_path,
@@ -150,8 +161,10 @@ def _run_scenario_task(
             scenario_description=description,
             user_label=user_label,
             emit_event=emit,
+            objective=objective,
         )
         sr.run(rounds)
+        usage += sr._usage
 
         scenario.status = "completed"
         db.commit()
@@ -162,6 +175,14 @@ def _run_scenario_task(
         emit("error", f"Scenario failed: {exc}")
         print(f"Scenario error: {exc}")
     finally:
+        if user_id and (usage.input_tokens > 0 or usage.output_tokens > 0):
+            try:
+                deduct_credits(
+                    db, user_id, usage,
+                    description=f"Scenario {scenario_uuid}",
+                )
+            except Exception as billing_exc:
+                print(f"[billing] deduct_credits failed: {billing_exc}")
         emit("done", "Scenario stream closed")
         _scenario_queues.pop(scenario_uuid, None)
         db.close()
@@ -172,7 +193,7 @@ def run_scenario(
     scenario_uuid: str,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user),
+    current_user: models.User = Depends(require_credits),
 ):
     scenario = crud.get_scenario_by_uuid(db, scenario_uuid)
     if not scenario or scenario.user_id != current_user.id:
@@ -217,6 +238,7 @@ def run_scenario(
         scenario.description,
         emit,
         user_label,
+        current_user.id,
     )
 
     crud.log_action(db, current_user.id, "run_scenario", f"Scenario: {scenario_uuid}")
@@ -488,11 +510,34 @@ def generate_scenario_report(
     )
     log_path = os.path.join(scenario.outputs_path, "actions.jsonl") if scenario.outputs_path else os.path.join(db_session.outputs_path, "actions.jsonl")
 
+    # Load investigation objective (always from the parent session)
+    objective = ""
+    objective_path = os.path.join(db_session.outputs_path, "objective.txt")
+    if os.path.exists(objective_path):
+        with open(objective_path, encoding="utf-8") as fh:
+            objective = fh.read().strip()
+
     # Include scenario chat history for context
     chat_messages = [
         {"is_user": m.is_user, "text": m.text}
         for m in scenario.chat_messages
     ]
+
+    # Gather completed insights for this scenario
+    insight_records = crud.get_insights_for_scenario(db, scenario.id)
+    insights = []
+    for record in insight_records:
+        if record.status == "complete" and record.file_path and os.path.exists(record.file_path):
+            try:
+                with open(record.file_path, encoding="utf-8") as fh:
+                    data = _json.load(fh)
+                insights.append({
+                    "query": record.query,
+                    "overall_verdict": data.get("overall_verdict", ""),
+                    "insights": data.get("insights", []),
+                })
+            except Exception:
+                pass
 
     ra = ReportAgent(graph, log_path=log_path)
 
@@ -513,6 +558,9 @@ def generate_scenario_report(
         description=scenario_description,
         chat_messages=chat_messages,
         output_path=file_path,
+        objective=objective,
+        insights=insights if insights else None,
+        scenario={"name": scenario.name, "description": scenario.description},
     )
 
     # Tag title clearly as scenario report

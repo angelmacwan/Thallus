@@ -11,6 +11,7 @@ import {
 	TrendingUp,
 	CheckCircle,
 	Loader,
+	Download,
 } from 'lucide-react';
 
 // ── Shared style tokens ────────────────────────────────────────────────────────
@@ -672,7 +673,260 @@ export default function InsightsDashboard({ sessionId, isScenario }) {
 	const [activeInsightId, setActiveInsightId] = useState(null);
 	const [results, setResults] = useState(null);
 	const [errorMsg, setErrorMsg] = useState(null);
+	const [pdfLoading, setPdfLoading] = useState(false);
 	const pollingRef = useRef(null);
+	const detailRef = useRef(null);
+
+	function buildPdfHtml(r) {
+		const esc = (s) =>
+			String(s ?? '')
+				.replace(/&/g, '&amp;')
+				.replace(/</g, '&lt;')
+				.replace(/>/g, '&gt;');
+
+		const {
+			query,
+			insights = [],
+			overall_verdict,
+			score,
+			answer_groups = [],
+			agents = [],
+			aggregate,
+			debate_rounds,
+		} = r;
+
+		const generatedAt = new Date().toLocaleString(undefined, {
+			dateStyle: 'long',
+			timeStyle: 'short',
+		});
+
+		const agreePct = Math.round((score?.agree ?? 0) * 100);
+		const disagreePct = Math.round((score?.disagree ?? 0) * 100);
+		const otherPct = Math.round((score?.other ?? 0) * 100);
+
+		const scoreBar = score
+			? `<div style="margin:8px 0 12px">
+				<div style="height:10px;border-radius:6px;overflow:hidden;background:#e8e8e8;display:flex;gap:2px;margin-bottom:8px">
+					${agreePct > 0 ? `<div style="width:${agreePct}%;background:#10b981;height:100%"></div>` : ''}
+					${disagreePct > 0 ? `<div style="width:${disagreePct}%;background:#ef4444;height:100%"></div>` : ''}
+					${otherPct > 0 ? `<div style="width:${otherPct}%;background:#f59e0b;height:100%"></div>` : ''}
+				</div>
+				<div style="font-size:12px;color:#555">
+					<span style="margin-right:16px">&#9632; Agree ${agreePct}%</span>
+					<span style="margin-right:16px">&#9632; Disagree ${disagreePct}%</span>
+					<span>&#9632; Other ${otherPct}%</span>
+				</div>
+			</div>`
+			: '';
+
+		const observationsHtml = insights.length
+			? insights
+					.map(
+						(ins, i) => `
+			<div style="margin-bottom:20px;padding-bottom:20px;border-bottom:1px solid #e8e8e8">
+				<p style="margin:0 0 8px 0;font-size:14px;font-weight:700;color:#1a1a2e;line-height:1.4">
+					<span style="color:#4f46e5;margin-right:6px">#${i + 1}</span>${esc(ins.text)}
+				</p>
+				${
+					ins.answer_text
+						? `<p style="margin:6px 0 3px;font-size:11px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:0.07em">Synthesized Answer</p>
+				<p style="margin:0;font-size:13px;line-height:1.65;color:#333">${esc(ins.answer_text)}</p>`
+						: ''
+				}
+			</div>`,
+					)
+					.join('')
+			: '<p style="color:#888;font-size:13px">No observations recorded.</p>';
+
+		const groupColors = ['#10b981', '#3b82f6', '#f59e0b', '#8b5cf6'];
+
+		const groupsHtml = answer_groups.length
+			? answer_groups
+					.map((grp, i) => {
+						const pct = Math.round((grp.percentage ?? 0) * 100);
+						const color = groupColors[i % groupColors.length];
+						return `
+				<div style="margin-bottom:14px;padding:14px 16px;border-left:4px solid ${color};background:#f9f9f9">
+					<div style="margin-bottom:6px">
+						<span style="background:${color};color:#fff;border-radius:20px;padding:2px 10px;font-size:11px;font-weight:700;margin-right:8px">${pct}%</span>
+						<span style="font-size:14px;font-weight:700;color:#1a1a2e">${esc(grp.label)}</span>
+					</div>
+					${grp.summary ? `<p style="margin:6px 0 4px;font-size:12px;color:#555;line-height:1.55">${esc(grp.summary)}</p>` : ''}
+					<p style="margin:6px 0 0;font-size:11px;color:#999">${grp.agent_count} ${grp.agent_count === 1 ? 'agent' : 'agents'}</p>
+				</div>`;
+					})
+					.join('')
+			: '<p style="color:#888;font-size:13px">No groups available.</p>';
+
+		const agentsHtml = agents.length
+			? agents
+					.map((agent) => {
+						const influencePct = Math.round(
+							(agent.influence_score ?? 0) * 100,
+						);
+						const allRounds = (agent.position_history || [])
+							.map(
+								(ph) => `
+						<div style="margin-bottom:12px;padding-left:12px;border-left:2px solid #e0e0e0">
+							<p style="margin:0 0 4px;font-size:11px;font-weight:700;color:#4f46e5;text-transform:uppercase;letter-spacing:0.05em">
+								${ph.round === 0 ? 'Initial Position' : `Round ${ph.round}`}
+							</p>
+							${ph.position ? `<p style="margin:0 0 4px;font-size:13px;line-height:1.55;color:#222">${esc(ph.position)}</p>` : ''}
+							${ph.reasoning ? `<p style="margin:0;font-size:12px;line-height:1.5;color:#666;font-style:italic">${esc(ph.reasoning)}</p>` : ''}
+						</div>`,
+							)
+							.join('');
+						return `
+					<div style="margin-bottom:22px;padding:16px;border:1px solid #e0e0e0;background:#fff">
+						<div style="margin-bottom:12px">
+							<p style="margin:0 0 4px;font-size:14px;font-weight:700;color:#1a1a2e">${esc(agent.agent_name)}</p>
+							<div style="display:flex;align-items:center;gap:8px">
+								<div style="flex:1;height:5px;background:#e8e8e8;border-radius:3px;overflow:hidden">
+									<div style="width:${influencePct}%;height:5px;background:#4f46e5"></div>
+								</div>
+								<span style="font-size:11px;font-weight:700;color:#4f46e5">${influencePct}% influence</span>
+							</div>
+						</div>
+						${allRounds}
+					</div>`;
+					})
+					.join('')
+			: '<p style="color:#888;font-size:13px">No agent data available.</p>';
+
+		const statsHtml = aggregate
+			? `<div style="margin-bottom:28px;padding:14px 16px;background:#f5f5f5;border:1px solid #e0e0e0">
+				<span style="font-size:12px;color:#555;margin-right:20px">Agents: <strong>${aggregate.total_agents}</strong></span>
+				<span style="font-size:12px;color:#555;margin-right:20px">Posts: <strong>${aggregate.total_posts}</strong></span>
+				<span style="font-size:12px;color:#555;margin-right:20px">Actions: <strong>${aggregate.total_actions}</strong></span>
+				<span style="font-size:12px;color:#555">Debate Rounds: <strong>${debate_rounds}</strong></span>
+			</div>`
+			: '';
+
+		return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Insights Report</title>
+<style>
+  @page { size: A4; margin: 20mm 22mm; }
+  * { box-sizing: border-box; }
+  body { font-family: Georgia, 'Times New Roman', serif; color: #1a1a2e; background: #fff; margin: 0; padding: 0; font-size: 13px; line-height: 1.6; }
+  h1 { font-size: 22px; font-weight: 700; margin: 0 0 8px; line-height: 1.3; }
+  h2 { font-size: 15px; font-weight: 700; margin: 0 0 14px; padding-bottom: 7px; border-bottom: 2px solid #4f46e5; color: #1a1a2e; }
+  p { margin: 0; }
+  .section { margin-bottom: 32px; }
+  .subtitle { font-size: 12px; color: #777; margin-bottom: 14px; }
+  .label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: #888; margin-bottom: 5px; }
+  .obs-block { margin-bottom: 20px; padding-bottom: 20px; border-bottom: 1px solid #e8e8e8; }
+  .obs-block:last-child { border-bottom: none; }
+  .obs-num { color: #4f46e5; margin-right: 6px; }
+  .obs-text { font-size: 14px; font-weight: 700; margin: 0 0 8px; line-height: 1.4; }
+  .syn-answer { font-size: 13px; line-height: 1.65; color: #333; margin: 0; }
+  .verdict-text { font-size: 13px; line-height: 1.75; color: #333; margin-bottom: 14px; }
+  .score-bar-row { display: flex; gap: 20px; font-size: 12px; color: #555; margin-top: 8px; }
+  .score-swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: middle; }
+  .group-block { margin-bottom: 14px; padding: 13px 15px; border-left: 4px solid #4f46e5; background: #f9f9f9; }
+  .group-pct { display: inline-block; color: #fff; border-radius: 20px; padding: 2px 10px; font-size: 11px; font-weight: 700; margin-right: 8px; vertical-align: middle; }
+  .group-label { font-size: 14px; font-weight: 700; vertical-align: middle; }
+  .group-summary { font-size: 12px; color: #555; margin-top: 6px; line-height: 1.5; }
+  .group-count { font-size: 11px; color: #999; margin-top: 5px; }
+  .agent-block { margin-bottom: 22px; padding: 15px; border: 1px solid #e0e0e0; page-break-inside: avoid; }
+  .agent-name { font-size: 14px; font-weight: 700; margin: 0 0 6px; }
+  .influence-track { height: 5px; background: #e8e8e8; border-radius: 3px; overflow: hidden; flex: 1; }
+  .influence-fill { height: 5px; background: #4f46e5; }
+  .influence-row { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+  .influence-label { font-size: 11px; font-weight: 700; color: #4f46e5; white-space: nowrap; }
+  .round-block { margin-bottom: 12px; padding-left: 12px; border-left: 2px solid #e0e0e0; }
+  .round-label { font-size: 11px; font-weight: 700; color: #4f46e5; text-transform: uppercase; letter-spacing: 0.05em; margin: 0 0 4px; }
+  .round-position { font-size: 13px; line-height: 1.55; color: #222; margin: 0 0 4px; }
+  .round-reasoning { font-size: 12px; line-height: 1.5; color: #666; font-style: italic; margin: 0; }
+  .stats-row { display: flex; gap: 0; margin-bottom: 28px; background: #f5f5f5; border: 1px solid #e0e0e0; padding: 12px 16px; }
+  .stat-item { font-size: 12px; color: #555; margin-right: 24px; }
+  .stat-item strong { color: #1a1a2e; }
+  @media print {
+    body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .agent-block { page-break-inside: avoid; }
+    .section { page-break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+
+<div class="section" style="border-bottom:3px solid #4f46e5;padding-bottom:18px;margin-bottom:28px">
+  <p class="label" style="color:#4f46e5">Thallus &mdash; Insights Report</p>
+  <h1>${esc(query)}</h1>
+  <p style="font-size:11px;color:#999;margin-top:4px">Generated ${generatedAt}</p>
+</div>
+
+${statsHtml}
+
+<div class="section">
+  <h2>Observations</h2>
+  ${observationsHtml}
+</div>
+
+${
+	overall_verdict
+		? `<div class="section">
+  <h2>Overall Verdict</h2>
+  <p class="verdict-text">${esc(overall_verdict)}</p>
+  ${
+		score
+			? `<p class="label">Agent Agreement</p>
+  <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:8px"><tr>
+    ${agreePct > 0 ? `<td style="width:${agreePct}%;background:#10b981;height:10px;border-radius:3px 0 0 3px"></td>` : ''}
+    ${disagreePct > 0 ? `<td style="width:${disagreePct}%;background:#ef4444;height:10px"></td>` : ''}
+    ${otherPct > 0 ? `<td style="width:${otherPct}%;background:#f59e0b;height:10px;border-radius:0 3px 3px 0"></td>` : ''}
+  </tr></table>
+  <div class="score-bar-row">
+    <span><span class="score-swatch" style="background:#10b981"></span>Agree ${agreePct}%</span>
+    <span><span class="score-swatch" style="background:#ef4444"></span>Disagree ${disagreePct}%</span>
+    <span><span class="score-swatch" style="background:#f59e0b"></span>Other ${otherPct}%</span>
+  </div>`
+			: ''
+  }
+</div>`
+		: ''
+}
+
+${
+	answer_groups.length
+		? `<div class="section">
+  <h2>Agent Answer Groups</h2>
+  <p class="subtitle">How agents clustered around different positions.</p>
+  ${groupsHtml}
+</div>`
+		: ''
+}
+
+${
+	agents.length
+		? `<div class="section">
+  <h2>Agent Debate Log</h2>
+  <p class="subtitle">Position and reasoning for each agent across all debate rounds.</p>
+  ${agentsHtml}
+</div>`
+		: ''
+}
+
+</body>
+</html>`;
+	}
+
+	function downloadPdf() {
+		if (!results) return;
+		const win = window.open('', '_blank');
+		if (!win) return;
+		win.document.open();
+		win.document.write(buildPdfHtml(results));
+		win.document.close();
+		win.addEventListener('load', () => {
+			setTimeout(() => {
+				win.focus();
+				win.print();
+			}, 250);
+		});
+	}
 
 	// Fetch list of all insights
 	async function fetchList() {
@@ -1213,6 +1467,7 @@ export default function InsightsDashboard({ sessionId, isScenario }) {
 
 		return (
 			<div
+				ref={detailRef}
 				style={{
 					display: 'flex',
 					flexDirection: 'column',
@@ -1250,27 +1505,65 @@ export default function InsightsDashboard({ sessionId, isScenario }) {
 							Insights
 						</h2>
 					</div>
-					<button
-						onClick={() => {
-							setResults(null);
-							setActiveInsightId(null);
-							setView('list');
-						}}
+					<div
 						style={{
 							display: 'flex',
 							alignItems: 'center',
-							gap: '0.4rem',
-							background: 'transparent',
-							border: '1px solid var(--outline-variant)',
-							borderRadius: '8px',
-							padding: '0.35rem 0.75rem',
-							cursor: 'pointer',
-							fontSize: '0.78rem',
-							color: 'var(--text-secondary)',
+							gap: '0.5rem',
 						}}
 					>
-						← All Insights
-					</button>
+						<button
+							onClick={downloadPdf}
+							disabled={pdfLoading}
+							style={{
+								display: 'flex',
+								alignItems: 'center',
+								gap: '0.4rem',
+								background: 'var(--accent-color)',
+								color: '#fff',
+								border: 'none',
+								borderRadius: '8px',
+								padding: '0.35rem 0.85rem',
+								cursor: pdfLoading ? 'not-allowed' : 'pointer',
+								fontSize: '0.78rem',
+								fontWeight: 700,
+								opacity: pdfLoading ? 0.7 : 1,
+							}}
+						>
+							{pdfLoading ? (
+								<Loader
+									size={12}
+									style={{
+										animation: 'spin 1s linear infinite',
+									}}
+								/>
+							) : (
+								<Download size={12} />
+							)}
+							{pdfLoading ? 'Exporting…' : 'PDF'}
+						</button>
+						<button
+							onClick={() => {
+								setResults(null);
+								setActiveInsightId(null);
+								setView('list');
+							}}
+							style={{
+								display: 'flex',
+								alignItems: 'center',
+								gap: '0.4rem',
+								background: 'transparent',
+								border: '1px solid var(--outline-variant)',
+								borderRadius: '8px',
+								padding: '0.35rem 0.75rem',
+								cursor: 'pointer',
+								fontSize: '0.78rem',
+								color: 'var(--text-secondary)',
+							}}
+						>
+							← All Insights
+						</button>
+					</div>
 				</div>
 
 				{/* Query banner */}

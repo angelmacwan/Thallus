@@ -12,12 +12,14 @@ import asyncio
 import json
 import os
 import sqlite3
+import tempfile
 
 from dotenv import load_dotenv
 load_dotenv()
 
 from core.config import CAMEL_MODEL_TYPE
 from core.graph_memory import LocalGraphMemory
+from core.usage import UsageSummary
 
 
 class SimulationRunner:
@@ -28,12 +30,17 @@ class SimulationRunner:
         db_path: str,
         log_path: str,
         emit_event=None,
+        objective: str = "",
     ):
         self.graph = graph
         self.agents_path = agents_path
         self.db_path = db_path
         self.log_path = log_path
+        self.objective = objective.strip()
         self._emit = emit_event if callable(emit_event) else (lambda t, m: None)
+        self._usage = UsageSummary()
+        # Will be set in run() — points to agents file OASIS should actually read
+        self._effective_agents_path = agents_path
 
     # ------------------------------------------------------------------
     # Public
@@ -51,6 +58,20 @@ class SimulationRunner:
             print("No agent profiles found. Skipping simulation.")
             return
 
+        # Inject objective into each agent's persona so OASIS stays on-topic.
+        # Write to a temp file so the original agents.json is never altered.
+        if self.objective:
+            profiles = self._inject_objective_into_profiles(profiles)
+            tmp = tempfile.NamedTemporaryFile(
+                mode="w", suffix=".json", delete=False, encoding="utf-8"
+            )
+            json.dump(profiles, tmp, ensure_ascii=False)
+            tmp.close()
+            self._effective_agents_path = tmp.name
+            print(f"Objective injected into {len(profiles)} agent persona(s).")
+        else:
+            self._effective_agents_path = self.agents_path
+
         for p in profiles:
             username = p.get("username") or p.get("realname", "unknown")
             self._emit("agent", f"Agent created: @{username}")
@@ -60,13 +81,13 @@ class SimulationRunner:
             f"for {rounds} round(s)…"
         )
         self._emit("stage", f"Starting simulation with {len(profiles)} agent(s) for {rounds} round(s)")
-        asyncio.run(self._run_oasis(rounds))
+        asyncio.run(self._run_oasis(rounds, len(profiles)))
 
     # ------------------------------------------------------------------
     # Async OASIS execution
     # ------------------------------------------------------------------
 
-    async def _run_oasis(self, rounds: int):
+    async def _run_oasis(self, rounds: int, n_agents: int):
         import oasis
         from oasis import ActionType, LLMAction, ManualAction, generate_reddit_agent_graph
 
@@ -90,7 +111,7 @@ class SimulationRunner:
         self._emit("stage", "Building agent graph…")
         print("Building OASIS agent graph…")
         agent_graph = await generate_reddit_agent_graph(
-            profile_path=self.agents_path,
+            profile_path=self._effective_agents_path,
             model=model,
             available_actions=available_actions,
         )
@@ -141,6 +162,23 @@ class SimulationRunner:
 
         await env.close()
 
+        # Cleanup temp file created by objective injection
+        if self._effective_agents_path != self.agents_path:
+            try:
+                os.unlink(self._effective_agents_path)
+            except Exception:
+                pass
+
+        # ── Estimate OASIS token usage (camel-ai doesn't expose usage_metadata) ──
+        from core.config import (
+            OASIS_EST_INPUT_TOKENS_PER_AGENT_ROUND,
+            OASIS_EST_OUTPUT_TOKENS_PER_AGENT_ROUND,
+        )
+        self._usage.add(
+            input_tokens=n_agents * rounds * OASIS_EST_INPUT_TOKENS_PER_AGENT_ROUND,
+            output_tokens=n_agents * rounds * OASIS_EST_OUTPUT_TOKENS_PER_AGENT_ROUND,
+        )
+
         # ── Post-run export ───────────────────────────────────────────
         self._emit("stage", "Exporting simulation data…")
         self._export_db_to_log()
@@ -150,6 +188,20 @@ class SimulationRunner:
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
+
+    def _inject_objective_into_profiles(self, profiles: list[dict]) -> list[dict]:
+        """Return a copy of profiles with the simulation objective appended to each persona."""
+        import copy
+        injected = copy.deepcopy(profiles)
+        for agent in injected:
+            existing = (agent.get("persona") or "").strip()
+            agent["persona"] = (
+                f"{existing}\n\n"
+                f"SIMULATION FOCUS: {self.objective}\n"
+                "You MUST stay strictly within this topic in every post and comment. "
+                "Do NOT introduce unrelated subjects."
+            ).strip()
+        return injected
 
     def _build_camel_model(self):
         from camel.models import ModelFactory
@@ -192,16 +244,22 @@ class SimulationRunner:
         if relation_lines:
             context += "\n\nRelationships:\n" + "\n".join(relation_lines)
 
+        objective_line = (
+            f"\nSimulation objective: {self.objective}\n"
+            "All posts MUST relate directly to this objective.\n"
+            if self.objective else ""
+        )
         prompt = (
             "You are seeding a social media simulation platform with opening posts.\n"
             "Based on the following knowledge graph context, write 4 natural, engaging "
-            "social media posts that reflect the key themes and topics. "
+            "social media posts that spark discussion directly relevant to the simulation topic. "
             "These will be the first posts users see and react to.\n\n"
+            f"{objective_line}"
             f"Context:\n{context}\n\n"
             "Requirements:\n"
             "- Each post should be 1-3 sentences, written naturally as if by a real social media user\n"
             "- Do NOT use label prefixes like 'Notable ORGANIZATION:' or 'Key CONCEPT:'\n"
-            "- Focus on the most interesting or significant aspects of the context\n"
+            "- Every post must directly address the simulation objective\n"
             "- Vary the angle (analytical, curious, opinionated, etc.)\n"
             "- Return ONLY a JSON array of 4 strings, nothing else"
         )
@@ -216,6 +274,11 @@ class SimulationRunner:
                     temperature=0.7,
                 ),
             )
+            if response.usage_metadata:
+                self._usage.add(
+                    input_tokens=response.usage_metadata.prompt_token_count or 0,
+                    output_tokens=response.usage_metadata.candidates_token_count or 0,
+                )
             posts = json.loads(response.text)
             if isinstance(posts, list) and posts and all(isinstance(p, str) for p in posts):
                 print(f"LLM generated {len(posts)} contextual seed post(s).")
