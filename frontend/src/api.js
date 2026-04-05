@@ -28,6 +28,7 @@ export default api;
 // ── Small World API ─────────────────────────────────────────────────
 export const swAgents = {
   list: () => api.get('/small-world/agents/'),
+  graph: () => api.get('/small-world/agents/graph'),
   get: (id) => api.get(`/small-world/agents/${id}`),
   create: (data) => api.post('/small-world/agents/', data),
   update: (id, data) => api.put(`/small-world/agents/${id}`, data),

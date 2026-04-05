@@ -419,6 +419,13 @@ class AgentRelationshipCreate(BaseModel):
     influence_direction: Optional[str] = "both"
 
 
+class AgentRelationshipUpdate(BaseModel):
+    type: Optional[str] = None
+    strength: Optional[float] = None
+    sentiment: Optional[str] = None
+    influence_direction: Optional[str] = None
+
+
 class AgentRelationshipResponse(BaseModel):
     id: int
     rel_id: str
@@ -455,6 +462,11 @@ class AgentResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class AgentGraphResponse(BaseModel):
+    agents: List[AgentResponse]
+    relationships: List[AgentRelationshipResponse]
 
 
 class AgentGenerateRequest(BaseModel):

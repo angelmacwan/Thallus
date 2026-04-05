@@ -56,6 +56,26 @@ def _agent_to_response(agent: models.SmallWorldAgent, db: Session) -> schemas.Ag
     )
 
 
+def _relationship_to_response(
+    relationship: models.AgentRelationship,
+    agent_lookup: dict[int, models.SmallWorldAgent],
+) -> schemas.AgentRelationshipResponse:
+    source = agent_lookup.get(relationship.source_agent_id)
+    target = agent_lookup.get(relationship.target_agent_id)
+    return schemas.AgentRelationshipResponse(
+        id=relationship.id,
+        rel_id=relationship.rel_id,
+        source_agent_id=source.agent_id if source else "",
+        target_agent_id=target.agent_id if target else "",
+        source_agent_name=source.name if source else None,
+        target_agent_name=target.name if target else None,
+        type=relationship.type,
+        strength=relationship.strength,
+        sentiment=relationship.sentiment,
+        influence_direction=relationship.influence_direction,
+    )
+
+
 def _apply_agent_data(agent: models.SmallWorldAgent, data: schemas.AgentCreate | schemas.AgentUpdate) -> None:
     """Apply create/update payload onto an ORM object."""
     simple_fields = ["name", "age", "gender", "location", "profession", "job_title", "organization"]
@@ -151,6 +171,36 @@ def download_template():
         buf,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": "attachment; filename=small_world_agents_template.xlsx"},
+    )
+
+
+# ── Get agent graph (must come before /{agent_id}) ───────────────────────────
+
+@router.get("/agents/graph", response_model=schemas.AgentGraphResponse)
+def get_agent_graph(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    agents = db.query(models.SmallWorldAgent).filter(
+        models.SmallWorldAgent.user_id == current_user.id
+    ).order_by(models.SmallWorldAgent.created_at.desc()).all()
+
+    if not agents:
+        return schemas.AgentGraphResponse(agents=[], relationships=[])
+
+    agent_lookup = {agent.id: agent for agent in agents}
+    user_agent_ids = list(agent_lookup.keys())
+    relationships = db.query(models.AgentRelationship).filter(
+        models.AgentRelationship.source_agent_id.in_(user_agent_ids),
+        models.AgentRelationship.target_agent_id.in_(user_agent_ids),
+    ).all()
+
+    return schemas.AgentGraphResponse(
+        agents=[_agent_to_response(agent, db) for agent in agents],
+        relationships=[
+            _relationship_to_response(relationship, agent_lookup)
+            for relationship in relationships
+        ],
     )
 
 
@@ -368,23 +418,19 @@ def list_relationships(
         (models.AgentRelationship.target_agent_id == agent.id)
     ).all()
 
-    result = []
-    for r in rels:
-        src = db.query(models.SmallWorldAgent).get(r.source_agent_id)
-        tgt = db.query(models.SmallWorldAgent).get(r.target_agent_id)
-        result.append(schemas.AgentRelationshipResponse(
-            id=r.id,
-            rel_id=r.rel_id,
-            source_agent_id=src.agent_id if src else "",
-            target_agent_id=tgt.agent_id if tgt else "",
-            source_agent_name=src.name if src else None,
-            target_agent_name=tgt.name if tgt else None,
-            type=r.type,
-            strength=r.strength,
-            sentiment=r.sentiment,
-            influence_direction=r.influence_direction,
-        ))
-    return result
+    related_agent_ids = {
+        relationship.source_agent_id for relationship in rels
+    } | {
+        relationship.target_agent_id for relationship in rels
+    }
+    agent_lookup = {
+        related_agent.id: related_agent
+        for related_agent in db.query(models.SmallWorldAgent).filter(
+            models.SmallWorldAgent.id.in_(related_agent_ids)
+        ).all()
+    }
+
+    return [_relationship_to_response(relationship, agent_lookup) for relationship in rels]
 
 
 @router.post("/agents/{agent_id}/relationships", response_model=schemas.AgentRelationshipResponse, status_code=201)
@@ -456,6 +502,53 @@ def delete_relationship(
     db.commit()
 
 
+@router.patch("/agents/{agent_id}/relationships/{rel_id}", response_model=schemas.AgentRelationshipResponse)
+def update_relationship(
+    agent_id: str,
+    rel_id: str,
+    body: schemas.AgentRelationshipUpdate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    agent = _get_agent_or_404(agent_id, current_user.id, db)
+    rel = db.query(models.AgentRelationship).filter(
+        models.AgentRelationship.rel_id == rel_id,
+        (
+            (models.AgentRelationship.source_agent_id == agent.id) |
+            (models.AgentRelationship.target_agent_id == agent.id)
+        ),
+    ).first()
+    if not rel:
+        raise HTTPException(status_code=404, detail="Relationship not found")
+
+    if body.type is not None and body.type != rel.type:
+        conflict = db.query(models.AgentRelationship).filter(
+            models.AgentRelationship.source_agent_id == rel.source_agent_id,
+            models.AgentRelationship.target_agent_id == rel.target_agent_id,
+            models.AgentRelationship.type == body.type,
+            models.AgentRelationship.id != rel.id,
+        ).first()
+        if conflict:
+            raise HTTPException(status_code=409, detail="Relationship of this type already exists")
+        rel.type = body.type
+    if body.strength is not None:
+        rel.strength = body.strength
+    if body.sentiment is not None:
+        rel.sentiment = body.sentiment
+    if body.influence_direction is not None:
+        rel.influence_direction = body.influence_direction
+
+    db.commit()
+    db.refresh(rel)
+
+    agent_lookup = {
+        a.id: a for a in db.query(models.SmallWorldAgent).filter(
+            models.SmallWorldAgent.id.in_([rel.source_agent_id, rel.target_agent_id])
+        ).all()
+    }
+    return _relationship_to_response(rel, agent_lookup)
+
+
 # ── All relationships for user (used by graph view) ───────────────────────────
 
 @router.get("/agents-relationships/all", response_model=list[schemas.AgentRelationshipResponse])
@@ -473,26 +566,18 @@ def list_all_relationships(
         return []
 
     rels = db.query(models.AgentRelationship).filter(
-        models.AgentRelationship.source_agent_id.in_(user_agent_ids)
+        models.AgentRelationship.source_agent_id.in_(user_agent_ids),
+        models.AgentRelationship.target_agent_id.in_(user_agent_ids),
     ).all()
 
-    result = []
-    for r in rels:
-        src = db.query(models.SmallWorldAgent).get(r.source_agent_id)
-        tgt = db.query(models.SmallWorldAgent).get(r.target_agent_id)
-        result.append(schemas.AgentRelationshipResponse(
-            id=r.id,
-            rel_id=r.rel_id,
-            source_agent_id=src.agent_id if src else "",
-            target_agent_id=tgt.agent_id if tgt else "",
-            source_agent_name=src.name if src else None,
-            target_agent_name=tgt.name if tgt else None,
-            type=r.type,
-            strength=r.strength,
-            sentiment=r.sentiment,
-            influence_direction=r.influence_direction,
-        ))
-    return result
+    agent_lookup = {
+        agent.id: agent
+        for agent in db.query(models.SmallWorldAgent).filter(
+            models.SmallWorldAgent.id.in_(user_agent_ids)
+        ).all()
+    }
+
+    return [_relationship_to_response(relationship, agent_lookup) for relationship in rels]
 
 
 # ── Auto-suggest relationships ────────────────────────────────────────────────

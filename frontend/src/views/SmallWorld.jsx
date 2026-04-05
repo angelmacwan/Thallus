@@ -14,6 +14,7 @@ import ScenarioBranchGraph from '../components/sw/ScenarioBranchGraph';
 import RunScenarioModal from '../components/sw/RunScenarioModal';
 import ScenarioDetail from '../components/sw/ScenarioDetail';
 import ScenarioDiff from '../components/sw/ScenarioDiff';
+import { swAgents } from '../api';
 
 // ─── Top-level tabs ──────────────────────────────────────────────────
 const TOP_TABS = [
@@ -68,12 +69,32 @@ export default function SmallWorld() {
 			.finally(() => setRelLoading(false));
 	}, []);
 
+	const loadAgentGraph = useCallback(() => {
+		setAgentsLoading(true);
+		setRelLoading(true);
+		swAgents
+			.graph()
+			.then((response) => {
+				setAgents(response.data?.agents || []);
+				setRelationships(response.data?.relationships || []);
+			})
+			.catch(() => {
+				setRelationships([]);
+			})
+			.finally(() => {
+				setAgentsLoading(false);
+				setRelLoading(false);
+			});
+	}, []);
+
 	useEffect(() => {
 		loadAgents();
 	}, [loadAgents]);
 	useEffect(() => {
-		if (agentGraphMode) loadRelationships();
-	}, [agentGraphMode]);
+		if (agentGraphMode) {
+			loadAgentGraph();
+		}
+	}, [agentGraphMode, loadAgentGraph]);
 
 	// ── Load worlds ───────────────────────────────────────────
 	const loadWorlds = useCallback(() => {
@@ -110,14 +131,22 @@ export default function SmallWorld() {
 		} else {
 			await api.post('/small-world/agents/', payload);
 		}
-		loadAgents();
+		if (agentGraphMode) {
+			loadAgentGraph();
+		} else {
+			loadAgents();
+		}
 	};
 
 	const deleteAgent = async (id) => {
 		if (!window.confirm('Delete this agent? This cannot be undone.'))
 			return;
 		await api.delete(`/small-world/agents/${id}`);
-		loadAgents();
+		if (agentGraphMode) {
+			loadAgentGraph();
+		} else {
+			loadAgents();
+		}
 	};
 
 	const handleAIGenerated = (profile) => {
@@ -129,7 +158,11 @@ export default function SmallWorld() {
 
 	const handleBulkImported = () => {
 		setBulkOpen(false);
-		loadAgents();
+		if (agentGraphMode) {
+			loadAgentGraph();
+		} else {
+			loadAgents();
+		}
 	};
 
 	const createRelationship = async (data) => {
@@ -137,14 +170,22 @@ export default function SmallWorld() {
 			`/small-world/agents/${data.source_agent_id}/relationships`,
 			data,
 		);
-		loadRelationships();
+		loadAgentGraph();
 	};
 
 	const deleteRelationship = async (agentId, relId) => {
 		await api.delete(
 			`/small-world/agents/${agentId}/relationships/${relId}`,
 		);
-		loadRelationships();
+		loadAgentGraph();
+	};
+
+	const updateRelationship = async (agentId, relId, data) => {
+		await api.patch(
+			`/small-world/agents/${agentId}/relationships/${relId}`,
+			data,
+		);
+		loadAgentGraph();
 	};
 
 	const [suggestMsg, setSuggestMsg] = useState(null);
@@ -169,7 +210,7 @@ export default function SmallWorld() {
 				err?.response?.data?.detail ?? 'Auto-suggest failed.';
 			setSuggestMsg(`Error: ${detail}`);
 		} finally {
-			loadRelationships();
+			loadAgentGraph();
 		}
 	};
 
@@ -188,6 +229,7 @@ export default function SmallWorld() {
 	// ── Styles ────────────────────────────────────────────────
 	const tabBtn = (key, label, Icon, tab, setTab) => (
 		<button
+			key={key}
 			onClick={() => setTab(key)}
 			style={{
 				display: 'flex',
@@ -563,6 +605,7 @@ export default function SmallWorld() {
 								loading={relLoading}
 								onCreateRelationship={createRelationship}
 								onDeleteRelationship={deleteRelationship}
+								onUpdateRelationship={updateRelationship}
 								onAutoSuggest={autoSuggestRelationships}
 								suggestMsg={suggestMsg}
 							/>
