@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { AlertTriangle, Info, XCircle, X } from 'lucide-react';
 import api from '../../api';
 
@@ -25,32 +26,56 @@ const LEVEL_ICON = {
 const LEVEL_BG = { error: '#fee2e2', warning: '#fef9c3', info: '#ede9fe' };
 const LEVEL_COLOR = { error: '#dc2626', warning: '#b45309', info: '#4f46e5' };
 
+const AUTO_CLOSE_MS = 5000;
+
 export default function WorldHealthCheck({ worldId }) {
 	const [items, setItems] = useState([]);
-	const [dismissed, setDismissed] = useState(false);
-	const [loading, setLoading] = useState(true);
+	const [visible, setVisible] = useState(false);
+	const timerRef = useRef(null);
 
 	useEffect(() => {
 		if (!worldId) return;
-		setDismissed(false);
-		setLoading(true);
+		setVisible(false);
+		clearTimeout(timerRef.current);
+
 		api.get(`/small-world/worlds/${worldId}/health-check`)
-			.then((r) => setItems(r.data))
-			.catch(() => setItems([]))
-			.finally(() => setLoading(false));
+			.then((r) => {
+				const data = r.data ?? [];
+				if (data.length === 0) return;
+				setItems(data);
+				setVisible(true);
+
+				const hasError = data.some((i) => i.level === 'error');
+				if (!hasError) {
+					timerRef.current = setTimeout(
+						() => setVisible(false),
+						AUTO_CLOSE_MS,
+					);
+				}
+			})
+			.catch(() => {});
+
+		return () => clearTimeout(timerRef.current);
 	}, [worldId]);
 
-	if (loading || dismissed || items.length === 0) return null;
+	if (!visible || items.length === 0) return null;
 
-	return (
+	const toast = (
 		<div
 			style={{
+				position: 'fixed',
+				bottom: '1.5rem',
+				right: '1.5rem',
+				zIndex: 9999,
+				width: '22rem',
 				background: 'var(--surface-container-high)',
 				border: '1px solid var(--outline-variant)',
-				borderRadius: '10px',
-				padding: '0.7rem 1rem',
-				marginBottom: '0.9rem',
-				position: 'relative',
+				borderRadius: '12px',
+				padding: '0.75rem 1rem',
+				boxShadow: '0 8px 24px rgba(0,0,0,0.18)',
+				display: 'flex',
+				flexDirection: 'column',
+				gap: '0.5rem',
 			}}
 		>
 			<div
@@ -58,7 +83,6 @@ export default function WorldHealthCheck({ worldId }) {
 					display: 'flex',
 					alignItems: 'center',
 					justifyContent: 'space-between',
-					marginBottom: items.length > 0 ? '0.5rem' : 0,
 				}}
 			>
 				<span
@@ -71,7 +95,7 @@ export default function WorldHealthCheck({ worldId }) {
 					World Health Check
 				</span>
 				<button
-					onClick={() => setDismissed(true)}
+					onClick={() => setVisible(false)}
 					style={{
 						background: 'none',
 						border: 'none',
@@ -119,4 +143,6 @@ export default function WorldHealthCheck({ worldId }) {
 			</div>
 		</div>
 	);
+
+	return createPortal(toast, document.body);
 }
