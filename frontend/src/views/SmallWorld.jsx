@@ -707,117 +707,6 @@ export default function SmallWorld() {
 									paddingBottom: '1.25rem',
 								}}
 							>
-								{/* Title row */}
-								<div
-									style={{
-										display: 'flex',
-										alignItems: 'flex-start',
-										justifyContent: 'space-between',
-										gap: '1rem',
-										marginBottom: '1.25rem',
-									}}
-								>
-									<div
-										style={{
-											display: 'flex',
-											alignItems: 'center',
-											gap: '0.85rem',
-										}}
-									>
-										<div
-											style={{
-												width: 42,
-												height: 42,
-												borderRadius: '12px',
-												background:
-													'var(--secondary-container)',
-												display: 'flex',
-												alignItems: 'center',
-												justifyContent: 'center',
-												flexShrink: 0,
-											}}
-										>
-											<Globe
-												size={20}
-												color="var(--on-secondary-container)"
-											/>
-										</div>
-										<div>
-											<h1
-												style={{
-													margin: 0,
-													fontSize: '1.55rem',
-													fontWeight: 700,
-													letterSpacing: '-0.02em',
-													color: 'var(--on-surface)',
-												}}
-											>
-												{selectedWorld.name}
-											</h1>
-											{selectedWorld.description && (
-												<p
-													style={{
-														margin: '0.15rem 0 0',
-														fontSize: '0.82rem',
-														color: 'var(--text-secondary)',
-													}}
-												>
-													{selectedWorld.description}
-												</p>
-											)}
-										</div>
-									</div>
-
-									{/* Stat chips */}
-									<div
-										style={{
-											display: 'flex',
-											gap: '0.5rem',
-											flexShrink: 0,
-											alignItems: 'center',
-										}}
-									>
-										<div
-											style={{
-												display: 'flex',
-												alignItems: 'center',
-												gap: '0.35rem',
-												padding: '0.35rem 0.75rem',
-												background:
-													'var(--surface-container-low)',
-												border: '1px solid var(--outline-variant)',
-												borderRadius: '8px',
-												fontSize: '0.78rem',
-												fontWeight: 600,
-												color: 'var(--text-secondary)',
-											}}
-										>
-											<Users size={13} />
-											{agents.length} Agent
-											{agents.length !== 1 ? 's' : ''}
-										</div>
-										<div
-											style={{
-												display: 'flex',
-												alignItems: 'center',
-												gap: '0.35rem',
-												padding: '0.35rem 0.75rem',
-												background:
-													'var(--surface-container-low)',
-												border: '1px solid var(--outline-variant)',
-												borderRadius: '8px',
-												fontSize: '0.78rem',
-												fontWeight: 600,
-												color: 'var(--text-secondary)',
-											}}
-										>
-											<GitBranch size={13} />
-											{scenarios.length} Scenario
-											{scenarios.length !== 1 ? 's' : ''}
-										</div>
-									</div>
-								</div>
-
 								{/* Tabs */}
 								<div
 									style={{
@@ -1727,6 +1616,9 @@ export default function SmallWorld() {
 												) : (
 													<ScenarioBranchGraph
 														scenarios={scenarios}
+														selectedScenarioId={
+															selectedScenario?.scenario_id
+														}
 														onSelectScenario={(
 															s,
 														) => {

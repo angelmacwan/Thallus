@@ -20,20 +20,66 @@ const STATUS_COLOR = {
 	pending: '#94a3b8',
 };
 
+function CreateNode({ data }) {
+	return (
+		<div
+			onClick={() => data.onCreate && data.onCreate()}
+			style={{
+				padding: '0.55rem 0.85rem',
+				background: 'rgba(99,102,241,0.06)',
+				border: '2px dashed var(--outline)',
+				borderRadius: '10px',
+				width: '200px',
+				boxSizing: 'border-box',
+				cursor: 'pointer',
+				opacity: 0.75,
+				display: 'flex',
+				alignItems: 'center',
+				justifyContent: 'center',
+				gap: '0.4rem',
+				color: 'var(--text-secondary)',
+				fontSize: '0.8rem',
+				fontWeight: 600,
+				minHeight: '44px',
+			}}
+		>
+			<Plus size={14} />
+			New Scenario
+			<Handle
+				type="source"
+				position={Position.Bottom}
+				style={{
+					background: 'transparent',
+					border: 'none',
+					width: 0,
+					height: 0,
+				}}
+			/>
+		</div>
+	);
+}
+
 function ScenarioNode({ data }) {
 	const color = STATUS_COLOR[data.status] || '#94a3b8';
+	const { isHighlighted, isDimmed } = data;
 	return (
 		<div
 			onClick={() => data.onClick && data.onClick(data.scenario)}
 			style={{
 				padding: '0.55rem 0.85rem',
-				background: 'var(--surface-container-lowest)',
+				background: isHighlighted
+					? 'var(--surface-container-low)'
+					: 'var(--surface-container-lowest)',
 				border: `2px solid ${color}`,
 				borderRadius: '10px',
 				width: '200px',
 				boxSizing: 'border-box',
 				cursor: 'pointer',
-				boxShadow: '0 2px 8px rgba(0,0,0,0.07)',
+				boxShadow: isHighlighted
+					? `0 0 0 2.5px ${color}, 0 0 14px ${color}55, 0 2px 8px rgba(0,0,0,0.12)`
+					: '0 2px 8px rgba(0,0,0,0.07)',
+				opacity: isDimmed ? 0.28 : 1,
+				transition: 'opacity 0.2s, box-shadow 0.2s',
 				position: 'relative',
 			}}
 		>
@@ -77,18 +123,19 @@ function ScenarioNode({ data }) {
 				style={{
 					display: 'inline-flex',
 					alignItems: 'center',
-					gap: '0.25rem',
-					fontSize: '0.65rem',
-					padding: '2px 7px',
-					background: 'var(--secondary-container)',
-					color: 'var(--on-secondary-container)',
-					border: 'none',
+					gap: '0.3rem',
+					fontSize: '0.68rem',
+					padding: '3px 8px',
+					background: 'var(--surface-container)',
+					color: 'var(--accent-color)',
+					border: '1.5px solid var(--accent-color)',
 					borderRadius: 5,
 					cursor: 'pointer',
-					fontWeight: 600,
+					fontWeight: 700,
+					marginTop: 2,
 				}}
 			>
-				<GitBranch size={10} /> Branch
+				<GitBranch size={10} /> Branch here
 			</button>
 			<Handle
 				type="source"
@@ -104,7 +151,7 @@ function ScenarioNode({ data }) {
 	);
 }
 
-const nodeTypes = { scenarioNode: ScenarioNode };
+const nodeTypes = { scenarioNode: ScenarioNode, createNode: CreateNode };
 
 const NODE_W = 200;
 const NODE_H = 90;
@@ -250,6 +297,7 @@ function layoutTree(scenarios) {
 
 export default function ScenarioBranchGraph({
 	scenarios,
+	selectedScenarioId,
 	onSelectScenario,
 	onBranchFrom,
 	onCreate,
@@ -262,15 +310,51 @@ export default function ScenarioBranchGraph({
 	const [nodes, setNodes, onNodesChange] = useNodesState([]);
 	const [edges, setEdges, onEdgesChange] = useEdgesState([]);
 
-	useEffect(() => {
-		if (!normalizedScenarios || normalizedScenarios.length === 0) {
-			setNodes([]);
-			setEdges([]);
-			return;
-		}
-		const positions = layoutTree(normalizedScenarios);
+	// Compute the full highlighted branch: ancestors + selected + all descendants
+	const highlightedIds = useMemo(() => {
+		if (!selectedScenarioId) return new Set();
+		const byId = new Map(
+			normalizedScenarios.map((s) => [s.scenario_id, s]),
+		);
+		if (!byId.has(selectedScenarioId)) return new Set();
 
-		const n = normalizedScenarios.map((s) => ({
+		const childrenMap = {};
+		for (const s of normalizedScenarios) childrenMap[s.scenario_id] = [];
+		for (const s of normalizedScenarios) {
+			if (s.parent_scenario_id && byId.has(s.parent_scenario_id))
+				childrenMap[s.parent_scenario_id].push(s.scenario_id);
+		}
+
+		const result = new Set([selectedScenarioId]);
+
+		// Walk ancestors to root
+		let cur = byId.get(selectedScenarioId);
+		while (cur?.parent_scenario_id && byId.has(cur.parent_scenario_id)) {
+			result.add(cur.parent_scenario_id);
+			cur = byId.get(cur.parent_scenario_id);
+		}
+
+		// Walk all descendants (BFS)
+		const queue = [selectedScenarioId];
+		while (queue.length) {
+			const id = queue.shift();
+			for (const childId of childrenMap[id] || []) {
+				result.add(childId);
+				queue.push(childId);
+			}
+		}
+
+		return result;
+	}, [selectedScenarioId, normalizedScenarios]);
+
+	useEffect(() => {
+		const positions =
+			normalizedScenarios.length > 0
+				? layoutTree(normalizedScenarios)
+				: {};
+
+		const hasSelection = !!selectedScenarioId;
+		const scenarioNodes = normalizedScenarios.map((s) => ({
 			id: s.scenario_id,
 			position: positions[s.scenario_id] || { x: 0, y: 0 },
 			type: 'scenarioNode',
@@ -282,71 +366,103 @@ export default function ScenarioBranchGraph({
 				scenario: s,
 				onClick: onSelectScenario,
 				onBranch: onBranchFrom,
+				isHighlighted:
+					!hasSelection || highlightedIds.has(s.scenario_id),
+				isDimmed: hasSelection && !highlightedIds.has(s.scenario_id),
 			},
 		}));
 
-		const e = normalizedScenarios
+		const scenarioEdges = normalizedScenarios
 			.filter((s) => s.parent_scenario_id)
-			.map((s) => ({
-				id: `e-${s.parent_scenario_id}-${s.scenario_id}`,
-				source: s.parent_scenario_id,
-				target: s.scenario_id,
-				type: 'default',
-				markerEnd: {
-					type: MarkerType.ArrowClosed,
-					width: 14,
-					height: 14,
-					color: '#2563eb',
-				},
-				style: {
-					stroke: '#2563eb',
-					strokeWidth: 2.2,
-					opacity: 0.9,
-				},
-			}));
+			.map((s) => {
+				const edgeHighlighted =
+					hasSelection &&
+					highlightedIds.has(s.parent_scenario_id) &&
+					highlightedIds.has(s.scenario_id);
+				const edgeDimmed = hasSelection && !edgeHighlighted;
+				const strokeColor = edgeHighlighted ? '#818cf8' : '#2563eb';
+				return {
+					id: `e-${s.parent_scenario_id}-${s.scenario_id}`,
+					source: s.parent_scenario_id,
+					target: s.scenario_id,
+					type: 'default',
+					markerEnd: {
+						type: MarkerType.ArrowClosed,
+						width: 14,
+						height: 14,
+						color: strokeColor,
+					},
+					style: {
+						stroke: strokeColor,
+						strokeWidth: edgeHighlighted ? 3 : 2.2,
+						opacity: edgeDimmed ? 0.18 : 0.9,
+						transition: 'stroke 0.2s, opacity 0.2s',
+					},
+				};
+			});
 
-		setNodes(n);
-		setEdges(e);
+		// Determine root IDs (nodes with no valid parent in the set)
+		const idSet = new Set(normalizedScenarios.map((s) => s.scenario_id));
+		const rootIds = normalizedScenarios
+			.filter(
+				(s) =>
+					!s.parent_scenario_id || !idSet.has(s.parent_scenario_id),
+			)
+			.map((s) => s.scenario_id);
+
+		// Position create node centred above roots
+		let createX = 0;
+		const createY = normalizedScenarios.length > 0 ? -(NODE_H + V_GAP) : 0;
+		if (rootIds.length > 0) {
+			const rootXs = rootIds.map((r) => positions[r]?.x ?? 0);
+			const minX = Math.min(...rootXs);
+			const maxX = Math.max(...rootXs) + NODE_W;
+			createX = (minX + maxX) / 2 - NODE_W / 2;
+		}
+
+		const createNode = {
+			id: '__create__',
+			position: { x: createX, y: createY },
+			type: 'createNode',
+			sourcePosition: Position.Bottom,
+			data: { onCreate: () => onCreate(null) },
+		};
+
+		const createEdges = rootIds.map((rootId) => ({
+			id: `e-create-${rootId}`,
+			source: '__create__',
+			target: rootId,
+			type: 'default',
+			style: {
+				stroke: '#94a3b8',
+				strokeWidth: 1.5,
+				strokeDasharray: '5,4',
+				opacity: hasSelection ? 0.15 : 0.55,
+				transition: 'opacity 0.2s',
+			},
+			markerEnd: {
+				type: MarkerType.ArrowClosed,
+				width: 10,
+				height: 10,
+				color: '#94a3b8',
+			},
+		}));
+
+		setNodes([createNode, ...scenarioNodes]);
+		setEdges([...scenarioEdges, ...createEdges]);
 	}, [
 		normalizedScenarios,
+		selectedScenarioId,
+		highlightedIds,
 		onSelectScenario,
 		onBranchFrom,
+		onCreate,
 		setNodes,
 		setEdges,
 	]);
 
 	return (
 		<div style={{ width: '100%', height: '100%', position: 'relative' }}>
-			{/* Empty state */}
-			{(!scenarios || scenarios.length === 0) && (
-				<div
-					style={{
-						position: 'absolute',
-						inset: 0,
-						display: 'flex',
-						flexDirection: 'column',
-						alignItems: 'center',
-						justifyContent: 'center',
-						gap: '0.5rem',
-						zIndex: 5,
-						pointerEvents: 'none',
-					}}
-				>
-					<GitBranch
-						size={32}
-						color="var(--text-secondary)"
-					/>
-					<p
-						style={{
-							color: 'var(--text-secondary)',
-							fontSize: '0.85rem',
-							margin: 0,
-						}}
-					>
-						No scenarios yet
-					</p>
-				</div>
-			)}
 			<ReactFlow
 				nodes={nodes}
 				edges={edges}
@@ -372,31 +488,6 @@ export default function ScenarioBranchGraph({
 				/>
 				<Controls />
 			</ReactFlow>
-
-			{/* Add root scenario FAB */}
-			<button
-				onClick={() => onCreate(null)}
-				style={{
-					position: 'absolute',
-					bottom: 16,
-					right: 16,
-					display: 'flex',
-					alignItems: 'center',
-					gap: '0.4rem',
-					padding: '0.5rem 1rem',
-					background: 'var(--accent-color)',
-					color: '#fff',
-					border: 'none',
-					borderRadius: '8px',
-					fontSize: '0.82rem',
-					fontWeight: 600,
-					cursor: 'pointer',
-					zIndex: 10,
-					boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
-				}}
-			>
-				<Plus size={14} /> New Scenario
-			</button>
 		</div>
 	);
 }
