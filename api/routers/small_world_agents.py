@@ -15,7 +15,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from .. import models, schemas
-from ..deps import get_current_user, get_db
+from ..deps import get_current_user, get_db, require_credits
 
 router = APIRouter(prefix="/api/small-world", tags=["small-world-agents"])
 
@@ -290,7 +290,7 @@ def generate_agent(
     world_id: str,
     body: schemas.AgentGenerateRequest,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user),
+    current_user: models.User = Depends(require_credits),
 ):
     _get_world_or_404(world_id, current_user.id, db)
     """
@@ -299,6 +299,7 @@ def generate_agent(
     before calling POST /agents/ to save.
     """
     from core.agent_generator import generate_agent_profile
+    from ..billing import deduct_credits
 
     sparse = {
         "name": body.name,
@@ -309,9 +310,14 @@ def generate_agent(
         "description": body.description,
     }
     try:
-        profile = generate_agent_profile(sparse)
+        profile, usage = generate_agent_profile(sparse)
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"AI generation failed: {exc}")
+
+    try:
+        deduct_credits(db, current_user.id, usage, description="Agent AI generation")
+    except Exception as billing_exc:
+        print(f"[billing] deduct_credits failed: {billing_exc}")
 
     # Validate and return
     try:
@@ -593,9 +599,10 @@ def auto_suggest_relationships(
     world_id: str,
     body: schemas.AutoSuggestRelationshipsRequest,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user),
+    current_user: models.User = Depends(require_credits),
 ):
     from core.agent_generator import suggest_relationships
+    from ..billing import deduct_credits
 
     world = _get_world_or_404(world_id, current_user.id, db)
     agents_db = db.query(models.SmallWorldAgent).filter(
@@ -618,9 +625,14 @@ def auto_suggest_relationships(
     ]
 
     try:
-        suggestions = suggest_relationships(agent_summaries)
+        suggestions, usage = suggest_relationships(agent_summaries)
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"AI suggestion failed: {exc}")
+
+    try:
+        deduct_credits(db, current_user.id, usage, description="Relationship auto-suggest")
+    except Exception as billing_exc:
+        print(f"[billing] deduct_credits failed: {billing_exc}")
 
     # Build a lookup from agent_id (UUID str) -> db id
     id_map = {a.agent_id: a for a in agents_db}

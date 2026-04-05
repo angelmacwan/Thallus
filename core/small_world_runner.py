@@ -20,6 +20,8 @@ from typing import Any, Callable
 from dotenv import load_dotenv
 load_dotenv()
 
+from core.usage import UsageSummary
+
 
 class SmallWorldRunner:
     def __init__(
@@ -54,6 +56,7 @@ class SmallWorldRunner:
         self.rounds = rounds
         self.relationships = relationships or []
         self._emit = emit_event if callable(emit_event) else (lambda t, m: None)
+        self._usage = UsageSummary()
 
         os.makedirs(output_dir, exist_ok=True)
 
@@ -296,6 +299,13 @@ class SmallWorldRunner:
                 self._emit("round", f"Round {r + 1}/{self.rounds} complete")
 
             await env.close()
+
+            # Accumulate estimated token usage (OASIS doesn't expose per-call counts)
+            n_agents = len(profiles)
+            self._usage.add(
+                input_tokens=n_agents * self.rounds * OASIS_EST_INPUT_TOKENS_PER_AGENT_ROUND,
+                output_tokens=n_agents * self.rounds * OASIS_EST_OUTPUT_TOKENS_PER_AGENT_ROUND,
+            )
 
         finally:
             try:

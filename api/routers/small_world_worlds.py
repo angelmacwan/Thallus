@@ -19,7 +19,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from .. import models, schemas
-from ..deps import get_current_user, get_db
+from ..deps import get_current_user, get_db, require_credits
 
 router = APIRouter(prefix="/api/small-world", tags=["small-world-worlds"])
 
@@ -283,7 +283,7 @@ def run_scenario(
     scenario_id: str,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user),
+    current_user: models.User = Depends(require_credits),
 ):
     world = _get_world_or_404(world_id, current_user.id, db)
     scenario = _get_scenario_or_404(scenario_id, world.id, db)
@@ -386,6 +386,7 @@ def run_scenario(
         output_dir=output_dir,
         parent_output_dir=parent_output_dir,
         q=q,
+        user_id=current_user.id,
     )
 
     return {"status": "started", "scenario_id": scenario.scenario_id}
@@ -402,10 +403,13 @@ def _run_scenario_background(
     output_dir: str,
     parent_output_dir: str | None,
     q: _queue.Queue,
+    user_id: int | None = None,
 ) -> None:
     from ..database import SessionLocal
+    from ..billing import UsageSummary, deduct_credits
 
     db = SessionLocal()
+    usage = UsageSummary()
     try:
         scenario = db.query(models.WorldScenario).get(scenario_db_id)
 
@@ -433,6 +437,7 @@ def _run_scenario_background(
             rounds=2,
         )
         runner.run()
+        usage = runner._usage
 
         # Generate report inline so scenario is only marked complete once it's ready
         emit("stage", "Generating report…")
@@ -446,13 +451,14 @@ def _run_scenario_background(
                 }
                 for a in agents
             ]
-            report = _gen_report(
+            report, report_usage = _gen_report(
                 output_dir=output_dir,
                 world_description=world_description,
                 scenario_name=scenario_name,
                 seed_text=seed_text,
                 agent_profiles=agent_profiles,
             )
+            usage += report_usage
             report_path = os.path.join(output_dir, "report.json")
             with open(report_path, "w", encoding="utf-8") as f:
                 json.dump(report, f, ensure_ascii=False, indent=2)
@@ -488,6 +494,12 @@ def _run_scenario_background(
             db_inner.close()
         emit("done", "Simulation complete")
     finally:
+        # Deduct credits regardless of success/failure
+        if user_id and (usage.input_tokens > 0 or usage.output_tokens > 0):
+            try:
+                deduct_credits(db, user_id, usage, description=f"Small World scenario {scenario_uuid}")
+            except Exception as billing_exc:
+                print(f"[billing] deduct_credits failed: {billing_exc}")
         db.close()
 
 
@@ -562,7 +574,7 @@ def post_chat_message(
     db.flush()
 
     # Generate AI response
-    ai_text = _generate_chat_response(scenario, body.text, db)
+    ai_text, ai_usage = _generate_chat_response(scenario, body.text, db)
 
     ai_msg = models.WorldScenarioChat(
         scenario_id=scenario.id,
@@ -572,6 +584,12 @@ def post_chat_message(
     db.add(ai_msg)
     db.commit()
     db.refresh(ai_msg)
+
+    try:
+        from ..billing import deduct_credits
+        deduct_credits(db, current_user.id, ai_usage, description=f"Small World chat {scenario.scenario_id}")
+    except Exception as billing_exc:
+        print(f"[billing] deduct_credits failed: {billing_exc}")
 
     return schemas.WorldScenarioChatResponse(
         id=ai_msg.id,
@@ -585,11 +603,12 @@ def _generate_chat_response(
     scenario: models.WorldScenario,
     question: str,
     db: Session,
-) -> str:
-    """Use Gemini to answer a question about a completed scenario."""
+) -> tuple[str, "UsageSummary"]:
+    """Use Gemini to answer a question about a completed scenario. Returns (text, UsageSummary)."""
     import os
     from google import genai as _genai
     from core.config import MODEL_NAME
+    from ..billing import UsageSummary
 
     # Load report if available
     report_context = ""
@@ -643,7 +662,14 @@ Answer specifically about this scenario's simulation results. Be concise, insigh
 
     client = _genai.Client(api_key=os.environ["GEMINI_API_KEY"])
     response = client.models.generate_content(model=MODEL_NAME, contents=prompt)
-    return response.text.strip()
+
+    usage = UsageSummary()
+    if response.usage_metadata:
+        usage.add(
+            input_tokens=response.usage_metadata.prompt_token_count or 0,
+            output_tokens=response.usage_metadata.candidates_token_count or 0,
+        )
+    return response.text.strip(), usage
 
 
 @router.get("/worlds/{world_id}/scenarios/{scenario_id}/chat", response_model=list[schemas.WorldScenarioChatResponse])

@@ -12,14 +12,16 @@ from typing import Any
 from dotenv import load_dotenv
 load_dotenv()
 
+from core.usage import UsageSummary
 
-def generate_agent_profile(sparse: dict[str, Any]) -> dict[str, Any]:
+
+def generate_agent_profile(sparse: dict[str, Any]) -> tuple[dict[str, Any], UsageSummary]:
     """
     Given sparse agent fields (name, profession, organization, location, age,
     description), call Gemini to produce a complete agent profile matching the
     AgentCreate schema.
 
-    Returns a dict ready to be parsed as AgentCreate.
+    Returns a (profile_dict, UsageSummary) tuple.
     """
     from google import genai as _genai
     from google.genai import types as _gtypes
@@ -98,6 +100,13 @@ Rules:
         ),
     )
 
+    usage = UsageSummary()
+    if response.usage_metadata:
+        usage.add(
+            input_tokens=response.usage_metadata.prompt_token_count or 0,
+            output_tokens=response.usage_metadata.candidates_token_count or 0,
+        )
+
     raw = response.text.strip()
     # Strip markdown fences if present
     if raw.startswith("```"):
@@ -106,13 +115,15 @@ Rules:
             raw = raw[4:]
     raw = raw.strip()
 
-    return json.loads(raw)
+    return json.loads(raw), usage
 
 
-def suggest_relationships(agents: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def suggest_relationships(agents: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], UsageSummary]:
     """
     Given a list of agent summaries, suggest a list of relationships between them.
     Each relationship has: source_agent_id, target_agent_id, type, strength, sentiment, influence_direction.
+
+    Returns a (relationships_list, UsageSummary) tuple.
     """
     from google import genai as _genai
     from google.genai import types as _gtypes
@@ -157,6 +168,13 @@ Rules:
         ),
     )
 
+    usage = UsageSummary()
+    if response.usage_metadata:
+        usage.add(
+            input_tokens=response.usage_metadata.prompt_token_count or 0,
+            output_tokens=response.usage_metadata.candidates_token_count or 0,
+        )
+
     raw = response.text.strip()
     if raw.startswith("```"):
         raw = raw.split("```")[1]
@@ -164,4 +182,4 @@ Rules:
             raw = raw[4:]
     raw = raw.strip()
 
-    return json.loads(raw)
+    return json.loads(raw), usage

@@ -56,10 +56,20 @@ def _status_from_result(outputs_path: str) -> schemas.MetricsStatusResponse:
     return schemas.MetricsStatusResponse(available=False)
 
 
-def _run_question_metrics_bg(outputs_path: str) -> None:
+def _run_question_metrics_bg(outputs_path: str, user_id: int | None = None) -> None:
     from core.question_metrics import QuestionMetrics
     qm = QuestionMetrics(outputs_path)
     qm.run()
+    if user_id and (qm._usage.input_tokens > 0 or qm._usage.output_tokens > 0):
+        from ..database import SessionLocal
+        from ..billing import deduct_credits
+        db = SessionLocal()
+        try:
+            deduct_credits(db, user_id, qm._usage, description="Metrics generation")
+        except Exception as billing_exc:
+            print(f"[billing] deduct_credits failed: {billing_exc}")
+        finally:
+            db.close()
 
 
 # ── Session endpoints ───────────────────────────────────────────────────────────
@@ -88,7 +98,7 @@ def generate_metrics(
         raise HTTPException(status_code=404, detail="Session not found")
     if db_session.status != "completed":
         raise HTTPException(status_code=400, detail="Simulation must be completed before generating metrics")
-    background_tasks.add_task(_run_question_metrics_bg, db_session.outputs_path)
+    background_tasks.add_task(_run_question_metrics_bg, db_session.outputs_path, current_user.id)
     return {"message": "Metrics generation started"}
 
 
@@ -145,7 +155,7 @@ def generate_scenario_metrics(
     scenario = crud.get_scenario_by_uuid(db, scenario_uuid)
     if not scenario or not scenario.outputs_path:
         raise HTTPException(status_code=404, detail="Scenario not found")
-    background_tasks.add_task(_run_question_metrics_bg, scenario.outputs_path)
+    background_tasks.add_task(_run_question_metrics_bg, scenario.outputs_path, current_user.id)
     return {"message": "Metrics generation started"}
 
 

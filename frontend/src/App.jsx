@@ -514,14 +514,9 @@ function Sidebar() {
 							{/* Panel nav items */}
 							{[
 								{
-									id: 'stream',
-									icon: <Activity size={15} />,
-									label: 'Live Logs',
-								},
-								{
-									id: 'feed',
-									icon: <Rss size={15} />,
-									label: 'Social Feed',
+									id: 'report',
+									icon: <FileText size={15} />,
+									label: 'Report',
 								},
 								{
 									id: 'chat',
@@ -529,14 +524,14 @@ function Sidebar() {
 									label: 'Chat',
 								},
 								{
-									id: 'compare',
-									icon: <BarChart2 size={15} />,
-									label: 'Compare',
+									id: 'feed',
+									icon: <Rss size={15} />,
+									label: 'Social Feed',
 								},
 								{
-									id: 'report',
-									icon: <FileText size={15} />,
-									label: 'Report',
+									id: 'stream',
+									icon: <Activity size={15} />,
+									label: 'Log',
 								},
 							].map((item) => (
 								<button

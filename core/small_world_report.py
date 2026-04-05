@@ -22,6 +22,8 @@ import os
 from datetime import datetime, timezone
 from typing import Any
 
+from core.usage import UsageSummary
+
 
 def generate_report(
     output_dir: str,
@@ -29,10 +31,10 @@ def generate_report(
     scenario_name: str,
     seed_text: str,
     agent_profiles: list[dict[str, Any]],
-) -> dict[str, Any]:
+) -> tuple[dict[str, Any], UsageSummary]:
     """
     Read actions.jsonl and agent profiles from output_dir, call Gemini,
-    and return a structured report dict.
+    and return a (report_dict, UsageSummary) tuple.
     """
     from google import genai as _genai
     from google.genai import types as _gtypes
@@ -117,6 +119,13 @@ Rules:
         ),
     )
 
+    usage = UsageSummary()
+    if response.usage_metadata:
+        usage.add(
+            input_tokens=response.usage_metadata.prompt_token_count or 0,
+            output_tokens=response.usage_metadata.candidates_token_count or 0,
+        )
+
     raw = response.text.strip()
     if raw.startswith("```"):
         raw = raw.split("```")[1]
@@ -136,7 +145,7 @@ Rules:
         report["confidence_score"] = 0.0
 
     report["generated_at"] = datetime.now(timezone.utc).isoformat()
-    return report
+    return report, usage
 
 
 def _summarize_activity(

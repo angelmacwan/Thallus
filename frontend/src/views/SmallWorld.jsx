@@ -77,7 +77,8 @@ export default function SmallWorld() {
 	const [selectedScenario, setSelectedScenario] = useState(null);
 
 	// ── Scenario panel (left side) state ─────────────────────
-	const [swPanelTab, setSwPanelTab] = useState('stream');
+	const [swPanelTab, setSwPanelTab] = useState('report');
+	const [resimulating, setResimulating] = useState(false);
 	const [scenarioEvents, setScenarioEvents] = useState([]);
 	const [scenarioEventsLoading, setScenarioEventsLoading] = useState(false);
 	const [scenarioReport, setScenarioReport] = useState(null);
@@ -208,6 +209,28 @@ export default function SmallWorld() {
 			.then((r) => setScenarioChatMessages(r.data))
 			.catch(() => {});
 	}, [swPanelTab, selectedScenario?.scenario_id]);
+
+	const handleResimulate = async () => {
+		if (resimulating || !selectedScenario || !selectedWorld) return;
+		setResimulating(true);
+		try {
+			await api.post(
+				`/small-world/worlds/${selectedWorld.world_id}/scenarios/${selectedScenario.scenario_id}/run`,
+			);
+			setScenarioReport(null);
+			setScenarioEvents([]);
+			setScenarioLiveStatus('running');
+			setSwPanelTab('stream');
+			// Restart poll
+			if (scenarioPollRef) clearInterval(scenarioPollRef);
+			const wId = selectedWorld.world_id;
+			const sId = selectedScenario.scenario_id;
+			fetchScenarioEvents(wId, sId);
+			const pid = setInterval(() => fetchScenarioEvents(wId, sId), 2500);
+			setScenarioPollRef(pid);
+		} catch {}
+		setResimulating(false);
+	};
 
 	const sendScenarioChat = async () => {
 		const text = scenarioChatInput.trim();
@@ -727,6 +750,11 @@ export default function SmallWorld() {
 											label: 'Agents',
 											icon: Users,
 										},
+										{
+											key: 'compare',
+											label: 'Compare',
+											icon: BarChart2,
+										},
 									].map((item) => {
 										const TabIcon = item.icon;
 										return (
@@ -984,6 +1012,24 @@ export default function SmallWorld() {
 								</div>
 							)}
 
+							{/* ── COMPARE TAB ── */}
+							{worldDetailTab === 'compare' && (
+								<div
+									style={{
+										display: 'flex',
+										flexDirection: 'column',
+										flex: 1,
+										minHeight: 0,
+										overflow: 'hidden',
+									}}
+								>
+									<ScenarioDiff
+										worldId={selectedWorld.world_id}
+										scenarios={scenarios}
+									/>
+								</div>
+							)}
+
 							{/* ── SCENARIOS TAB ── */}
 							{worldDetailTab === 'scenarios' && (
 								<div
@@ -1101,6 +1147,44 @@ export default function SmallWorld() {
 																</span>
 															</div>
 														</div>
+														{scenarioLiveStatus ===
+															'failed' && (
+															<button
+																onClick={
+																	handleResimulate
+																}
+																disabled={
+																	resimulating
+																}
+																title="Resimulate"
+																style={{
+																	display:
+																		'flex',
+																	alignItems:
+																		'center',
+																	gap: '0.3rem',
+																	background:
+																		'none',
+																	border: 'none',
+																	cursor: resimulating
+																		? 'not-allowed'
+																		: 'pointer',
+																	color: resimulating
+																		? 'var(--text-secondary)'
+																		: '#f97316',
+																	fontSize:
+																		'0.72rem',
+																	fontWeight: 600,
+																	padding:
+																		'0.2rem 0.4rem',
+																}}
+															>
+																<RotateCcw
+																	size={12}
+																/>
+																Resimulate
+															</button>
+														)}
 														<button
 															onClick={() =>
 																setSelectedScenario(
@@ -1417,27 +1501,6 @@ export default function SmallWorld() {
 														</div>
 													)}
 													{swPanelTab ===
-														'compare' && (
-														<div
-															style={{
-																flex: 1,
-																overflowY:
-																	'auto',
-																padding:
-																	'0.75rem',
-															}}
-														>
-															<ScenarioDiff
-																worldId={
-																	selectedWorld.world_id
-																}
-																scenarios={
-																	scenarios
-																}
-															/>
-														</div>
-													)}
-													{swPanelTab ===
 														'report' && (
 														<div
 															style={{
@@ -1626,7 +1689,7 @@ export default function SmallWorld() {
 																s,
 															);
 															setSwPanelTab(
-																'stream',
+																'report',
 															);
 														}}
 														onBranchFrom={(s) => {

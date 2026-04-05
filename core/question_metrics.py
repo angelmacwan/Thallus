@@ -21,6 +21,8 @@ try:
 except ImportError:
     GENAI_AVAILABLE = False
 
+from core.usage import UsageSummary
+
 
 class QuestionMetrics:
     def __init__(self, outputs_path: str):
@@ -28,6 +30,7 @@ class QuestionMetrics:
         self.actions_file = os.path.join(outputs_path, "actions.jsonl")
         self.agents_file = os.path.join(outputs_path, "agents.json")
         self.objective_file = os.path.join(outputs_path, "objective.txt")
+        self._usage = UsageSummary()
         self.result_file = os.path.join(outputs_path, "questions_metrics.json")
 
     # ── Data loading ──────────────────────────────────────────────────────────
@@ -186,6 +189,11 @@ class QuestionMetrics:
                     temperature=temperature,
                 ),
             )
+            if response.usage_metadata:
+                self._usage.add(
+                    input_tokens=response.usage_metadata.prompt_token_count or 0,
+                    output_tokens=response.usage_metadata.candidates_token_count or 0,
+                )
             return response.text
         except Exception as e:
             print(f"[QuestionMetrics] LLM call failed: {e}")
