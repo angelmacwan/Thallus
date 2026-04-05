@@ -49,6 +49,15 @@ function DeltaChip({ value }) {
 	);
 }
 
+function flattenScenarios(list) {
+	const result = [];
+	for (const s of list || []) {
+		result.push(s);
+		if (s.children?.length) result.push(...flattenScenarios(s.children));
+	}
+	return result;
+}
+
 export default function ScenarioDiff({ worldId, scenarios }) {
 	const [scenA, setScenA] = useState('');
 	const [scenB, setScenB] = useState('');
@@ -56,7 +65,7 @@ export default function ScenarioDiff({ worldId, scenarios }) {
 	const [loading, setLoading] = useState(false);
 	const [error, setError] = useState('');
 
-	const completedScenarios = (scenarios || []).filter(
+	const completedScenarios = flattenScenarios(scenarios).filter(
 		(s) => s.status === 'completed',
 	);
 
@@ -123,6 +132,7 @@ export default function ScenarioDiff({ worldId, scenarios }) {
 							key={s.scenario_id}
 							value={s.scenario_id}
 						>
+							{'↳ '.repeat(s.depth)}
 							{s.name}
 						</option>
 					))}
@@ -146,6 +156,7 @@ export default function ScenarioDiff({ worldId, scenarios }) {
 							key={s.scenario_id}
 							value={s.scenario_id}
 						>
+							{'↳ '.repeat(s.depth)}
 							{s.name}
 						</option>
 					))}
