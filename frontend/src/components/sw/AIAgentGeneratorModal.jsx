@@ -2,7 +2,12 @@ import React, { useState } from 'react';
 import { X, Wand2, Loader } from 'lucide-react';
 import api from '../../api';
 
-export default function AIAgentGeneratorModal({ open, onClose, onGenerated }) {
+export default function AIAgentGeneratorModal({
+	open,
+	onClose,
+	onGenerated,
+	worldId,
+}) {
 	const [form, setForm] = useState({
 		name: '',
 		profession: '',
@@ -24,14 +29,17 @@ export default function AIAgentGeneratorModal({ open, onClose, onGenerated }) {
 		setLoading(true);
 		setError('');
 		try {
-			const res = await api.post('/small-world/agents/generate', {
-				name: form.name.trim(),
-				profession: form.profession || null,
-				organization: form.organization || null,
-				location: form.location || null,
-				age: form.age ? Number(form.age) : null,
-				description: form.description.trim(),
-			});
+			const res = await api.post(
+				`/small-world/worlds/${worldId}/agents/generate`,
+				{
+					name: form.name.trim(),
+					profession: form.profession || null,
+					organization: form.organization || null,
+					location: form.location || null,
+					age: form.age ? Number(form.age) : null,
+					description: form.description.trim(),
+				},
+			);
 			onGenerated(res.data);
 			onClose();
 		} catch (err) {

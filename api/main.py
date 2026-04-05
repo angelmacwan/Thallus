@@ -96,6 +96,8 @@ _MIGRATIONS = [
         report_path VARCHAR,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )""",
+    # Add world_id to sw_agents (idempotent — fails silently if column exists)
+    "ALTER TABLE sw_agents ADD COLUMN world_id INTEGER REFERENCES sw_worlds(id)",
     """CREATE TABLE IF NOT EXISTS sw_world_scenario_chats (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         scenario_id INTEGER NOT NULL REFERENCES sw_world_scenarios(id),

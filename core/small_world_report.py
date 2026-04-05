@@ -5,7 +5,6 @@ Output JSON schema:
 {
   "outcome_summary": str,
   "confidence_score": float (0-1),
-  "metrics": {"adoption": float, "churn": float, "conflict": float, "morale": float},
   "key_drivers": [{"rank": int, "factor": str, "explanation": str}],
   "agent_behaviors": [{"agent_name": str, "role_in_outcome": str, "behavior_summary": str}],
   "bottlenecks_risks": [str],
@@ -82,12 +81,6 @@ Generate a comprehensive enterprise-grade analysis with ONLY this JSON structure
 {{
   "outcome_summary": "<2-3 sentence summary of what happened and the key outcome>",
   "confidence_score": <float 0.0-1.0 reflecting how consistent/conclusive the simulation was>,
-  "metrics": {{
-    "adoption": <float 0-100 percentage — how many agents aligned positively with the scenario>,
-    "churn": <float 0-100 percentage — how many agents showed resistance or disengagement>,
-    "conflict": <float 0-100 percentage — level of disagreement or tension observed>,
-    "morale": <float 0-100 percentage — overall positivity/energy of agent interactions>
-  }},
   "key_drivers": [
     {{"rank": 1, "factor": "<factor name>", "explanation": "<why this drove the outcome>"}},
     {{"rank": 2, "factor": "<factor name>", "explanation": "<why this drove the outcome>"}},
@@ -132,6 +125,16 @@ Rules:
     raw = raw.strip()
 
     report = json.loads(raw)
+
+    # Remove metrics block entirely if present (not used)
+    report.pop("metrics", None)
+
+    # Clamp confidence score to 0-1
+    try:
+        report["confidence_score"] = max(0.0, min(1.0, float(report.get("confidence_score", 0.0))))
+    except (TypeError, ValueError):
+        report["confidence_score"] = 0.0
+
     report["generated_at"] = datetime.now(timezone.utc).isoformat()
     return report
 
@@ -143,29 +146,51 @@ def _summarize_activity(
     if not activity_lines:
         return "No activity recorded."
 
-    # Count by type
+    # Build user_id → agent name lookup (OASIS assigns IDs by profile insertion order)
+    uid_to_name: dict[int, str] = {}
+    for i, p in enumerate(agent_profiles):
+        uid_to_name[i] = p.get("realname") or p.get("username") or f"Agent_{i}"
+
+    def _infer_type(line: dict) -> str:
+        # Trace table records have an explicit 'action' field
+        if line.get("action"):
+            return str(line["action"])
+        # Post table records: have post_id but no comment_id
+        if "post_id" in line and "comment_id" not in line:
+            return "create_post"
+        # Comment table records
+        if "comment_id" in line:
+            return "create_comment"
+        return "unknown"
+
+    # Count by type — exclude infrastructure noise from trace table
+    _NOISE = {"sign_up", "refresh", "unknown"}
     type_counts: dict[str, int] = {}
     for line in activity_lines:
-        t = (
-            line.get("action_type")
-            or line.get("type")
-            or line.get("action")
-            or "unknown"
-        )
-        type_counts[t] = type_counts.get(t, 0) + 1
+        t = _infer_type(line)
+        if t not in _NOISE:
+            type_counts[t] = type_counts.get(t, 0) + 1
 
     counts_str = ", ".join(f"{k}: {v}" for k, v in sorted(type_counts.items(), key=lambda x: -x[1])[:10])
 
-    # Sample posts/comments
-    posts = [l for l in activity_lines if "post" in str(l.get("action_type", l.get("type", ""))).lower()][:5]
+    # Sample posts with actual content (from the post table records)
+    posts = [l for l in activity_lines if "post_id" in l and "comment_id" not in l and l.get("content")][:5]
     post_samples = "\n".join(
-        f"  [{p.get('username', p.get('agent_name', 'agent'))}]: {str(p.get('content') or p.get('message') or p.get('post_content', ''))[:200]}"
+        f"  [{uid_to_name.get(p.get('user_id', -1), 'agent')}]: {str(p.get('content', ''))[:200]}"
         for p in posts
-        if p.get('content') or p.get('message') or p.get('post_content')
     )
 
-    summary = f"Total events: {len(activity_lines)}\nEvent breakdown: {counts_str}"
+    # Sample comments with actual content
+    comments = [l for l in activity_lines if "comment_id" in l and l.get("content")][:3]
+    comment_samples = "\n".join(
+        f"  [{uid_to_name.get(c.get('user_id', -1), 'agent')} on post #{c.get('post_id', '?')}]: {str(c.get('content', ''))[:200]}"
+        for c in comments
+    )
+
+    summary = f"Total events: {len(activity_lines)}\nMeaningful event breakdown: {counts_str}"
     if post_samples:
         summary += f"\n\nSample posts:\n{post_samples}"
+    if comment_samples:
+        summary += f"\n\nSample comments:\n{comment_samples}"
 
     return summary

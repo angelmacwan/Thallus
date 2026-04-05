@@ -54,7 +54,7 @@ def _get_current_user_query(
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _world_response(world: models.SmallWorld, db: Session) -> schemas.WorldResponse:
-    agent_count = db.query(models.WorldMember).filter(models.WorldMember.world_id == world.id).count()
+    agent_count = db.query(models.SmallWorldAgent).filter(models.SmallWorldAgent.world_id == world.id).count()
     scenario_count = db.query(models.WorldScenario).filter(models.WorldScenario.world_id == world.id).count()
     return schemas.WorldResponse(
         id=world.id,
@@ -138,18 +138,6 @@ def create_world(
         description=body.description,
     )
     db.add(world)
-    db.flush()
-
-    # Add agents
-    for agent_id in body.agent_ids:
-        agent = db.query(models.SmallWorldAgent).filter(
-            models.SmallWorldAgent.agent_id == agent_id,
-            models.SmallWorldAgent.user_id == current_user.id,
-        ).first()
-        if agent:
-            member = models.WorldMember(world_id=world.id, agent_id=agent.id)
-            db.add(member)
-
     db.commit()
     db.refresh(world)
     return _world_response(world, db)
@@ -183,15 +171,12 @@ def get_world_agents(
     current_user: models.User = Depends(get_current_user),
 ):
     world = _get_world_or_404(world_id, current_user.id, db)
-    members = db.query(models.WorldMember).filter(models.WorldMember.world_id == world.id).all()
+    agents = db.query(models.SmallWorldAgent).filter(
+        models.SmallWorldAgent.world_id == world.id
+    ).order_by(models.SmallWorldAgent.created_at.desc()).all()
 
     from .small_world_agents import _agent_to_response
-    result = []
-    for m in members:
-        agent = db.query(models.SmallWorldAgent).get(m.agent_id)
-        if agent:
-            result.append(_agent_to_response(agent, db))
-    return result
+    return [_agent_to_response(agent, db, world_uuid=world.world_id) for agent in agents]
 
 
 @router.put("/worlds/{world_id}", response_model=schemas.WorldResponse)
@@ -207,18 +192,6 @@ def update_world(
         world.name = body.name
     if body.description is not None:
         world.description = body.description
-
-    if body.agent_ids is not None:
-        # Replace members
-        db.query(models.WorldMember).filter(models.WorldMember.world_id == world.id).delete()
-        for agent_id in body.agent_ids:
-            agent = db.query(models.SmallWorldAgent).filter(
-                models.SmallWorldAgent.agent_id == agent_id,
-                models.SmallWorldAgent.user_id == current_user.id,
-            ).first()
-            if agent:
-                member = models.WorldMember(world_id=world.id, agent_id=agent.id)
-                db.add(member)
 
     db.commit()
     db.refresh(world)
@@ -318,39 +291,41 @@ def run_scenario(
     if scenario.status == "running":
         raise HTTPException(status_code=400, detail="Scenario is already running")
 
-    members = db.query(models.WorldMember).filter(models.WorldMember.world_id == world.id).all()
-    if not members:
+    agents = db.query(models.SmallWorldAgent).filter(
+        models.SmallWorldAgent.world_id == world.id
+    ).all()
+    if not agents:
         raise HTTPException(status_code=400, detail="World has no agents")
 
     # Collect agent data
     agent_dicts = []
     agent_db_ids = []
-    for m in members:
-        agent = db.query(models.SmallWorldAgent).get(m.agent_id)
-        if agent:
-            agent_dicts.append({
-                "agent_id": agent.agent_id,
-                "name": agent.name,
-                "age": agent.age,
-                "gender": agent.gender,
-                "location": agent.location,
-                "profession": agent.profession,
-                "job_title": agent.job_title,
-                "organization": agent.organization,
-                "personality_traits": agent.personality_traits,
-                "behavioral_attributes": agent.behavioral_attributes,
-                "contextual_state": agent.contextual_state,
-                "external_factors": agent.external_factors,
-            })
-            agent_db_ids.append(agent.id)
+    for agent in agents:
+        agent_dicts.append({
+            "agent_id": agent.agent_id,
+            "name": agent.name,
+            "age": agent.age,
+            "gender": agent.gender,
+            "location": agent.location,
+            "profession": agent.profession,
+            "job_title": agent.job_title,
+            "organization": agent.organization,
+            "personality_traits": agent.personality_traits,
+            "behavioral_attributes": agent.behavioral_attributes,
+            "contextual_state": agent.contextual_state,
+            "external_factors": agent.external_factors,
+        })
+        agent_db_ids.append(agent.id)
 
     # Collect user-defined relationships for this world's agents
     rel_records = db.query(models.AgentRelationship).filter(
         models.AgentRelationship.source_agent_id.in_(agent_db_ids)
     ).all()
     agent_by_db_id = {
-        m.agent_id: db.query(models.SmallWorldAgent).get(m.agent_id)
-        for m in members
+        a.id: a
+        for a in db.query(models.SmallWorldAgent).filter(
+            models.SmallWorldAgent.world_id == world.id
+        ).all()
     }
     relationship_dicts = []
     for r in rel_records:
@@ -380,6 +355,17 @@ def run_scenario(
         if parent and parent.outputs_path:
             parent_output_dir = parent.outputs_path
 
+    # Clear old events so a re-run starts with a clean stream
+    db.query(models.WorldSimEvent).filter(
+        models.WorldSimEvent.scenario_id == scenario.id
+    ).delete()
+    # Remove stale report so the old data isn't served during the new run
+    if scenario.report_path and os.path.exists(scenario.report_path):
+        try:
+            os.remove(scenario.report_path)
+        except OSError:
+            pass
+    scenario.report_path = None
     scenario.status = "running"
     scenario.outputs_path = output_dir
     db.commit()
@@ -696,12 +682,12 @@ def generate_report(
     if not scenario.outputs_path:
         raise HTTPException(status_code=400, detail="Scenario output not found")
 
-    members = db.query(models.WorldMember).filter(models.WorldMember.world_id == world.id).all()
+    members = db.query(models.SmallWorldAgent).filter(
+        models.SmallWorldAgent.world_id == world.id
+    ).all()
     agent_profiles = []
-    for m in members:
-        agent = db.query(models.SmallWorldAgent).get(m.agent_id)
-        if agent:
-            agent_profiles.append({"name": agent.name, "job_title": agent.job_title, "profession": agent.profession})
+    for agent in members:
+        agent_profiles.append({"name": agent.name, "job_title": agent.job_title, "profession": agent.profession})
 
     background_tasks.add_task(
         _generate_report_background,
@@ -866,30 +852,31 @@ def health_check(
     from core.world_health_check import run_health_check
 
     world = _get_world_or_404(world_id, current_user.id, db)
-    members = db.query(models.WorldMember).filter(models.WorldMember.world_id == world.id).all()
+    world_agents = db.query(models.SmallWorldAgent).filter(
+        models.SmallWorldAgent.world_id == world.id
+    ).all()
 
     agents_data = []
-    for m in members:
-        agent = db.query(models.SmallWorldAgent).get(m.agent_id)
-        if agent:
-            agents_data.append({
-                "agent_id": agent.agent_id,
-                "name": agent.name,
-                "profession": agent.profession,
-                "job_title": agent.job_title,
-                "organization": agent.organization,
-                "location": agent.location,
-                "personality_traits": agent.personality_traits,
-            })
+    for agent in world_agents:
+        agents_data.append({
+            "agent_id": agent.agent_id,
+            "name": agent.name,
+            "profession": agent.profession,
+            "job_title": agent.job_title,
+            "organization": agent.organization,
+            "location": agent.location,
+            "personality_traits": agent.personality_traits,
+        })
 
     # Get all relationships for these agents
-    agent_db_ids = [m.agent_id for m in members]
+    agent_db_ids = [a.id for a in world_agents]
     rels = db.query(models.AgentRelationship).filter(
         models.AgentRelationship.source_agent_id.in_(agent_db_ids)
     ).all()
+    agent_by_id = {a.id: a for a in world_agents}
     rels_data = [
         {
-            "source_agent_id": db.query(models.SmallWorldAgent).get(r.source_agent_id).agent_id if db.query(models.SmallWorldAgent).get(r.source_agent_id) else "",
+            "source_agent_id": agent_by_id[r.source_agent_id].agent_id if r.source_agent_id in agent_by_id else "",
             "target_agent_id": db.query(models.SmallWorldAgent).get(r.target_agent_id).agent_id if db.query(models.SmallWorldAgent).get(r.target_agent_id) else "",
             "sentiment": r.sentiment,
         }

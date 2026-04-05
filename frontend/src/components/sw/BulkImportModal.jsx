@@ -2,7 +2,12 @@ import React, { useState, useRef } from 'react';
 import { X, Upload, Download, CheckCircle2, AlertTriangle } from 'lucide-react';
 import api from '../../api';
 
-export default function BulkImportModal({ open, onClose, onImported }) {
+export default function BulkImportModal({
+	open,
+	onClose,
+	onImported,
+	worldId,
+}) {
 	const [file, setFile] = useState(null);
 	const [uploading, setUploading] = useState(false);
 	const [error, setError] = useState('');
@@ -29,7 +34,7 @@ export default function BulkImportModal({ open, onClose, onImported }) {
 			const formData = new FormData();
 			formData.append('file', file);
 			const res = await api.post(
-				'/small-world/agents/bulk-import',
+				`/small-world/worlds/${worldId}/agents/bulk-import`,
 				formData,
 				{
 					headers: { 'Content-Type': 'multipart/form-data' },
@@ -49,9 +54,12 @@ export default function BulkImportModal({ open, onClose, onImported }) {
 
 	const handleDownloadTemplate = async () => {
 		try {
-			const res = await api.get('/small-world/agents/template', {
-				responseType: 'blob',
-			});
+			const res = await api.get(
+				`/small-world/worlds/${worldId}/agents/template`,
+				{
+					responseType: 'blob',
+				},
+			);
 			const url = URL.createObjectURL(res.data);
 			const a = document.createElement('a');
 			a.href = url;

@@ -445,6 +445,7 @@ class AgentRelationshipResponse(BaseModel):
 class AgentResponse(BaseModel):
     id: int
     agent_id: str
+    world_id: Optional[str] = None
     name: str
     age: Optional[int] = None
     gender: Optional[str] = None
@@ -485,13 +486,11 @@ class AutoSuggestRelationshipsRequest(BaseModel):
 class WorldCreate(BaseModel):
     name: str
     description: Optional[str] = None
-    agent_ids: List[str] = []   # list of agent_id UUIDs
 
 
 class WorldUpdate(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
-    agent_ids: Optional[List[str]] = None
 
 
 class WorldResponse(BaseModel):

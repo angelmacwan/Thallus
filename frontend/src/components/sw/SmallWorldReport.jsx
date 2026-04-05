@@ -1,44 +1,47 @@
 import React from 'react';
 import { TrendingUp, TrendingDown, Minus, BarChart2, User } from 'lucide-react';
 
-function MetricCard({ label, value }) {
-	const display =
-		value === null || value === undefined
-			? '—'
-			: `${Math.round(value * 100)}%`;
-	return (
-		<div
-			style={{
-				flex: '1 1 120px',
-				padding: '0.85rem 1rem',
-				background: 'var(--surface-container-high)',
-				borderRadius: '10px',
-				textAlign: 'center',
-			}}
-		>
-			<div
-				style={{
-					fontSize: '0.72rem',
-					fontWeight: 600,
-					textTransform: 'uppercase',
-					letterSpacing: '0.06em',
-					color: 'var(--text-secondary)',
-					marginBottom: '0.35rem',
-				}}
-			>
-				{label}
-			</div>
-			<div
-				style={{
-					fontSize: '1.5rem',
-					fontWeight: 800,
-					color: 'var(--text-primary)',
-				}}
-			>
-				{display}
-			</div>
-		</div>
-	);
+function stringifyReportValue(value) {
+	if (value === null || value === undefined || value === '') return '';
+	if (typeof value === 'string' || typeof value === 'number') {
+		return String(value);
+	}
+	if (Array.isArray(value)) {
+		return value
+			.map((item) => stringifyReportValue(item))
+			.filter(Boolean)
+			.join(', ');
+	}
+	if (typeof value === 'object') {
+		const flattened = Object.values(value)
+			.map((item) => stringifyReportValue(item))
+			.filter(Boolean);
+		return flattened.join(', ');
+	}
+	return '';
+}
+
+function formatReportItem(item, primaryKeys = [], secondaryKeys = []) {
+	if (typeof item === 'string' || typeof item === 'number') {
+		return String(item);
+	}
+	if (!item || typeof item !== 'object') {
+		return '—';
+	}
+
+	const primary = primaryKeys
+		.map((key) => stringifyReportValue(item[key]))
+		.find(Boolean);
+	const secondary = secondaryKeys
+		.map((key) => stringifyReportValue(item[key]))
+		.find(Boolean);
+
+	if (primary && secondary) return `${primary} — ${secondary}`;
+	if (primary) return primary;
+	if (secondary) return secondary;
+
+	const fallback = stringifyReportValue(item);
+	return fallback || JSON.stringify(item);
 }
 
 function ConfidenceBadge({ score }) {
@@ -69,13 +72,11 @@ export default function SmallWorldReport({ report }) {
 			</p>
 		);
 
-	const m = report.metrics || {};
-	const metrics = [
-		{ label: 'Adoption', value: m.adoption_rate },
-		{ label: 'Churn', value: m.churn_rate },
-		{ label: 'Conflict', value: m.conflict_index },
-		{ label: 'Morale', value: m.morale_score },
-	];
+	const counterfactualText = formatReportItem(
+		report.counterfactual,
+		['condition'],
+		['impact_description'],
+	);
 
 	const s = {
 		sectionTitle: {
@@ -114,23 +115,6 @@ export default function SmallWorldReport({ report }) {
 				<ConfidenceBadge score={report.confidence_score} />
 			</div>
 
-			{/* Metrics row */}
-			<div
-				style={{
-					display: 'flex',
-					gap: '0.5rem',
-					flexWrap: 'wrap',
-					marginBottom: '0.5rem',
-				}}
-			>
-				{metrics.map((m2) => (
-					<MetricCard
-						key={m2.label}
-						{...m2}
-					/>
-				))}
-			</div>
-
 			{/* Key drivers */}
 			{report.key_drivers?.length > 0 && (
 				<>
@@ -141,7 +125,11 @@ export default function SmallWorldReport({ report }) {
 								key={i}
 								style={{ marginBottom: '0.25rem' }}
 							>
-								{d}
+								{formatReportItem(
+									d,
+									['factor'],
+									['explanation'],
+								)}
 							</li>
 						))}
 					</ol>
@@ -204,10 +192,14 @@ export default function SmallWorldReport({ report }) {
 										{ab.agent_name}
 									</td>
 									<td style={{ padding: '0.35rem 0.6rem' }}>
-										{ab.primary_behavior}
+										{ab.primary_behavior ||
+											ab.behavior_summary ||
+											'—'}
 									</td>
 									<td style={{ padding: '0.35rem 0.6rem' }}>
-										{ab.sentiment_shift || '—'}
+										{ab.sentiment_shift ||
+											ab.role_in_outcome ||
+											'—'}
 									</td>
 									<td style={{ padding: '0.35rem 0.6rem' }}>
 										{ab.influence_score !== undefined
@@ -231,7 +223,11 @@ export default function SmallWorldReport({ report }) {
 								key={i}
 								style={{ marginBottom: '0.2rem' }}
 							>
-								{b}
+								{formatReportItem(
+									b,
+									['risk', 'title', 'condition'],
+									['impact_description', 'description'],
+								)}
 							</li>
 						))}
 					</ul>
@@ -248,7 +244,11 @@ export default function SmallWorldReport({ report }) {
 								key={i}
 								style={{ marginBottom: '0.2rem' }}
 							>
-								{u}
+								{formatReportItem(
+									u,
+									['outcome', 'condition', 'title'],
+									['impact_description', 'description'],
+								)}
 							</li>
 						))}
 					</ul>
@@ -256,7 +256,7 @@ export default function SmallWorldReport({ report }) {
 			)}
 
 			{/* Counterfactual */}
-			{report.counterfactual && (
+			{counterfactualText && (
 				<>
 					<p style={s.sectionTitle}>Counterfactual</p>
 					<div
@@ -268,7 +268,7 @@ export default function SmallWorldReport({ report }) {
 							fontStyle: 'italic',
 						}}
 					>
-						{report.counterfactual}
+						{counterfactualText}
 					</div>
 				</>
 			)}
@@ -303,9 +303,11 @@ export default function SmallWorldReport({ report }) {
 									color: 'var(--on-secondary-container)',
 								}}
 							>
-								{typeof r === 'string'
-									? r
-									: r.action || JSON.stringify(r)}
+								{formatReportItem(
+									r,
+									['action'],
+									['expected_impact'],
+								)}
 							</span>
 						</div>
 					))}

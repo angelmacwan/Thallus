@@ -209,6 +209,7 @@ class SmallWorldAgent(Base):
     id = Column(Integer, primary_key=True, index=True)
     agent_id = Column(String, unique=True, index=True, default=lambda: str(uuid.uuid4()))
     user_id = Column(Integer, ForeignKey("users.id"), index=True)
+    world_id = Column(Integer, ForeignKey("sw_worlds.id"), nullable=True, index=True)
     # Core Identity
     name = Column(String, nullable=False)
     age = Column(Integer, nullable=True)
@@ -226,9 +227,9 @@ class SmallWorldAgent(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     user = relationship("User")
+    world = relationship("SmallWorld", back_populates="agents")
     relationships_from = relationship("AgentRelationship", foreign_keys="AgentRelationship.source_agent_id", back_populates="source_agent", cascade="all, delete-orphan")
     relationships_to = relationship("AgentRelationship", foreign_keys="AgentRelationship.target_agent_id", back_populates="target_agent", cascade="all, delete-orphan")
-    world_memberships = relationship("WorldMember", back_populates="agent", cascade="all, delete-orphan")
 
 
 class AgentRelationship(Base):
@@ -260,19 +261,8 @@ class SmallWorld(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     user = relationship("User")
-    members = relationship("WorldMember", back_populates="world", cascade="all, delete-orphan")
+    agents = relationship("SmallWorldAgent", back_populates="world", cascade="all, delete-orphan")
     scenarios = relationship("WorldScenario", back_populates="world", cascade="all, delete-orphan")
-
-
-class WorldMember(Base):
-    __tablename__ = "sw_world_members"
-
-    id = Column(Integer, primary_key=True, index=True)
-    world_id = Column(Integer, ForeignKey("sw_worlds.id"), nullable=False, index=True)
-    agent_id = Column(Integer, ForeignKey("sw_agents.id"), nullable=False, index=True)
-
-    world = relationship("SmallWorld", back_populates="members")
-    agent = relationship("SmallWorldAgent", back_populates="world_memberships")
 
 
 class WorldScenario(Base):

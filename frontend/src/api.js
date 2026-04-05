@@ -27,20 +27,20 @@ export default api;
 
 // ── Small World API ─────────────────────────────────────────────────
 export const swAgents = {
-  list: () => api.get('/small-world/agents/'),
-  graph: () => api.get('/small-world/agents/graph'),
-  get: (id) => api.get(`/small-world/agents/${id}`),
-  create: (data) => api.post('/small-world/agents/', data),
-  update: (id, data) => api.put(`/small-world/agents/${id}`, data),
-  delete: (id) => api.delete(`/small-world/agents/${id}`),
-  generate: (data) => api.post('/small-world/agents/generate', data),
-  bulkImport: (formData) => api.post('/small-world/agents/bulk-import', formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
-  template: () => api.get('/small-world/agents/template', { responseType: 'blob' }),
-  allRelationships: () => api.get('/small-world/agents-relationships/all'),
-  getRelationships: (id) => api.get(`/small-world/agents/${id}/relationships`),
-  createRelationship: (id, data) => api.post(`/small-world/agents/${id}/relationships`, data),
-  deleteRelationship: (id, relId) => api.delete(`/small-world/agents/${id}/relationships/${relId}`),
-  autoSuggest: (agentIds) => api.post('/small-world/agents/auto-suggest-relationships', { agent_ids: agentIds }),
+  list: (worldId) => api.get(`/small-world/worlds/${worldId}/agents/`),
+  graph: (worldId) => api.get(`/small-world/worlds/${worldId}/agents/graph`),
+  get: (worldId, id) => api.get(`/small-world/worlds/${worldId}/agents/${id}`),
+  create: (worldId, data) => api.post(`/small-world/worlds/${worldId}/agents/`, data),
+  update: (worldId, id, data) => api.put(`/small-world/worlds/${worldId}/agents/${id}`, data),
+  delete: (worldId, id) => api.delete(`/small-world/worlds/${worldId}/agents/${id}`),
+  generate: (worldId, data) => api.post(`/small-world/worlds/${worldId}/agents/generate`, data),
+  bulkImport: (worldId, formData) => api.post(`/small-world/worlds/${worldId}/agents/bulk-import`, formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
+  template: (worldId) => api.get(`/small-world/worlds/${worldId}/agents/template`, { responseType: 'blob' }),
+  getRelationships: (worldId, id) => api.get(`/small-world/worlds/${worldId}/agents/${id}/relationships`),
+  createRelationship: (worldId, id, data) => api.post(`/small-world/worlds/${worldId}/agents/${id}/relationships`, data),
+  deleteRelationship: (worldId, id, relId) => api.delete(`/small-world/worlds/${worldId}/agents/${id}/relationships/${relId}`),
+  updateRelationship: (worldId, id, relId, data) => api.patch(`/small-world/worlds/${worldId}/agents/${id}/relationships/${relId}`, data),
+  autoSuggest: (worldId, agentIds) => api.post(`/small-world/worlds/${worldId}/agents/auto-suggest-relationships`, { agent_ids: agentIds }),
 };
 
 export const swWorlds = {

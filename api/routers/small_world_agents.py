@@ -22,7 +22,17 @@ router = APIRouter(prefix="/api/small-world", tags=["small-world-agents"])
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
-def _agent_to_response(agent: models.SmallWorldAgent, db: Session) -> schemas.AgentResponse:
+def _get_world_or_404(world_id: str, user_id: int, db: Session) -> models.SmallWorld:
+    world = db.query(models.SmallWorld).filter(
+        models.SmallWorld.world_id == world_id,
+        models.SmallWorld.user_id == user_id,
+    ).first()
+    if not world:
+        raise HTTPException(status_code=404, detail="World not found")
+    return world
+
+
+def _agent_to_response(agent: models.SmallWorldAgent, db: Session, world_uuid: str | None = None) -> schemas.AgentResponse:
     rel_count = db.query(models.AgentRelationship).filter(
         (models.AgentRelationship.source_agent_id == agent.id) |
         (models.AgentRelationship.target_agent_id == agent.id)
@@ -39,6 +49,7 @@ def _agent_to_response(agent: models.SmallWorldAgent, db: Session) -> schemas.Ag
     return schemas.AgentResponse(
         id=agent.id,
         agent_id=agent.agent_id,
+        world_id=world_uuid,
         name=agent.name,
         age=agent.age,
         gender=agent.gender,
@@ -93,37 +104,41 @@ def _apply_agent_data(agent: models.SmallWorldAgent, data: schemas.AgentCreate |
 
 # ── List agents ───────────────────────────────────────────────────────────────
 
-@router.get("/agents/", response_model=list[schemas.AgentResponse])
+@router.get("/worlds/{world_id}/agents/", response_model=list[schemas.AgentResponse])
 def list_agents(
+    world_id: str,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
+    world = _get_world_or_404(world_id, current_user.id, db)
     agents = db.query(models.SmallWorldAgent).filter(
-        models.SmallWorldAgent.user_id == current_user.id
+        models.SmallWorldAgent.world_id == world.id
     ).order_by(models.SmallWorldAgent.created_at.desc()).all()
-    return [_agent_to_response(a, db) for a in agents]
+    return [_agent_to_response(a, db, world_uuid=world.world_id) for a in agents]
 
 
 # ── Create agent ──────────────────────────────────────────────────────────────
 
-@router.post("/agents/", response_model=schemas.AgentResponse, status_code=201)
+@router.post("/worlds/{world_id}/agents/", response_model=schemas.AgentResponse, status_code=201)
 def create_agent(
+    world_id: str,
     body: schemas.AgentCreate,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
-    agent = models.SmallWorldAgent(user_id=current_user.id, name=body.name)
+    world = _get_world_or_404(world_id, current_user.id, db)
+    agent = models.SmallWorldAgent(user_id=current_user.id, world_id=world.id, name=body.name)
     _apply_agent_data(agent, body)
     db.add(agent)
     db.commit()
     db.refresh(agent)
-    return _agent_to_response(agent, db)
+    return _agent_to_response(agent, db, world_uuid=world.world_id)
 
 
 # ── Download Template ─────────────────────────────────────────────────────────
 
-@router.get("/agents/template")
-def download_template():
+@router.get("/worlds/{world_id}/agents/template")
+def download_template(world_id: str):
     import openpyxl
     from openpyxl.styles import Font, PatternFill, Alignment
 
@@ -176,27 +191,29 @@ def download_template():
 
 # ── Get agent graph (must come before /{agent_id}) ───────────────────────────
 
-@router.get("/agents/graph", response_model=schemas.AgentGraphResponse)
+@router.get("/worlds/{world_id}/agents/graph", response_model=schemas.AgentGraphResponse)
 def get_agent_graph(
+    world_id: str,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
+    world = _get_world_or_404(world_id, current_user.id, db)
     agents = db.query(models.SmallWorldAgent).filter(
-        models.SmallWorldAgent.user_id == current_user.id
+        models.SmallWorldAgent.world_id == world.id
     ).order_by(models.SmallWorldAgent.created_at.desc()).all()
 
     if not agents:
         return schemas.AgentGraphResponse(agents=[], relationships=[])
 
     agent_lookup = {agent.id: agent for agent in agents}
-    user_agent_ids = list(agent_lookup.keys())
+    world_agent_ids = list(agent_lookup.keys())
     relationships = db.query(models.AgentRelationship).filter(
-        models.AgentRelationship.source_agent_id.in_(user_agent_ids),
-        models.AgentRelationship.target_agent_id.in_(user_agent_ids),
+        models.AgentRelationship.source_agent_id.in_(world_agent_ids),
+        models.AgentRelationship.target_agent_id.in_(world_agent_ids),
     ).all()
 
     return schemas.AgentGraphResponse(
-        agents=[_agent_to_response(agent, db) for agent in agents],
+        agents=[_agent_to_response(agent, db, world_uuid=world_id) for agent in agents],
         relationships=[
             _relationship_to_response(relationship, agent_lookup)
             for relationship in relationships
@@ -206,53 +223,59 @@ def get_agent_graph(
 
 # ── Get single agent ──────────────────────────────────────────────────────────
 
-@router.get("/agents/{agent_id}", response_model=schemas.AgentResponse)
+@router.get("/worlds/{world_id}/agents/{agent_id}", response_model=schemas.AgentResponse)
 def get_agent(
+    world_id: str,
     agent_id: str,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
+    world = _get_world_or_404(world_id, current_user.id, db)
     agent = db.query(models.SmallWorldAgent).filter(
         models.SmallWorldAgent.agent_id == agent_id,
-        models.SmallWorldAgent.user_id == current_user.id,
+        models.SmallWorldAgent.world_id == world.id,
     ).first()
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
-    return _agent_to_response(agent, db)
+    return _agent_to_response(agent, db, world_uuid=world.world_id)
 
 
 # ── Update agent ──────────────────────────────────────────────────────────────
 
-@router.put("/agents/{agent_id}", response_model=schemas.AgentResponse)
+@router.put("/worlds/{world_id}/agents/{agent_id}", response_model=schemas.AgentResponse)
 def update_agent(
+    world_id: str,
     agent_id: str,
     body: schemas.AgentUpdate,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
+    world = _get_world_or_404(world_id, current_user.id, db)
     agent = db.query(models.SmallWorldAgent).filter(
         models.SmallWorldAgent.agent_id == agent_id,
-        models.SmallWorldAgent.user_id == current_user.id,
+        models.SmallWorldAgent.world_id == world.id,
     ).first()
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
     _apply_agent_data(agent, body)
     db.commit()
     db.refresh(agent)
-    return _agent_to_response(agent, db)
+    return _agent_to_response(agent, db, world_uuid=world.world_id)
 
 
 # ── Delete agent ──────────────────────────────────────────────────────────────
 
-@router.delete("/agents/{agent_id}", status_code=204)
+@router.delete("/worlds/{world_id}/agents/{agent_id}", status_code=204)
 def delete_agent(
+    world_id: str,
     agent_id: str,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
+    world = _get_world_or_404(world_id, current_user.id, db)
     agent = db.query(models.SmallWorldAgent).filter(
         models.SmallWorldAgent.agent_id == agent_id,
-        models.SmallWorldAgent.user_id == current_user.id,
+        models.SmallWorldAgent.world_id == world.id,
     ).first()
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
@@ -262,11 +285,14 @@ def delete_agent(
 
 # ── AI Agent Generation ───────────────────────────────────────────────────────
 
-@router.post("/agents/generate", response_model=schemas.AgentCreate)
+@router.post("/worlds/{world_id}/agents/generate", response_model=schemas.AgentCreate)
 def generate_agent(
+    world_id: str,
     body: schemas.AgentGenerateRequest,
+    db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
+    _get_world_or_404(world_id, current_user.id, db)
     """
     Take sparse fields + natural language description and use Gemini to produce
     a complete AgentCreate payload. The frontend shows this for user review
@@ -296,12 +322,14 @@ def generate_agent(
 
 # ── Bulk Import (Excel / CSV) ─────────────────────────────────────────────────
 
-@router.post("/agents/bulk-import", response_model=list[schemas.AgentResponse], status_code=201)
+@router.post("/worlds/{world_id}/agents/bulk-import", response_model=list[schemas.AgentResponse], status_code=201)
 async def bulk_import_agents(
+    world_id: str,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
+    world = _get_world_or_404(world_id, current_user.id, db)
     import pandas as pd
 
     content = await file.read()
@@ -372,6 +400,7 @@ async def bulk_import_agents(
 
         agent = models.SmallWorldAgent(
             user_id=current_user.id,
+            world_id=world.id,
             name=name,
             age=_safe_int("age"),
             gender=_safe("gender"),
@@ -391,28 +420,30 @@ async def bulk_import_agents(
     db.commit()
     for a in created:
         db.refresh(a)
-    return [_agent_to_response(a, db) for a in created]
+    return [_agent_to_response(a, db, world_uuid=world.world_id) for a in created]
 
 
 # ── Relationships ─────────────────────────────────────────────────────────────
 
-def _get_agent_or_404(agent_id: str, user_id: int, db: Session) -> models.SmallWorldAgent:
+def _get_agent_or_404(agent_id: str, world_db_id: int, db: Session) -> models.SmallWorldAgent:
     agent = db.query(models.SmallWorldAgent).filter(
         models.SmallWorldAgent.agent_id == agent_id,
-        models.SmallWorldAgent.user_id == user_id,
+        models.SmallWorldAgent.world_id == world_db_id,
     ).first()
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
     return agent
 
 
-@router.get("/agents/{agent_id}/relationships", response_model=list[schemas.AgentRelationshipResponse])
+@router.get("/worlds/{world_id}/agents/{agent_id}/relationships", response_model=list[schemas.AgentRelationshipResponse])
 def list_relationships(
+    world_id: str,
     agent_id: str,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
-    agent = _get_agent_or_404(agent_id, current_user.id, db)
+    world = _get_world_or_404(world_id, current_user.id, db)
+    agent = _get_agent_or_404(agent_id, world.id, db)
     rels = db.query(models.AgentRelationship).filter(
         (models.AgentRelationship.source_agent_id == agent.id) |
         (models.AgentRelationship.target_agent_id == agent.id)
@@ -433,15 +464,17 @@ def list_relationships(
     return [_relationship_to_response(relationship, agent_lookup) for relationship in rels]
 
 
-@router.post("/agents/{agent_id}/relationships", response_model=schemas.AgentRelationshipResponse, status_code=201)
+@router.post("/worlds/{world_id}/agents/{agent_id}/relationships", response_model=schemas.AgentRelationshipResponse, status_code=201)
 def create_relationship(
+    world_id: str,
     agent_id: str,
     body: schemas.AgentRelationshipCreate,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
-    source = _get_agent_or_404(agent_id, current_user.id, db)
-    target = _get_agent_or_404(body.target_agent_id, current_user.id, db)
+    world = _get_world_or_404(world_id, current_user.id, db)
+    source = _get_agent_or_404(agent_id, world.id, db)
+    target = _get_agent_or_404(body.target_agent_id, world.id, db)
 
     if source.id == target.id:
         raise HTTPException(status_code=400, detail="Cannot create self-relationship")
@@ -481,14 +514,16 @@ def create_relationship(
     )
 
 
-@router.delete("/agents/{agent_id}/relationships/{rel_id}", status_code=204)
+@router.delete("/worlds/{world_id}/agents/{agent_id}/relationships/{rel_id}", status_code=204)
 def delete_relationship(
+    world_id: str,
     agent_id: str,
     rel_id: str,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
-    agent = _get_agent_or_404(agent_id, current_user.id, db)
+    world = _get_world_or_404(world_id, current_user.id, db)
+    agent = _get_agent_or_404(agent_id, world.id, db)
     rel = db.query(models.AgentRelationship).filter(
         models.AgentRelationship.rel_id == rel_id,
         (
@@ -502,15 +537,17 @@ def delete_relationship(
     db.commit()
 
 
-@router.patch("/agents/{agent_id}/relationships/{rel_id}", response_model=schemas.AgentRelationshipResponse)
+@router.patch("/worlds/{world_id}/agents/{agent_id}/relationships/{rel_id}", response_model=schemas.AgentRelationshipResponse)
 def update_relationship(
+    world_id: str,
     agent_id: str,
     rel_id: str,
     body: schemas.AgentRelationshipUpdate,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
-    agent = _get_agent_or_404(agent_id, current_user.id, db)
+    world = _get_world_or_404(world_id, current_user.id, db)
+    agent = _get_agent_or_404(agent_id, world.id, db)
     rel = db.query(models.AgentRelationship).filter(
         models.AgentRelationship.rel_id == rel_id,
         (
@@ -549,50 +586,21 @@ def update_relationship(
     return _relationship_to_response(rel, agent_lookup)
 
 
-# ── All relationships for user (used by graph view) ───────────────────────────
-
-@router.get("/agents-relationships/all", response_model=list[schemas.AgentRelationshipResponse])
-def list_all_relationships(
-    db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user),
-):
-    """Return all relationships between this user's agents (for graph view)."""
-    user_agent_ids = [
-        a.id for a in db.query(models.SmallWorldAgent).filter(
-            models.SmallWorldAgent.user_id == current_user.id
-        ).all()
-    ]
-    if not user_agent_ids:
-        return []
-
-    rels = db.query(models.AgentRelationship).filter(
-        models.AgentRelationship.source_agent_id.in_(user_agent_ids),
-        models.AgentRelationship.target_agent_id.in_(user_agent_ids),
-    ).all()
-
-    agent_lookup = {
-        agent.id: agent
-        for agent in db.query(models.SmallWorldAgent).filter(
-            models.SmallWorldAgent.id.in_(user_agent_ids)
-        ).all()
-    }
-
-    return [_relationship_to_response(relationship, agent_lookup) for relationship in rels]
-
-
 # ── Auto-suggest relationships ────────────────────────────────────────────────
 
-@router.post("/agents/auto-suggest-relationships", response_model=list[schemas.AgentRelationshipResponse])
+@router.post("/worlds/{world_id}/agents/auto-suggest-relationships", response_model=list[schemas.AgentRelationshipResponse])
 def auto_suggest_relationships(
+    world_id: str,
     body: schemas.AutoSuggestRelationshipsRequest,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
     from core.agent_generator import suggest_relationships
 
+    world = _get_world_or_404(world_id, current_user.id, db)
     agents_db = db.query(models.SmallWorldAgent).filter(
         models.SmallWorldAgent.agent_id.in_(body.agent_ids),
-        models.SmallWorldAgent.user_id == current_user.id,
+        models.SmallWorldAgent.world_id == world.id,
     ).all()
 
     if len(agents_db) < 2:

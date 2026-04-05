@@ -339,8 +339,8 @@ class SmallWorldRunner:
             conn.row_factory = sqlite3.Row
             cur = conn.cursor()
 
-            # Try common OASIS table names
-            tables_to_try = ["post", "posts", "comment", "comments", "action", "actions"]
+            # Export trace first (has action field), then post/comment for content
+            tables_to_try = ["trace", "post", "posts", "comment", "comments", "action", "actions"]
             with open(log_path, "w", encoding="utf-8") as out:
                 for table in tables_to_try:
                     try:
