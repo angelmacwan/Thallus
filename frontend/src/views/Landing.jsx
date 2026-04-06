@@ -135,22 +135,6 @@ export default function Landing() {
 								Open app
 							</Link>
 						</div>
-						<div className="landing-trust-row">
-							<div>
-								<span className="landing-trust-number">
-									Narrative-first
-								</span>
-								<p>Track how ideas form, spread, and mutate</p>
-							</div>
-							<div>
-								<span className="landing-trust-number">
-									Behavioral modeling
-								</span>
-								<p>
-									Simulate individuals and their interactions
-								</p>
-							</div>
-						</div>
 					</div>
 
 					<div className="landing-panel">
@@ -196,6 +180,23 @@ export default function Landing() {
 										time.
 									</p>
 								</div>
+							</div>
+						</div>
+
+						<div className="landing-trust-row">
+							<div>
+								<span className="landing-trust-number">
+									Narrative-first
+								</span>
+								<p>Track how ideas form, spread, and mutate</p>
+							</div>
+							<div>
+								<span className="landing-trust-number">
+									Behavioral modeling
+								</span>
+								<p>
+									Simulate individuals and their interactions
+								</p>
 							</div>
 						</div>
 					</div>
