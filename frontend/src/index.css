@@ -958,12 +958,504 @@ button {
   opacity: 0.5;
 }
 
+/* ── Landing Extended Sections ────────────────────────────────────────── */
+
+.landing-subline {
+  font-family: 'Manrope', sans-serif;
+  font-size: 1.1rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--primary);
+  margin-bottom: 1.75rem;
+}
+
+.landing-section {
+  border: 1px solid rgba(18, 40, 60, 0.08);
+  background: rgba(255, 255, 255, 0.68);
+  backdrop-filter: blur(14px);
+  box-shadow: 0 18px 40px rgba(18, 40, 60, 0.08);
+  border-radius: 28px;
+  padding: 2.4rem;
+  margin-bottom: 1.5rem;
+}
+
+.landing-section-header {
+  margin-bottom: 2rem;
+}
+
+.landing-section-header h2,
+.landing-section-h2 {
+  font-family: 'Manrope', sans-serif;
+  font-size: clamp(1.6rem, 3vw, 2.4rem);
+  line-height: 1.07;
+  letter-spacing: -0.05em;
+  color: var(--primary);
+  margin-bottom: 0.6rem;
+}
+
+.landing-section-header>p:not(.landing-panel-label) {
+  max-width: 62ch;
+  font-size: 1rem;
+  line-height: 1.7;
+  color: var(--text-secondary);
+}
+
+/* Contrast statement */
+.landing-contrast-statement {
+  font-family: 'Manrope', sans-serif;
+  font-size: clamp(1.25rem, 2.4vw, 1.8rem);
+  line-height: 1.35;
+  letter-spacing: -0.03em;
+  color: var(--text-secondary);
+  max-width: 72ch;
+  margin: 0 auto 2rem;
+  padding-bottom: 2rem;
+  border-bottom: 1px solid rgba(18, 40, 60, 0.08);
+  text-align: center;
+}
+
+.landing-contrast-statement strong {
+  color: var(--primary);
+}
+
+/* Pillars */
+.landing-pillars-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.landing-pillar {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 1.1rem;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid rgba(18, 40, 60, 0.07);
+}
+
+.landing-pillar-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(18, 40, 60, 0.07);
+  color: var(--primary);
+  flex-shrink: 0;
+}
+
+.landing-pillar h3 {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--primary);
+  margin-bottom: 0.3rem;
+}
+
+.landing-pillar p {
+  font-size: 0.87rem;
+  line-height: 1.55;
+  color: var(--text-secondary);
+}
+
+/* Modes */
+.landing-modes-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1.2rem;
+}
+
+.landing-mode-card {
+  border-radius: 22px;
+  padding: 1.75rem;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(18, 40, 60, 0.08);
+}
+
+.landing-mode-number {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  background: var(--gradient-primary);
+  color: #fff;
+  font-size: 0.82rem;
+  font-weight: 800;
+  margin-bottom: 1rem;
+}
+
+.landing-mode-card h3 {
+  font-family: 'Manrope', sans-serif;
+  font-size: 1.25rem;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  color: var(--primary);
+  margin-bottom: 0.5rem;
+}
+
+.landing-mode-card>p {
+  font-size: 0.95rem;
+  line-height: 1.65;
+  color: var(--text-secondary);
+  margin-bottom: 1.25rem;
+}
+
+.landing-mode-features {
+  list-style: none;
+  display: grid;
+  gap: 0.55rem;
+}
+
+.landing-mode-features li {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.55rem;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  color: var(--on-surface-variant);
+}
+
+.landing-mode-features li svg {
+  color: var(--primary);
+  flex-shrink: 0;
+  margin-top: 0.15rem;
+}
+
+/* Use cases */
+.landing-usecases-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.landing-usecase-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  padding: 1rem 1.1rem;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(18, 40, 60, 0.07);
+  font-size: 0.92rem;
+  line-height: 1.5;
+  color: var(--primary);
+  font-weight: 500;
+}
+
+.landing-usecase-item svg {
+  color: var(--secondary);
+  flex-shrink: 0;
+  margin-top: 0.2rem;
+}
+
+/* How it works */
+.landing-how-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.landing-step {
+  padding: 1.25rem;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(18, 40, 60, 0.07);
+}
+
+.landing-step-num {
+  font-family: 'Manrope', sans-serif;
+  font-size: 2.4rem;
+  font-weight: 800;
+  letter-spacing: -0.06em;
+  color: rgba(18, 40, 60, 0.12);
+  line-height: 1;
+  margin-bottom: 0.7rem;
+}
+
+.landing-step h3 {
+  font-size: 0.98rem;
+  font-weight: 700;
+  color: var(--primary);
+  margin-bottom: 0.4rem;
+}
+
+.landing-step p {
+  font-size: 0.87rem;
+  line-height: 1.6;
+  color: var(--text-secondary);
+}
+
+/* Simulation loop diagram */
+.sim-loop-diagram {
+  border-radius: 20px;
+  padding: 1.75rem 1.25rem;
+  background: rgba(255, 255, 255, 0.55);
+  border: 1px solid rgba(18, 40, 60, 0.07);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.sim-loop-diagram svg {
+  width: 100%;
+  max-width: 480px;
+  height: auto;
+}
+
+/* Analysis cards */
+.landing-analysis-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.landing-analysis-card {
+  padding: 1.5rem;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(18, 40, 60, 0.08);
+}
+
+.landing-analysis-card-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(18, 40, 60, 0.07);
+  color: var(--primary);
+  margin-bottom: 1rem;
+}
+
+.landing-analysis-card h3 {
+  font-family: 'Manrope', sans-serif;
+  font-size: 1.05rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  color: var(--primary);
+  margin-bottom: 0.35rem;
+}
+
+.landing-analysis-card>p {
+  font-size: 0.88rem;
+  line-height: 1.6;
+  color: var(--text-secondary);
+  margin-bottom: 1rem;
+}
+
+.landing-analysis-list {
+  list-style: none;
+  display: grid;
+  gap: 0.45rem;
+}
+
+.landing-analysis-list li {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.55rem;
+  font-size: 0.86rem;
+  line-height: 1.5;
+  color: var(--on-surface-variant);
+}
+
+.landing-analysis-list li::before {
+  content: '';
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--secondary);
+  flex-shrink: 0;
+  margin-top: 0.45em;
+}
+
+/* When + Why side-by-side */
+.landing-when-why-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1.5rem;
+  margin-bottom: 1.5rem;
+  align-items: start;
+}
+
+.landing-when-why-grid .landing-section {
+  margin-bottom: 0;
+}
+
+.landing-when-list {
+  list-style: none;
+  display: grid;
+  gap: 0.6rem;
+  margin-top: 1.25rem;
+}
+
+.landing-when-list li {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+  padding: 0.85rem 1rem;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.65);
+  border: 1px solid rgba(18, 40, 60, 0.07);
+  font-size: 0.92rem;
+  line-height: 1.5;
+  color: var(--primary);
+}
+
+.landing-when-list li svg {
+  flex-shrink: 0;
+  color: var(--primary);
+  margin-top: 0.1rem;
+}
+
+.landing-why-copy {
+  font-size: 0.96rem;
+  line-height: 1.7;
+  color: var(--text-secondary);
+  margin-bottom: 1.25rem;
+}
+
+/* System traits */
+.landing-system-traits {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.75rem;
+  margin-bottom: 1.25rem;
+}
+
+.landing-trait {
+  text-align: center;
+  padding: 1rem 0.75rem;
+  border-radius: 16px;
+  background: rgba(18, 40, 60, 0.04);
+  border: 1px solid rgba(18, 40, 60, 0.07);
+}
+
+.landing-trait-value {
+  font-family: 'Manrope', sans-serif;
+  font-size: 1.05rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  color: var(--primary);
+  margin-bottom: 0.3rem;
+}
+
+.landing-trait-label {
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+/* Principles */
+.landing-principles-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.landing-principle {
+  padding: 1.4rem;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid rgba(18, 40, 60, 0.07);
+}
+
+.landing-principle h3 {
+  font-family: 'Manrope', sans-serif;
+  font-size: 1rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  color: var(--primary);
+  margin-bottom: 0.35rem;
+}
+
+.landing-principle p {
+  font-size: 0.87rem;
+  line-height: 1.6;
+  color: var(--text-secondary);
+}
+
+/* CTA section */
+.landing-cta-section {
+  text-align: center;
+  padding: 3.5rem 2rem;
+}
+
+.landing-cta-section h2 {
+  font-family: 'Manrope', sans-serif;
+  font-size: clamp(1.75rem, 3.5vw, 2.8rem);
+  line-height: 1.1;
+  letter-spacing: -0.05em;
+  color: var(--primary);
+  margin-bottom: 1rem;
+}
+
+.landing-cta-section p {
+  max-width: 56ch;
+  margin: 0 auto 2rem;
+  font-size: 1.05rem;
+  line-height: 1.7;
+  color: var(--text-secondary);
+}
+
+.landing-actions-centered {
+  justify-content: center;
+}
+
+/* Footer */
+.landing-footer {
+  text-align: center;
+  padding: 2.5rem 0 0.5rem;
+}
+
+.landing-footer-brand {
+  font-family: 'Manrope', sans-serif;
+  font-size: 1rem;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  color: var(--primary);
+  margin-bottom: 0.35rem;
+}
+
+.landing-footer p:last-child {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  max-width: 52ch;
+  margin: 0 auto;
+  line-height: 1.6;
+}
+
 @media (max-width: 900px) {
 
   .landing-hero-grid,
   .landing-waitlist,
+  .landing-modes-grid,
+  .landing-when-why-grid,
+  .landing-analysis-grid,
   .auth-layout {
     grid-template-columns: 1fr;
+  }
+
+  .landing-how-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .landing-pillars-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .landing-section {
+    padding: 1.75rem;
+  }
+
+  .landing-cta-section {
+    padding: 2.5rem 1.5rem;
   }
 
   .landing-shell {
@@ -1052,6 +1544,24 @@ button {
   .landing-capability-card,
   .auth-highlight-item {
     grid-template-columns: 1fr;
+  }
+
+  .landing-pillars-grid,
+  .landing-usecases-grid,
+  .landing-how-grid,
+  .landing-analysis-grid,
+  .landing-principles-grid,
+  .landing-system-traits {
+    grid-template-columns: 1fr;
+  }
+
+  .landing-section {
+    padding: 1.4rem;
+    border-radius: 22px;
+  }
+
+  .landing-cta-section {
+    padding: 2rem 1.25rem;
   }
 }
 
