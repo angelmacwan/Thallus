@@ -8,6 +8,10 @@ import {
 	Sparkles,
 	Users,
 } from 'lucide-react';
+import { waitlist } from '../api';
+
+const WAITLIST_MAX_ATTEMPTS = 3; // allowed submissions before blocking
+const WAITLIST_WINDOW_MS = 60_000; // rolling window (ms)
 
 const capabilityItems = [
 	{
@@ -34,39 +38,62 @@ export default function Landing() {
 	const [email, setEmail] = useState('');
 	const [submitted, setSubmitted] = useState(false);
 	const [error, setError] = useState('');
+	const [loading, setLoading] = useState(false);
 
-	const handleSubmit = (event) => {
+	const handleSubmit = async (event) => {
 		event.preventDefault();
 		const trimmedEmail = email.trim().toLowerCase();
 
 		if (!trimmedEmail) {
 			setError('Enter an email address to join the waitlist.');
-			setSubmitted(false);
 			return;
 		}
 
-		try {
-			const existingEntries = JSON.parse(
-				localStorage.getItem('thallus.waitlist') || '[]',
+		// Client-side rate limit: block only after WAITLIST_MAX_ATTEMPTS in the window
+		const now = Date.now();
+		const raw = JSON.parse(
+			localStorage.getItem('thallus.waitlist.attempts') || '[]',
+		);
+		const recentAttempts = raw.filter((t) => now - t < WAITLIST_WINDOW_MS);
+		if (recentAttempts.length >= WAITLIST_MAX_ATTEMPTS) {
+			const oldestInWindow = Math.min(...recentAttempts);
+			const remainingSecs = Math.ceil(
+				(WAITLIST_WINDOW_MS - (now - oldestInWindow)) / 1000,
 			);
-			const nextEntries = Array.isArray(existingEntries)
-				? existingEntries
-				: [];
-			if (!nextEntries.includes(trimmedEmail)) {
-				nextEntries.push(trimmedEmail);
-				localStorage.setItem(
-					'thallus.waitlist',
-					JSON.stringify(nextEntries),
-				);
-			}
-			setError('');
+			setError(
+				`Too many attempts. Please wait ${remainingSecs}s before trying again.`,
+			);
+			return;
+		}
+
+		setLoading(true);
+		setError('');
+
+		// Record this attempt
+		localStorage.setItem(
+			'thallus.waitlist.attempts',
+			JSON.stringify([...recentAttempts, now]),
+		);
+
+		try {
+			await waitlist.join(trimmedEmail);
 			setSubmitted(true);
 			setEmail('');
-		} catch {
-			setError(
-				'Unable to save your request right now. Try again shortly.',
-			);
+		} catch (err) {
+			const detail = err?.response?.data?.detail;
+			if (err?.response?.status === 429) {
+				setError('Too many requests. Please try again later.');
+			} else if (err?.response?.status === 409) {
+				setError('This email is already on the waitlist.');
+			} else {
+				setError(
+					detail ||
+						'Unable to save your request right now. Try again shortly.',
+				);
+			}
 			setSubmitted(false);
+		} finally {
+			setLoading(false);
 		}
 	};
 
@@ -207,8 +234,9 @@ export default function Landing() {
 						<button
 							type="submit"
 							className="btn landing-submit"
+							disabled={loading}
 						>
-							Join waitlist
+							{loading ? 'Joining…' : 'Join waitlist'}
 						</button>
 						{submitted && !error && (
 							<p className="landing-form-status landing-form-status-success">

@@ -201,6 +201,15 @@ class PromoCodeUsage(Base):
     user = relationship("User", back_populates="promo_code_usages")
 
 
+class WaitlistEntry(Base):
+    __tablename__ = "waitlist_entries"
+
+    id = Column(Integer, primary_key=True, index=True)
+    email = Column(String, nullable=False, index=True)
+    ip_address = Column(String, nullable=True, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
 # ── Small World ───────────────────────────────────────────────────────────────
 
 class SmallWorldAgent(Base):

@@ -2,6 +2,10 @@ from pydantic import BaseModel, EmailStr
 from typing import List, Optional
 from datetime import datetime
 
+
+class WaitlistCreate(BaseModel):
+    email: EmailStr
+
 class UserBase(BaseModel):
     email: EmailStr
 

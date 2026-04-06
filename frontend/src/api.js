@@ -25,6 +25,11 @@ api.interceptors.response.use(
 
 export default api;
 
+// ── Waitlist ─────────────────────────────────────────────────────────
+export const waitlist = {
+  join: (email) => api.post('/auth/waitlist', { email }),
+};
+
 // ── Small World API ─────────────────────────────────────────────────
 export const swAgents = {
   list: (worldId) => api.get(`/small-world/worlds/${worldId}/agents/`),

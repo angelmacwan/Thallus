@@ -112,6 +112,12 @@ _MIGRATIONS = [
         message TEXT NOT NULL,
         timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
     )""",
+    """CREATE TABLE IF NOT EXISTS waitlist_entries (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        email VARCHAR NOT NULL,
+        ip_address VARCHAR,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )""",
 ]
 with engine.connect() as _conn:
     for _sql in _MIGRATIONS:
