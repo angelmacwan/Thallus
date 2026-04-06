@@ -260,8 +260,10 @@ export default function Landing() {
 					</div>
 					<div className="landing-modes-grid">
 						<div className="landing-mode-card">
-							<div className="landing-mode-number">1</div>
-							<h3>Automated Simulations</h3>
+							<div className="landing-mode-header">
+								<div className="landing-mode-number">1</div>
+								<h3>Automated Simulations</h3>
+							</div>
 							<p>
 								Turn raw information into a living, evolving
 								system. Upload reports, news, or internal
@@ -284,8 +286,10 @@ export default function Landing() {
 							</ul>
 						</div>
 						<div className="landing-mode-card">
-							<div className="landing-mode-number">2</div>
-							<h3>Small World(s)</h3>
+							<div className="landing-mode-header">
+								<div className="landing-mode-number">2</div>
+								<h3>Small World(s)</h3>
+							</div>
 							<p>
 								Design controlled environments for precision
 								testing. Create custom agents and worlds to test
@@ -633,6 +637,11 @@ export default function Landing() {
 						Intelligence
 					</p>
 				</footer>
+				<p className="landing-footer-contact">
+					<a href="mailto:angelmacwan@staticalabs.com">
+						Contact via email
+					</a>
+				</p>
 			</section>
 		</div>
 	);
