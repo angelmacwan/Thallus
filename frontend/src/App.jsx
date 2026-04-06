@@ -46,6 +46,7 @@ import {
 import { SidebarCtx } from './SidebarContext';
 import Auth from './views/Auth';
 import Home from './views/Home';
+import Landing from './views/Landing';
 import SessionView from './views/Session';
 import SmallWorldView from './views/SmallWorld';
 import SimulationsView from './views/Simulations';
@@ -1078,12 +1079,20 @@ function AppLayout() {
 				>
 					<Routes>
 						<Route
+							path="/landing"
+							element={<Landing />}
+						/>
+						<Route
 							path="/login"
 							element={<Auth />}
 						/>
 						<Route
 							path="/"
-							element={<Navigate to="/simulations" />}
+							element={
+								<Navigate
+									to={token ? '/simulations' : '/landing'}
+								/>
+							}
 						/>
 						<Route
 							path="/simulations"
