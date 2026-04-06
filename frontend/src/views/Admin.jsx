@@ -3,8 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import { adminApi } from '../api';
 import {
 	Users,
-	FileText,
-	Activity,
 	AlertTriangle,
 	Trash2,
 	Pencil,
@@ -14,6 +12,7 @@ import {
 	Coins,
 	ChevronDown,
 	ChevronRight,
+	ListPlus,
 } from 'lucide-react';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -463,26 +462,23 @@ export default function Admin() {
 	const [loading, setLoading] = useState(true);
 	const [authorized, setAuthorized] = useState(false);
 	const [users, setUsers] = useState([]);
-	const [sessions, setSessions] = useState([]);
-	const [reports, setReports] = useState([]);
-	const [transactions, setTransactions] = useState([]);
+	const [waitlistEntries, setWaitlistEntries] = useState([]);
 	const [attempts, setAttempts] = useState([]);
+	const [promoCodeUsages, setPromoCodeUsages] = useState([]);
 
 	const loadAll = useCallback(async () => {
 		setLoading(true);
 		try {
-			const [u, s, r, t, a] = await Promise.all([
+			const [u, w, a, p] = await Promise.all([
 				adminApi.users.list(),
-				adminApi.sessions.list(),
-				adminApi.reports.list(),
-				adminApi.transactions.list(),
+				adminApi.waitlistEntries.list(),
 				adminApi.unauthorizedAttempts.list(),
+				adminApi.promoCodeUsages.list(),
 			]);
 			setUsers(u.data);
-			setSessions(s.data);
-			setReports(r.data);
-			setTransactions(t.data);
+			setWaitlistEntries(w.data);
 			setAttempts(a.data);
+			setPromoCodeUsages(p.data);
 		} catch {
 			// errors handled below
 		} finally {
@@ -588,95 +584,21 @@ export default function Admin() {
 				/>
 			</Section>
 
-			{/* Sessions */}
+			{/* Waitlist Entries */}
 			<Section
-				icon={Activity}
-				title="Sessions"
-				count={sessions.length}
+				icon={ListPlus}
+				title="Waitlist Entries"
+				count={waitlistEntries.length}
 			>
 				<AdminTable
-					rows={sessions}
+					rows={waitlistEntries}
 					columns={[
 						{ key: 'id', label: 'ID' },
-						{ key: 'user_id', label: 'User ID' },
-						{ key: 'title', label: 'Title' },
-						{
-							key: 'status',
-							label: 'Status',
-							render: (v) => <Badge>{v}</Badge>,
-						},
-						{ key: 'rounds', label: 'Rounds', type: 'number' },
-						{ key: 'created_at', label: 'Created' },
-					]}
-					editableFields={['title', 'status', 'rounds']}
-					onSave={async (id, vals) => {
-						await adminApi.sessions.update(id, vals);
-						await loadAll();
-					}}
-					onDelete={async (id) => {
-						await adminApi.sessions.delete(id);
-						await loadAll();
-					}}
-				/>
-			</Section>
-
-			{/* Reports */}
-			<Section
-				icon={FileText}
-				title="Reports"
-				count={reports.length}
-			>
-				<AdminTable
-					rows={reports}
-					columns={[
-						{ key: 'id', label: 'ID' },
-						{ key: 'user_id', label: 'User ID' },
-						{ key: 'session_id', label: 'Session ID' },
-						{ key: 'title', label: 'Title' },
+						{ key: 'email', label: 'Email' },
+						{ key: 'ip_address', label: 'IP Address' },
 						{ key: 'created_at', label: 'Created' },
 					]}
 					editableFields={[]}
-					onDelete={async (id) => {
-						await adminApi.reports.delete(id);
-						await loadAll();
-					}}
-				/>
-			</Section>
-
-			{/* Credit Transactions */}
-			<Section
-				icon={Coins}
-				title="Credit Transactions"
-				count={transactions.length}
-			>
-				<AdminTable
-					rows={transactions}
-					columns={[
-						{ key: 'id', label: 'ID' },
-						{ key: 'user_id', label: 'User ID' },
-						{
-							key: 'amount_usd',
-							label: 'Amount (USD)',
-							render: (v) => (
-								<span
-									style={{
-										color: v < 0 ? '#dc2626' : '#16a34a',
-										fontWeight: 600,
-									}}
-								>
-									{v >= 0 ? '+' : ''}
-									{v?.toFixed(6)}
-								</span>
-							),
-						},
-						{ key: 'description', label: 'Description' },
-						{ key: 'created_at', label: 'Created' },
-					]}
-					editableFields={[]}
-					onDelete={async (id) => {
-						await adminApi.transactions.delete(id);
-						await loadAll();
-					}}
 				/>
 			</Section>
 
@@ -695,10 +617,25 @@ export default function Admin() {
 						{ key: 'timestamp', label: 'Timestamp' },
 					]}
 					editableFields={[]}
-					onDelete={async (id) => {
-						await adminApi.unauthorizedAttempts.delete(id);
-						await loadAll();
-					}}
+				/>
+			</Section>
+
+			{/* Promo Code Usages */}
+			<Section
+				icon={Coins}
+				title="Promo Code Usages"
+				count={promoCodeUsages.length}
+			>
+				<AdminTable
+					rows={promoCodeUsages}
+					columns={[
+						{ key: 'id', label: 'ID' },
+						{ key: 'user_id', label: 'User ID' },
+						{ key: 'email', label: 'Email' },
+						{ key: 'code', label: 'Code' },
+						{ key: 'redeemed_at', label: 'Redeemed At' },
+					]}
+					editableFields={[]}
 				/>
 			</Section>
 		</div>

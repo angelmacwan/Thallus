@@ -17,6 +17,7 @@ SERVER = "DEV"
 ADMIN_EMAILS = {
     "angel.macwan@staticalabs.com",
     "angelmacwan@staticalabs.com",
+    "armacwan@gmail.com"
 }
 
 # Emails permitted to register when SERVER == "DEV"

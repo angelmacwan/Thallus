@@ -87,22 +87,14 @@ export const adminApi = {
     update: (id, data) => api.patch(`/admin/users/${id}`, data),
     delete: (id) => api.delete(`/admin/users/${id}`),
   },
-  sessions: {
-    list: () => api.get('/admin/sessions'),
-    update: (id, data) => api.patch(`/admin/sessions/${id}`, data),
-    delete: (id) => api.delete(`/admin/sessions/${id}`),
-  },
-  reports: {
-    list: () => api.get('/admin/reports'),
-    delete: (id) => api.delete(`/admin/reports/${id}`),
-  },
-  transactions: {
-    list: () => api.get('/admin/transactions'),
-    delete: (id) => api.delete(`/admin/transactions/${id}`),
+  waitlistEntries: {
+    list: () => api.get('/admin/waitlist-entries'),
   },
   unauthorizedAttempts: {
     list: () => api.get('/admin/unauthorized-attempts'),
-    delete: (id) => api.delete(`/admin/unauthorized-attempts/${id}`),
+  },
+  promoCodeUsages: {
+    list: () => api.get('/admin/promo-code-usages'),
   },
 };
 

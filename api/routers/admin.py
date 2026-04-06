@@ -17,12 +17,6 @@ class UserUpdateRequest(BaseModel):
     credits: Optional[float] = None
 
 
-class SessionUpdateRequest(BaseModel):
-    title: Optional[str] = None
-    status: Optional[str] = None
-    rounds: Optional[int] = None
-
-
 # ── Identity check ────────────────────────────────────────────────────────────
 
 @router.get("/me")
@@ -86,136 +80,23 @@ def delete_user(
     db.commit()
 
 
-# ── Sessions ──────────────────────────────────────────────────────────────────
+# ── Waitlist Entries ──────────────────────────────────────────────────────────
 
-@router.get("/sessions")
-def list_sessions(
+@router.get("/waitlist-entries")
+def list_waitlist_entries(
     db: Session = Depends(get_db),
     _: models.User = Depends(require_admin),
 ):
-    sessions = db.query(models.Session).order_by(models.Session.id.desc()).all()
+    entries = db.query(models.WaitlistEntry).order_by(models.WaitlistEntry.id.desc()).all()
     return [
         {
-            "id": s.id,
-            "session_id": s.session_id,
-            "user_id": s.user_id,
-            "title": s.title,
-            "status": s.status,
-            "rounds": s.rounds,
-            "created_at": s.created_at.isoformat() if s.created_at else None,
+            "id": e.id,
+            "email": e.email,
+            "ip_address": e.ip_address,
+            "created_at": e.created_at.isoformat() if e.created_at else None,
         }
-        for s in sessions
+        for e in entries
     ]
-
-
-@router.patch("/sessions/{session_id}")
-def update_session(
-    session_id: int,
-    body: SessionUpdateRequest,
-    db: Session = Depends(get_db),
-    _: models.User = Depends(require_admin),
-):
-    session = db.query(models.Session).filter(models.Session.id == session_id).first()
-    if not session:
-        raise HTTPException(status_code=404, detail="Session not found")
-    if body.title is not None:
-        session.title = body.title
-    if body.status is not None:
-        session.status = body.status
-    if body.rounds is not None:
-        session.rounds = body.rounds
-    db.commit()
-    db.refresh(session)
-    return {
-        "id": session.id,
-        "session_id": session.session_id,
-        "user_id": session.user_id,
-        "title": session.title,
-        "status": session.status,
-        "rounds": session.rounds,
-        "created_at": session.created_at.isoformat() if session.created_at else None,
-    }
-
-
-@router.delete("/sessions/{session_id}", status_code=204)
-def delete_session(
-    session_id: int,
-    db: Session = Depends(get_db),
-    _: models.User = Depends(require_admin),
-):
-    session = db.query(models.Session).filter(models.Session.id == session_id).first()
-    if not session:
-        raise HTTPException(status_code=404, detail="Session not found")
-    db.delete(session)
-    db.commit()
-
-
-# ── Reports ───────────────────────────────────────────────────────────────────
-
-@router.get("/reports")
-def list_reports(
-    db: Session = Depends(get_db),
-    _: models.User = Depends(require_admin),
-):
-    reports = db.query(models.Report).order_by(models.Report.id.desc()).all()
-    return [
-        {
-            "id": r.id,
-            "report_id": r.report_id,
-            "user_id": r.user_id,
-            "session_id": r.session_id,
-            "title": r.title,
-            "created_at": r.created_at.isoformat() if r.created_at else None,
-        }
-        for r in reports
-    ]
-
-
-@router.delete("/reports/{report_id}", status_code=204)
-def delete_report(
-    report_id: int,
-    db: Session = Depends(get_db),
-    _: models.User = Depends(require_admin),
-):
-    report = db.query(models.Report).filter(models.Report.id == report_id).first()
-    if not report:
-        raise HTTPException(status_code=404, detail="Report not found")
-    db.delete(report)
-    db.commit()
-
-
-# ── Credit Transactions ───────────────────────────────────────────────────────
-
-@router.get("/transactions")
-def list_transactions(
-    db: Session = Depends(get_db),
-    _: models.User = Depends(require_admin),
-):
-    txns = db.query(models.CreditTransaction).order_by(models.CreditTransaction.id.desc()).all()
-    return [
-        {
-            "id": t.id,
-            "user_id": t.user_id,
-            "amount_usd": t.amount_usd,
-            "description": t.description,
-            "session_id": t.session_id,
-            "created_at": t.created_at.isoformat() if t.created_at else None,
-        }
-        for t in txns
-    ]
-
-
-@router.delete("/transactions/{txn_id}", status_code=204)
-def delete_transaction(
-    txn_id: int,
-    db: Session = Depends(get_db),
-    _: models.User = Depends(require_admin),
-):
-    txn = db.query(models.CreditTransaction).filter(models.CreditTransaction.id == txn_id).first()
-    if not txn:
-        raise HTTPException(status_code=404, detail="Transaction not found")
-    db.delete(txn)
-    db.commit()
 
 
 # ── Unauthorized Register Attempts ────────────────────────────────────────────
@@ -241,18 +122,21 @@ def list_unauthorized_attempts(
     ]
 
 
-@router.delete("/unauthorized-attempts/{attempt_id}", status_code=204)
-def delete_unauthorized_attempt(
-    attempt_id: int,
+# ── Promo Code Usages ─────────────────────────────────────────────────────────
+
+@router.get("/promo-code-usages")
+def list_promo_code_usages(
     db: Session = Depends(get_db),
     _: models.User = Depends(require_admin),
 ):
-    attempt = (
-        db.query(models.UnauthorizedRegisterAttempt)
-        .filter(models.UnauthorizedRegisterAttempt.id == attempt_id)
-        .first()
-    )
-    if not attempt:
-        raise HTTPException(status_code=404, detail="Record not found")
-    db.delete(attempt)
-    db.commit()
+    usages = db.query(models.PromoCodeUsage).order_by(models.PromoCodeUsage.id.desc()).all()
+    return [
+        {
+            "id": p.id,
+            "user_id": p.user_id,
+            "email": p.email,
+            "code": p.code,
+            "redeemed_at": p.redeemed_at.isoformat() if p.redeemed_at else None,
+        }
+        for p in usages
+    ]
