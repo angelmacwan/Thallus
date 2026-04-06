@@ -195,13 +195,13 @@ export default function Landing() {
 						onSubmit={handleSubmit}
 						className="landing-waitlist-form"
 					>
-						<label htmlFor="waitlist-email">Work email</label>
+						<label htmlFor="waitlist-email">Email</label>
 						<input
 							id="waitlist-email"
 							type="email"
 							value={email}
 							onChange={(event) => setEmail(event.target.value)}
-							placeholder="you@company.com"
+							placeholder="you@email.com"
 							required
 						/>
 						<button

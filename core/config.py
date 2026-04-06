@@ -56,3 +56,5 @@ promo_codes: dict = {
         "users": 5,
     },
 }
+
+EMAIL_SENDER_ADDRESS = "noreply@staticalabs.com"
