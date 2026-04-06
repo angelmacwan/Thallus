@@ -60,6 +60,7 @@ export const swWorlds = {
     diff: (worldId, data) => api.post(`/small-world/worlds/${worldId}/scenarios/diff`, data),
     chat: (worldId, scenId, msg) => api.post(`/small-world/worlds/${worldId}/scenarios/${scenId}/chat`, { message: msg }),
     chatHistory: (worldId, scenId) => api.get(`/small-world/worlds/${worldId}/scenarios/${scenId}/chat`),
+    resimulate: (worldId, scenId) => api.post(`/small-world/worlds/${worldId}/scenarios/${scenId}/resimulate`),
   },
 };
 

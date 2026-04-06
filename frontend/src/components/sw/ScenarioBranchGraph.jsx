@@ -10,15 +10,79 @@ import {
 	useEdgesState,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { Plus, GitBranch } from 'lucide-react';
+import {
+	Plus,
+	GitBranch,
+	CheckCircle2,
+	XCircle,
+	Clock,
+	Loader2,
+} from 'lucide-react';
 
 const STATUS_COLOR = {
 	idle: '#6366f1',
+	created: '#6366f1',
+	waiting: '#94a3b8',
 	running: '#f59e0b',
 	completed: '#16a34a',
 	failed: '#dc2626',
-	pending: '#94a3b8',
+	error: '#dc2626',
 };
+
+function StatusIcon({ status }) {
+	const style = { flexShrink: 0 };
+	switch (status) {
+		case 'running':
+			return (
+				<Loader2
+					size={13}
+					color={STATUS_COLOR.running}
+					style={{
+						...style,
+						animation: 'sw-spin 1s linear infinite',
+					}}
+				/>
+			);
+		case 'completed':
+			return (
+				<CheckCircle2
+					size={13}
+					color={STATUS_COLOR.completed}
+					style={style}
+				/>
+			);
+		case 'error':
+		case 'failed':
+			return (
+				<XCircle
+					size={13}
+					color={STATUS_COLOR.error}
+					style={style}
+				/>
+			);
+		case 'waiting':
+			return (
+				<Clock
+					size={13}
+					color={STATUS_COLOR.waiting}
+					style={style}
+				/>
+			);
+		default:
+			return (
+				<span
+					style={{
+						width: 8,
+						height: 8,
+						borderRadius: '50%',
+						background: STATUS_COLOR[status] || STATUS_COLOR.idle,
+						display: 'inline-block',
+						flexShrink: 0,
+					}}
+				/>
+			);
+	}
+}
 
 function CreateNode({ data }) {
 	return (
@@ -60,8 +124,10 @@ function CreateNode({ data }) {
 }
 
 function ScenarioNode({ data }) {
-	const color = STATUS_COLOR[data.status] || '#94a3b8';
+	const status = data.status || 'idle';
+	const color = STATUS_COLOR[status] || '#94a3b8';
 	const { isHighlighted, isDimmed } = data;
+	const isRunning = status === 'running';
 	return (
 		<div
 			onClick={() => data.onClick && data.onClick(data.scenario)}
@@ -75,12 +141,17 @@ function ScenarioNode({ data }) {
 				width: '200px',
 				boxSizing: 'border-box',
 				cursor: 'pointer',
-				boxShadow: isHighlighted
-					? `0 0 0 2.5px ${color}, 0 0 14px ${color}55, 0 2px 8px rgba(0,0,0,0.12)`
-					: '0 2px 8px rgba(0,0,0,0.07)',
+				boxShadow: isRunning
+					? `0 0 0 2px ${color}88, 0 0 18px ${color}44`
+					: isHighlighted
+						? `0 0 0 2.5px ${color}, 0 0 14px ${color}55, 0 2px 8px rgba(0,0,0,0.12)`
+						: '0 2px 8px rgba(0,0,0,0.07)',
 				opacity: isDimmed ? 0.28 : 1,
-				transition: 'opacity 0.2s, box-shadow 0.2s',
+				transition: 'opacity 0.2s, box-shadow 0.2s, border-color 0.25s',
 				position: 'relative',
+				animation: isRunning
+					? 'sw-pulse-border 2s ease-in-out infinite'
+					: 'none',
 			}}
 		>
 			<Handle
@@ -99,21 +170,33 @@ function ScenarioNode({ data }) {
 					fontWeight: 700,
 					color: 'var(--text-primary)',
 					marginBottom: 2,
+					whiteSpace: 'nowrap',
+					overflow: 'hidden',
+					textOverflow: 'ellipsis',
 				}}
 			>
 				{data.label}
 			</div>
 			<div
 				style={{
-					fontSize: '0.65rem',
-					fontWeight: 600,
-					color,
-					textTransform: 'uppercase',
-					letterSpacing: '0.05em',
+					display: 'flex',
+					alignItems: 'center',
+					gap: '0.3rem',
 					marginBottom: 4,
 				}}
 			>
-				{data.status}
+				<StatusIcon status={status} />
+				<span
+					style={{
+						fontSize: '0.65rem',
+						fontWeight: 600,
+						color,
+						textTransform: 'uppercase',
+						letterSpacing: '0.05em',
+					}}
+				>
+					{status === 'created' ? 'idle' : status}
+				</span>
 			</div>
 			<button
 				onClick={(e) => {
@@ -301,6 +384,7 @@ export default function ScenarioBranchGraph({
 	onSelectScenario,
 	onBranchFrom,
 	onCreate,
+	liveStatuses,
 }) {
 	const normalizedScenarios = useMemo(
 		() => normalizeScenarioTree(scenarios),
@@ -354,23 +438,30 @@ export default function ScenarioBranchGraph({
 				: {};
 
 		const hasSelection = !!selectedScenarioId;
-		const scenarioNodes = normalizedScenarios.map((s) => ({
-			id: s.scenario_id,
-			position: positions[s.scenario_id] || { x: 0, y: 0 },
-			type: 'scenarioNode',
-			sourcePosition: Position.Bottom,
-			targetPosition: Position.Top,
-			data: {
-				label: s.name,
-				status: s.status || 'idle',
-				scenario: s,
-				onClick: onSelectScenario,
-				onBranch: onBranchFrom,
-				isHighlighted:
-					!hasSelection || highlightedIds.has(s.scenario_id),
-				isDimmed: hasSelection && !highlightedIds.has(s.scenario_id),
-			},
-		}));
+		const scenarioNodes = normalizedScenarios.map((s) => {
+			const resolvedStatus =
+				(liveStatuses && liveStatuses.get(s.scenario_id)) ||
+				s.status ||
+				'idle';
+			return {
+				id: s.scenario_id,
+				position: positions[s.scenario_id] || { x: 0, y: 0 },
+				type: 'scenarioNode',
+				sourcePosition: Position.Bottom,
+				targetPosition: Position.Top,
+				data: {
+					label: s.name,
+					status: resolvedStatus,
+					scenario: { ...s, status: resolvedStatus },
+					onClick: onSelectScenario,
+					onBranch: onBranchFrom,
+					isHighlighted:
+						!hasSelection || highlightedIds.has(s.scenario_id),
+					isDimmed:
+						hasSelection && !highlightedIds.has(s.scenario_id),
+				},
+			};
+		});
 
 		const scenarioEdges = normalizedScenarios
 			.filter((s) => s.parent_scenario_id)
@@ -454,6 +545,7 @@ export default function ScenarioBranchGraph({
 		normalizedScenarios,
 		selectedScenarioId,
 		highlightedIds,
+		liveStatuses,
 		onSelectScenario,
 		onBranchFrom,
 		onCreate,
@@ -463,6 +555,13 @@ export default function ScenarioBranchGraph({
 
 	return (
 		<div style={{ width: '100%', height: '100%', position: 'relative' }}>
+			<style>{`
+				@keyframes sw-spin { to { transform: rotate(360deg); } }
+				@keyframes sw-pulse-border {
+					0%, 100% { box-shadow: 0 0 0 2px #f59e0b44, 0 0 12px #f59e0b22; }
+					50%       { box-shadow: 0 0 0 3px #f59e0b88, 0 0 20px #f59e0b55; }
+				}
+			`}</style>
 			<ReactFlow
 				nodes={nodes}
 				edges={edges}

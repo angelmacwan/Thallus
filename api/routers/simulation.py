@@ -67,8 +67,8 @@ def run_simulation_task(session_id: int, session_uuid: str, inputs_path: str, ou
         if enable_web_search:
             try:
                 from core.web_search import run_web_search_grounding
-                run_web_search_grounding(inputs_path, objective=objective, emit=emit)
-                usage.add(grounded_prompts=1)
+                _, ws_usage = run_web_search_grounding(inputs_path, objective=objective, emit=emit)
+                usage += ws_usage
             except Exception as ws_exc:
                 emit("stage", f"Web search grounding skipped: {ws_exc}")
 
@@ -77,6 +77,7 @@ def run_simulation_task(session_id: int, session_uuid: str, inputs_path: str, ou
 
         tp = TextProcessor(graph)
         tp.ingest_folder(inputs_path)
+        usage += tp._usage
         emit("stage", "Text ingestion complete")
 
         emit("stage", "Generating ontology…")

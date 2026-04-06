@@ -38,7 +38,7 @@ PROFIT_MULTIPLIER: float = 3.0
 FREE_CREDITS_ON_SIGNUP_USD: float = 1.00
 
 # Display conversion: 1 USD = this many user-facing credits shown in the UI
-CREDITS_PER_USD: int = 100
+CREDITS_PER_USD: int = 1000
 
 # OASIS / camel-ai token estimation (per agent per round).
 # Exact values are unavailable since camel-ai calls Gemini internally
@@ -52,7 +52,7 @@ OASIS_EST_OUTPUT_TOKENS_PER_AGENT_ROUND: int = 300
 # "users" – maximum number of distinct users allowed to redeem this code.
 promo_codes: dict = {
     "WELCOME100": {
-        "val": 100,
+        "val": 1000,
         "users": 5,
     },
 }

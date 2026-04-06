@@ -7,6 +7,7 @@ from google.genai import types
 from core.graph_memory import LocalGraphMemory
 import json
 from core.config import MODEL_NAME
+from core.usage import UsageSummary
 
 _SUPPORTED_EXTENSIONS = {'.txt', '.md', '.json', '.csv', '.html', '.xml', '.rst'}
 _MAX_TEXT_LENGTH = 50000  # Limit text size to avoid API issues
@@ -53,6 +54,7 @@ class TextProcessor:
     def __init__(self, graph: LocalGraphMemory):
         self.graph = graph
         self.client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+        self._usage = UsageSummary()
     
     def _normalize_entity_name(self, name: str) -> str:
         """Normalize entity names to avoid case duplicates, possessives, and punctuation."""
@@ -278,7 +280,13 @@ Text: {text}
                     temperature=0.1,  # Lower temperature for more consistent JSON
                 )
             )
-            
+
+            if response.usage_metadata:
+                self._usage.add(
+                    input_tokens=response.usage_metadata.prompt_token_count or 0,
+                    output_tokens=response.usage_metadata.candidates_token_count or 0,
+                )
+
             # Use robust JSON parsing
             data = self._parse_json_robust(response.text)
             

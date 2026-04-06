@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
 	Users,
 	Globe,
@@ -29,6 +29,7 @@ import ScenarioBranchGraph from '../components/sw/ScenarioBranchGraph';
 import RunScenarioModal from '../components/sw/RunScenarioModal';
 import SmallWorldReport from '../components/sw/SmallWorldReport';
 import SWFeedPanel from '../components/sw/SWFeedPanel';
+import ResimulateScenarioModal from '../components/sw/ResimulateScenarioModal';
 import { swAgents } from '../api';
 
 const EVENT_COLOR = {
@@ -74,10 +75,13 @@ export default function SmallWorld() {
 	const [runModalOpen, setRunModalOpen] = useState(false);
 	const [runParent, setRunParent] = useState(null);
 	const [selectedScenario, setSelectedScenario] = useState(null);
+	// liveStatuses: Map<scenario_id, status> — real-time overrides for graph nodes
+	const [liveStatuses, setLiveStatuses] = useState(new Map());
+	const liveStatusPollRef = useRef(null);
 
 	// ── Scenario panel (left side) state ─────────────────────
 	const [swPanelTab, setSwPanelTab] = useState('report');
-	const [resimulating, setResimulating] = useState(false);
+	const [showResimulateModal, setShowResimulateModal] = useState(false);
 	const [scenarioEvents, setScenarioEvents] = useState([]);
 	const [scenarioEventsLoading, setScenarioEventsLoading] = useState(false);
 	const [scenarioReport, setScenarioReport] = useState(null);
@@ -138,6 +142,74 @@ export default function SmallWorld() {
 			.finally(() => setScenariosLoading(false));
 	}, []);
 
+	// ── Flatten nested scenario tree to array ─────────────────
+	const flattenScenarios = useCallback((tree) => {
+		const result = [];
+		const visit = (s) => {
+			result.push(s);
+			(s.children || []).forEach(visit);
+		};
+		tree.forEach(visit);
+		return result;
+	}, []);
+
+	// ── Collect all descendants of a scenario ─────────────────
+	const collectDescendantIds = useCallback((scenarioId, flat) => {
+		const byId = new Map(flat.map((s) => [s.scenario_id, s]));
+		const childrenMap = {};
+		for (const s of flat) {
+			if (s.parent_scenario_id)
+				(childrenMap[s.parent_scenario_id] ||= []).push(s.scenario_id);
+		}
+		const result = [];
+		const queue = [scenarioId];
+		while (queue.length) {
+			const id = queue.shift();
+			for (const childId of childrenMap[id] || []) {
+				result.push(childId);
+				queue.push(childId);
+			}
+		}
+		return result;
+	}, []);
+
+	// ── World-level status polling (drives graph node status) ─
+	const startLiveStatusPoll = useCallback((worldId) => {
+		if (liveStatusPollRef.current) clearInterval(liveStatusPollRef.current);
+		const poll = async () => {
+			try {
+				const r = await api.get(
+					`/small-world/worlds/${worldId}/scenarios/`,
+				);
+				const flat = [];
+				const visit = (s) => {
+					flat.push(s);
+					(s.children || []).forEach(visit);
+				};
+				r.data.forEach(visit);
+
+				setLiveStatuses((prev) => {
+					const next = new Map(prev);
+					let anyRunning = false;
+					for (const s of flat) {
+						next.set(s.scenario_id, s.status);
+						if (s.status === 'running') anyRunning = true;
+					}
+					// Stop polling once nothing is running
+					if (!anyRunning) {
+						clearInterval(liveStatusPollRef.current);
+						liveStatusPollRef.current = null;
+					}
+					return next;
+				});
+				// Also refresh the scenarios tree so counts/structure stays fresh
+				setScenarios(r.data);
+			} catch {}
+		};
+		poll(); // immediate first hit
+		liveStatusPollRef.current = setInterval(poll, 2500);
+	}, []);
+
 	// ── Scenario detail data ──────────────────────────────────
 	const fetchScenarioEvents = useCallback(async (worldId, scenarioId) => {
 		if (!worldId || !scenarioId) return;
@@ -172,6 +244,7 @@ export default function SmallWorld() {
 		setScenarioReport(null);
 		setScenarioChatMessages([]);
 		setScenarioLiveStatus(selectedScenario.status);
+		setSwPanelTab('report');
 		setScenarioEventsLoading(true);
 		fetchScenarioEvents(wId, sId).finally(() =>
 			setScenarioEventsLoading(false),
@@ -184,20 +257,26 @@ export default function SmallWorld() {
 	}, [selectedScenario?.scenario_id]);
 
 	useEffect(() => {
-		if (swPanelTab !== 'report' || !selectedScenario || !selectedWorld)
+		if (!selectedScenario || !selectedWorld) return;
+		if (
+			!scenarioLiveStatus ||
+			scenarioLiveStatus === 'running' ||
+			scenarioLiveStatus === 'waiting'
+		)
 			return;
-		if (scenarioLiveStatus === 'running') return;
-		if (scenarioReport) return;
 		setScenarioReportLoading(true);
+
 		api.get(
 			`/small-world/worlds/${selectedWorld.world_id}/scenarios/${selectedScenario.scenario_id}/report`,
 		)
-			.then((r) =>
-				setScenarioReport(r.data?.available === false ? null : r.data),
-			)
-			.catch(() => {})
+			.then((r) => {
+				setScenarioReport(r.data?.available === false ? null : r.data);
+			})
+			.catch((err) => {
+				console.error('[SW Report] Error fetching report:', err);
+			})
 			.finally(() => setScenarioReportLoading(false));
-	}, [swPanelTab, selectedScenario?.scenario_id, scenarioLiveStatus]);
+	}, [selectedScenario?.scenario_id, scenarioLiveStatus]);
 
 	useEffect(() => {
 		if (swPanelTab !== 'chat' || !selectedScenario || !selectedWorld)
@@ -209,26 +288,36 @@ export default function SmallWorld() {
 			.catch(() => {});
 	}, [swPanelTab, selectedScenario?.scenario_id]);
 
-	const handleResimulate = async () => {
-		if (resimulating || !selectedScenario || !selectedWorld) return;
-		setResimulating(true);
-		try {
-			await api.post(
-				`/small-world/worlds/${selectedWorld.world_id}/scenarios/${selectedScenario.scenario_id}/run`,
-			);
-			setScenarioReport(null);
-			setScenarioEvents([]);
-			setScenarioLiveStatus('running');
-			setSwPanelTab('stream');
-			// Restart poll
-			if (scenarioPollRef) clearInterval(scenarioPollRef);
-			const wId = selectedWorld.world_id;
-			const sId = selectedScenario.scenario_id;
-			fetchScenarioEvents(wId, sId);
-			const pid = setInterval(() => fetchScenarioEvents(wId, sId), 2500);
-			setScenarioPollRef(pid);
-		} catch {}
-		setResimulating(false);
+	const handleResimulateSuccess = () => {
+		setShowResimulateModal(false);
+		setScenarioReport(null);
+		setScenarioEvents([]);
+		setScenarioLiveStatus('running');
+		setSwPanelTab('stream');
+
+		// Immediately reflect statuses in the graph without waiting for poll
+		const flat = flattenScenarios(scenarios);
+		const descendantIds = collectDescendantIds(
+			selectedScenario.scenario_id,
+			flat,
+		);
+		setLiveStatuses((prev) => {
+			const next = new Map(prev);
+			next.set(selectedScenario.scenario_id, 'running');
+			for (const id of descendantIds) next.set(id, 'waiting');
+			return next;
+		});
+
+		// Start world-level polling to keep graph statuses live
+		startLiveStatusPoll(selectedWorld.world_id);
+
+		// Restart selected-scenario event poll
+		if (scenarioPollRef) clearInterval(scenarioPollRef);
+		const wId = selectedWorld.world_id;
+		const sId = selectedScenario.scenario_id;
+		fetchScenarioEvents(wId, sId);
+		const pid = setInterval(() => fetchScenarioEvents(wId, sId), 2500);
+		setScenarioPollRef(pid);
 	};
 
 	const sendScenarioChat = async () => {
@@ -257,6 +346,11 @@ export default function SmallWorld() {
 			setSwNav({
 				worldName: selectedWorld.name,
 				scenarioName: selectedScenario?.name || null,
+				scenarioStatus:
+					scenarioLiveStatus || selectedScenario?.status || null,
+				onResimulate: selectedScenario
+					? () => setShowResimulateModal(true)
+					: null,
 				activePanel: swPanelTab,
 				setActivePanel: setSwPanelTab,
 				onBack: () => setSelectedWorld(null),
@@ -270,6 +364,7 @@ export default function SmallWorld() {
 		worldDetailTab,
 		swPanelTab,
 		selectedScenario?.scenario_id,
+		scenarioLiveStatus,
 	]);
 
 	// ── When selected world changes, reload data ──────────────
@@ -280,12 +375,18 @@ export default function SmallWorld() {
 			setSuggestMsg(null);
 			setAgents([]);
 			setRelationships([]);
+			setLiveStatuses(new Map());
 			loadAgents(selectedWorld.world_id);
 			loadScenarios(selectedWorld.world_id);
 		} else {
 			setAgents([]);
 			setRelationships([]);
 			setScenarios([]);
+			setLiveStatuses(new Map());
+			if (liveStatusPollRef.current) {
+				clearInterval(liveStatusPollRef.current);
+				liveStatusPollRef.current = null;
+			}
 		}
 	}, [selectedWorld?.world_id]);
 
@@ -403,8 +504,12 @@ export default function SmallWorld() {
 	};
 
 	const handleScenarioCreated = (s) => {
+		// Optimistically add scenario as running in the graph
+		setLiveStatuses((prev) => new Map(prev).set(s.scenario_id, 'running'));
 		setScenarios((prev) => [...prev, s]);
 		setSelectedScenario(s);
+		// Start world-level status polling so the graph stays live
+		if (selectedWorld) startLiveStatusPoll(selectedWorld.world_id);
 	};
 
 	// ── Styles ────────────────────────────────────────────────
@@ -1130,44 +1235,6 @@ export default function SmallWorld() {
 																</span>
 															</div>
 														</div>
-														{scenarioLiveStatus ===
-															'failed' && (
-															<button
-																onClick={
-																	handleResimulate
-																}
-																disabled={
-																	resimulating
-																}
-																title="Resimulate"
-																style={{
-																	display:
-																		'flex',
-																	alignItems:
-																		'center',
-																	gap: '0.3rem',
-																	background:
-																		'none',
-																	border: 'none',
-																	cursor: resimulating
-																		? 'not-allowed'
-																		: 'pointer',
-																	color: resimulating
-																		? 'var(--text-secondary)'
-																		: '#f97316',
-																	fontSize:
-																		'0.72rem',
-																	fontWeight: 600,
-																	padding:
-																		'0.2rem 0.4rem',
-																}}
-															>
-																<RotateCcw
-																	size={12}
-																/>
-																Resimulate
-															</button>
-														)}
 														<button
 															onClick={() =>
 																setSelectedScenario(
@@ -1522,6 +1589,58 @@ export default function SmallWorld() {
 																		scenarioReport
 																	}
 																/>
+															) : scenarioLiveStatus ===
+																	'running' ||
+															  scenarioLiveStatus ===
+																	'waiting' ? (
+																<div
+																	style={{
+																		textAlign:
+																			'center',
+																		color: 'var(--text-secondary)',
+																		padding:
+																			'3rem 1rem',
+																	}}
+																>
+																	<Loader2
+																		size={
+																			28
+																		}
+																		style={{
+																			opacity: 0.6,
+																			marginBottom:
+																				'0.75rem',
+																			animation:
+																				'spin 1s linear infinite',
+																		}}
+																	/>
+																	<p
+																		style={{
+																			fontWeight: 600,
+																			fontSize:
+																				'0.85rem',
+																			margin: 0,
+																		}}
+																	>
+																		{scenarioLiveStatus ===
+																		'waiting'
+																			? 'Queued'
+																			: 'Simulation in progress'}
+																	</p>
+																	<p
+																		style={{
+																			fontSize:
+																				'0.75rem',
+																			marginTop:
+																				'0.3rem',
+																		}}
+																	>
+																		{scenarioLiveStatus ===
+																		'waiting'
+																			? 'Waiting for the simulation to start…'
+																			: 'Report will appear here once complete.'}
+																	</p>
+																</div>
 															) : (
 																<div
 																	style={{
@@ -1665,6 +1784,9 @@ export default function SmallWorld() {
 														selectedScenarioId={
 															selectedScenario?.scenario_id
 														}
+														liveStatuses={
+															liveStatuses
+														}
 														onSelectScenario={(
 															s,
 														) => {
@@ -1746,6 +1868,14 @@ export default function SmallWorld() {
 			/>
 			{selectedWorld && (
 				<WorldHealthCheck worldId={selectedWorld.world_id} />
+			)}
+			{showResimulateModal && selectedScenario && selectedWorld && (
+				<ResimulateScenarioModal
+					worldId={selectedWorld.world_id}
+					scenario={selectedScenario}
+					onClose={() => setShowResimulateModal(false)}
+					onSuccess={handleResimulateSuccess}
+				/>
 			)}
 		</>
 	);

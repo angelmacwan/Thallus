@@ -545,6 +545,41 @@ function Sidebar() {
 									{item.label}
 								</button>
 							))}
+							{/* Resimulate button — shown when a scenario is selected */}
+							{swNav.onResimulate && (
+								<>
+									<div
+										style={{
+											height: '1px',
+											background:
+												'var(--outline-variant)',
+											margin: '0.5rem 0.85rem',
+										}}
+									/>
+									<button
+										className="sidebar-nav-btn"
+										onClick={swNav.onResimulate}
+										disabled={
+											swNav.scenarioStatus === 'running'
+										}
+										style={{
+											opacity:
+												swNav.scenarioStatus ===
+												'running'
+													? 0.5
+													: 1,
+											cursor:
+												swNav.scenarioStatus ===
+												'running'
+													? 'not-allowed'
+													: 'pointer',
+										}}
+									>
+										<RefreshCw size={15} />
+										Resimulate
+									</button>
+								</>
+							)}
 						</>
 					) : sessionNav ? (
 						<>

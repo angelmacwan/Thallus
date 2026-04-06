@@ -392,6 +392,212 @@ def run_scenario(
     return {"status": "started", "scenario_id": scenario.scenario_id}
 
 
+# ── Resimulate (cascade) ──────────────────────────────────────────────────────
+
+def _collect_cascade_order(root_db_id: int, db: Session) -> list[int]:
+    """
+    BFS traversal of the scenario tree rooted at root_db_id.
+    Returns DB ids in execution order: root first, then each generation
+    of children sorted by created_at ASC (preserving creation order).
+    """
+    ordered: list[int] = []
+    queue: list[int] = [root_db_id]
+    while queue:
+        current_id = queue.pop(0)
+        ordered.append(current_id)
+        children = (
+            db.query(models.WorldScenario)
+            .filter(models.WorldScenario.parent_scenario_id == current_id)
+            .order_by(models.WorldScenario.created_at)
+            .all()
+        )
+        for child in children:
+            queue.append(child.id)
+    return ordered
+
+
+@router.post("/worlds/{world_id}/scenarios/{scenario_id}/resimulate", status_code=202)
+def resimulate_scenario(
+    world_id: str,
+    scenario_id: str,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_credits),
+):
+    world = _get_world_or_404(world_id, current_user.id, db)
+    scenario = _get_scenario_or_404(scenario_id, world.id, db)
+
+    if scenario.status == "running":
+        raise HTTPException(status_code=400, detail="Scenario is already running")
+
+    agents = db.query(models.SmallWorldAgent).filter(
+        models.SmallWorldAgent.world_id == world.id
+    ).all()
+    if not agents:
+        raise HTTPException(status_code=400, detail="World has no agents")
+
+    # Collect agent data
+    agent_dicts = []
+    agent_db_ids = []
+    for agent in agents:
+        agent_dicts.append({
+            "agent_id": agent.agent_id,
+            "name": agent.name,
+            "age": agent.age,
+            "gender": agent.gender,
+            "location": agent.location,
+            "profession": agent.profession,
+            "job_title": agent.job_title,
+            "organization": agent.organization,
+            "personality_traits": agent.personality_traits,
+            "behavioral_attributes": agent.behavioral_attributes,
+            "contextual_state": agent.contextual_state,
+            "external_factors": agent.external_factors,
+        })
+        agent_db_ids.append(agent.id)
+
+    # Collect user-defined relationships
+    rel_records = db.query(models.AgentRelationship).filter(
+        models.AgentRelationship.source_agent_id.in_(agent_db_ids)
+    ).all()
+    agent_by_db_id = {
+        a.id: a
+        for a in db.query(models.SmallWorldAgent).filter(
+            models.SmallWorldAgent.world_id == world.id
+        ).all()
+    }
+    relationship_dicts = []
+    for r in rel_records:
+        src = agent_by_db_id.get(r.source_agent_id)
+        tgt = db.query(models.SmallWorldAgent).get(r.target_agent_id)
+        if src and tgt:
+            relationship_dicts.append({
+                "source_agent_id": src.agent_id,
+                "source_name": src.name,
+                "target_agent_id": tgt.agent_id,
+                "target_name": tgt.name,
+                "type": r.type,
+                "strength": r.strength,
+                "sentiment": r.sentiment,
+                "influence_direction": r.influence_direction,
+            })
+
+    # Determine BFS execution order for entire subtree
+    ordered_ids = _collect_cascade_order(scenario.id, db)
+
+    # Reset all scenarios in the cascade
+    base = _get_user_data_base(current_user.email)
+    for sid in ordered_ids:
+        s = db.query(models.WorldScenario).get(sid)
+        if not s:
+            continue
+        # Clear events
+        db.query(models.WorldSimEvent).filter(
+            models.WorldSimEvent.scenario_id == s.id
+        ).delete()
+        # Remove stale report file
+        if s.report_path and os.path.exists(s.report_path):
+            try:
+                os.remove(s.report_path)
+            except OSError:
+                pass
+        s.report_path = None
+        s.status = "created"
+
+    # Mark root as running and create its SSE queue immediately
+    scenario.status = "running"
+    output_dir = os.path.join(base, "worlds", world.world_id, "scenarios", scenario.scenario_id, "output")
+    os.makedirs(output_dir, exist_ok=True)
+    scenario.outputs_path = output_dir
+    db.commit()
+
+    root_q: _queue.Queue = _queue.Queue()
+    _scenario_queues[scenario.scenario_id] = root_q
+
+    background_tasks.add_task(
+        _resimulate_cascade_background,
+        ordered_ids=ordered_ids,
+        world_uuid=world.world_id,
+        world_description=world.description or "",
+        agent_dicts=agent_dicts,
+        relationship_dicts=relationship_dicts,
+        user_email=current_user.email,
+        user_id=current_user.id,
+        root_q=root_q,
+    )
+
+    return {
+        "status": "started",
+        "scenario_id": scenario.scenario_id,
+        "scenario_count": len(ordered_ids),
+    }
+
+
+def _resimulate_cascade_background(
+    ordered_ids: list[int],
+    world_uuid: str,
+    world_description: str,
+    agent_dicts: list[dict],
+    relationship_dicts: list[dict],
+    user_email: str,
+    user_id: int,
+    root_q: _queue.Queue,
+) -> None:
+    from ..database import SessionLocal
+
+    base = _get_user_data_base(user_email)
+    is_first = True
+
+    for scenario_db_id in ordered_ids:
+        db = SessionLocal()
+        try:
+            scenario = db.query(models.WorldScenario).get(scenario_db_id)
+            if not scenario:
+                continue
+
+            output_dir = os.path.join(
+                base, "worlds", world_uuid, "scenarios", scenario.scenario_id, "output"
+            )
+            os.makedirs(output_dir, exist_ok=True)
+
+            # Resolve parent output dir if this is a child scenario
+            parent_output_dir: str | None = None
+            if scenario.parent_scenario_id:
+                parent = db.query(models.WorldScenario).get(scenario.parent_scenario_id)
+                if parent and parent.outputs_path:
+                    parent_output_dir = parent.outputs_path
+
+            # SSE queue: root reuses root_q; children get their own queue
+            if is_first:
+                q = root_q
+                is_first = False
+            else:
+                q = _queue.Queue()
+                _scenario_queues[scenario.scenario_id] = q
+                scenario.status = "running"
+                scenario.outputs_path = output_dir
+                db.commit()
+
+            # Run synchronously so ordering is preserved
+            _run_scenario_background(
+                scenario_db_id=scenario_db_id,
+                scenario_uuid=scenario.scenario_id,
+                world_description=world_description,
+                scenario_name=scenario.name,
+                seed_text=scenario.seed_text or "",
+                agents=agent_dicts,
+                relationships=relationship_dicts,
+                output_dir=output_dir,
+                parent_output_dir=parent_output_dir,
+                q=q,
+                user_id=user_id,
+            )
+        except Exception as exc:
+            print(f"[resimulate_cascade] error on scenario {scenario_db_id}: {exc}")
+        finally:
+            db.close()
+
+
 def _run_scenario_background(
     scenario_db_id: int,
     scenario_uuid: str,
