@@ -13,6 +13,12 @@ OUTPUTS_BASE = "OUTPUTS"
 # Any other value allows anyone to register.
 SERVER = "DEV"
 
+# Emails with full admin access to the /admin panel.
+ADMIN_EMAILS = {
+    "angel.macwan@staticalabs.com",
+    "angelmacwan@staticalabs.com",
+}
+
 # Emails permitted to register when SERVER == "DEV"
 ALLOWED_EMAILS = {
     "armacwan@gmail.com",

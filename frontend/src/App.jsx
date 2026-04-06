@@ -50,6 +50,7 @@ import Landing from './views/Landing';
 import SessionView from './views/Session';
 import SmallWorldView from './views/SmallWorld';
 import SimulationsView from './views/Simulations';
+import AdminView from './views/Admin';
 import NewSimulationModal from './components/NewSimulationModal';
 import SettingsModal from './components/SettingsModal';
 
@@ -1044,8 +1045,9 @@ function Sidebar() {
 function AppLayout() {
 	const location = useLocation();
 	const isAuth = location.pathname === '/login';
+	const isLanding = location.pathname === '/landing';
 	const token = localStorage.getItem('token');
-	const showSidebar = !!token && !isAuth;
+	const showSidebar = !!token && !isAuth && !isLanding;
 	const [sessionNav, setSessionNav] = useState(null);
 	const [swNav, setSwNav] = useState(null);
 	const [newSimOpen, setNewSimOpen] = useState(false);
@@ -1084,7 +1086,13 @@ function AppLayout() {
 						/>
 						<Route
 							path="/login"
-							element={<Auth />}
+							element={
+								token ? (
+									<Navigate to="/simulations" />
+								) : (
+									<Auth />
+								)
+							}
 						/>
 						<Route
 							path="/"
@@ -1115,6 +1123,14 @@ function AppLayout() {
 							element={
 								<PrivateRoute>
 									<SmallWorldView />
+								</PrivateRoute>
+							}
+						/>
+						<Route
+							path="/admin"
+							element={
+								<PrivateRoute>
+									<AdminView />
 								</PrivateRoute>
 							}
 						/>

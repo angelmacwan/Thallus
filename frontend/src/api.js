@@ -79,3 +79,30 @@ export const swWorlds = {
   },
 };
 
+// ── Admin API ─────────────────────────────────────────────────────────────────
+export const adminApi = {
+  me: () => api.get('/admin/me'),
+  users: {
+    list: () => api.get('/admin/users'),
+    update: (id, data) => api.patch(`/admin/users/${id}`, data),
+    delete: (id) => api.delete(`/admin/users/${id}`),
+  },
+  sessions: {
+    list: () => api.get('/admin/sessions'),
+    update: (id, data) => api.patch(`/admin/sessions/${id}`, data),
+    delete: (id) => api.delete(`/admin/sessions/${id}`),
+  },
+  reports: {
+    list: () => api.get('/admin/reports'),
+    delete: (id) => api.delete(`/admin/reports/${id}`),
+  },
+  transactions: {
+    list: () => api.get('/admin/transactions'),
+    delete: (id) => api.delete(`/admin/transactions/${id}`),
+  },
+  unauthorizedAttempts: {
+    list: () => api.get('/admin/unauthorized-attempts'),
+    delete: (id) => api.delete(`/admin/unauthorized-attempts/${id}`),
+  },
+};
+

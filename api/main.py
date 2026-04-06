@@ -9,7 +9,7 @@ from .deps import get_current_user
 from . import models
 
 from .routers import auth, sessions, simulation, reports
-from .routers import scenarios, insights, users
+from .routers import scenarios, insights, users, admin
 from .routers import small_world_agents, small_world_worlds
 
 # Create database tables
@@ -144,6 +144,7 @@ app.include_router(reports.router)
 app.include_router(scenarios.router)
 app.include_router(insights.router)
 app.include_router(users.router)
+app.include_router(admin.router)
 app.include_router(small_world_agents.router)
 app.include_router(small_world_worlds.router)
 
