@@ -30,6 +30,16 @@ export const waitlist = {
   join: (email) => api.post('/auth/waitlist', { email }),
 };
 
+// ── Auth ──────────────────────────────────────────────────────────────
+export const authApi = {
+  sendSignupOtp: (email) => api.post('/auth/send-signup-otp', { email }),
+  register: (email, password, otp) =>
+    api.post('/auth/register', { email, password, otp }),
+  sendResetOtp: (email) => api.post('/auth/send-reset-otp', { email }),
+  resetPassword: (email, otp, newPassword) =>
+    api.post('/auth/reset-password', { email, otp, new_password: newPassword }),
+};
+
 // ── Small World API ─────────────────────────────────────────────────
 export const swAgents = {
   list: (worldId) => api.get(`/small-world/worlds/${worldId}/agents/`),

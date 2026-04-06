@@ -915,6 +915,49 @@ button {
   text-decoration: underline;
 }
 
+/* OTP input — large monospace digit display */
+.auth-otp-input {
+  font-size: 1.6rem;
+  font-family: monospace;
+  letter-spacing: 0.35em;
+  text-align: center;
+  padding: 0.75rem 1rem;
+}
+
+/* Forgot password text-button */
+.auth-forgot-link {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  text-align: right;
+  cursor: pointer;
+}
+
+.auth-forgot-link:hover {
+  color: var(--primary);
+}
+
+/* Resend / change-email row beneath OTP form */
+.auth-resend-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.5rem;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.auth-resend-row .auth-inline-toggle {
+  margin-left: 0;
+  font-weight: 500;
+}
+
+.auth-resend-sep {
+  color: var(--text-secondary);
+  opacity: 0.5;
+}
+
 @media (max-width: 900px) {
 
   .landing-hero-grid,

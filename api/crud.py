@@ -1,6 +1,11 @@
 from sqlalchemy.orm import Session
 from . import models, schemas
 from .auth import get_password_hash
+import secrets
+from datetime import datetime, timedelta
+
+_OTP_EXPIRY_MINUTES = 10
+_OTP_MAX_ATTEMPTS = 5
 
 def get_user_by_email(db: Session, email: str):
     return db.query(models.User).filter(models.User.email == email).first()
@@ -360,3 +365,75 @@ def redeem_promo_code(
     db.refresh(user)
 
     return True, f"Successfully redeemed {display_val} credits.", display_val
+
+
+# ── OTP operations ─────────────────────────────────────────────────────────────
+
+def create_otp(db: Session, email: str, purpose: str) -> "models.OTPCode":
+    """Generate a new 6-digit OTP, invalidating any previous unused codes for
+    the same email + purpose combination."""
+    db.query(models.OTPCode).filter(
+        models.OTPCode.email == email,
+        models.OTPCode.purpose == purpose,
+        models.OTPCode.used == False,
+    ).update({"used": True})
+
+    code = f"{secrets.randbelow(1_000_000):06d}"
+    now = datetime.utcnow()
+    otp = models.OTPCode(
+        email=email,
+        code=code,
+        purpose=purpose,
+        created_at=now,
+        expires_at=now + timedelta(minutes=_OTP_EXPIRY_MINUTES),
+        used=False,
+        attempts=0,
+    )
+    db.add(otp)
+    db.commit()
+    db.refresh(otp)
+    return otp
+
+
+def verify_otp(db: Session, email: str, code: str, purpose: str) -> "models.OTPCode | None":
+    """Verify an OTP code. Returns the OTPCode on success, None on failure.
+    Increments the attempt counter on wrong codes and marks the code used on
+    success."""
+    otp = (
+        db.query(models.OTPCode)
+        .filter(
+            models.OTPCode.email == email,
+            models.OTPCode.purpose == purpose,
+            models.OTPCode.used == False,
+        )
+        .order_by(models.OTPCode.created_at.desc())
+        .first()
+    )
+
+    if not otp:
+        return None
+    if otp.expires_at < datetime.utcnow():
+        return None
+    if otp.attempts >= _OTP_MAX_ATTEMPTS:
+        return None
+    if otp.code != code:
+        otp.attempts += 1
+        db.commit()
+        return None
+
+    otp.used = True
+    db.commit()
+    return otp
+
+
+def get_last_otp(db: Session, email: str, purpose: str) -> "models.OTPCode | None":
+    """Return the most recently created OTP for a given email + purpose, or None."""
+    return (
+        db.query(models.OTPCode)
+        .filter(
+            models.OTPCode.email == email,
+            models.OTPCode.purpose == purpose,
+        )
+        .order_by(models.OTPCode.created_at.desc())
+        .first()
+    )

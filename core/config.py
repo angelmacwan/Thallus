@@ -16,6 +16,7 @@ SERVER = "DEV"
 # Emails permitted to register when SERVER == "DEV"
 ALLOWED_EMAILS = {
     "armacwan@gmail.com",
+    "maxbacon4699@gmail.com",
     "angel.macwan@staticalabs.com",
     "angelmacwan@staticalabs.com",
     "saskia.oditt@staticalabs.com",

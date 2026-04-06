@@ -12,6 +12,22 @@ class UserBase(BaseModel):
 class UserCreate(UserBase):
     password: str
 
+class VerifySignupRequest(BaseModel):
+    email: EmailStr
+    password: str
+    otp: str
+
+class SendOTPRequest(BaseModel):
+    email: EmailStr
+
+class SendResetOTPRequest(BaseModel):
+    email: EmailStr
+
+class ResetPasswordRequest(BaseModel):
+    email: EmailStr
+    otp: str
+    new_password: str
+
 class UserResponse(UserBase):
     id: int
     is_active: bool

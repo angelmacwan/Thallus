@@ -210,6 +210,19 @@ class WaitlistEntry(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
+class OTPCode(Base):
+    __tablename__ = "otp_codes"
+
+    id = Column(Integer, primary_key=True, index=True)
+    email = Column(String, nullable=False, index=True)
+    code = Column(String, nullable=False)
+    purpose = Column(String, nullable=False)  # "signup" | "password_reset"
+    created_at = Column(DateTime, default=datetime.utcnow)
+    expires_at = Column(DateTime, nullable=False)
+    used = Column(Boolean, default=False)
+    attempts = Column(Integer, default=0)
+
+
 # ── Small World ───────────────────────────────────────────────────────────────
 
 class SmallWorldAgent(Base):
