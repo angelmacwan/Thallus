@@ -741,7 +741,7 @@ def _generate_report_background(
 
     db = SessionLocal()
     try:
-        report = generate_report(
+        report, _usage = generate_report(
             output_dir=output_dir,
             world_description=world_description,
             scenario_name=scenario_name,

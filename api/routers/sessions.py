@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy.orm import Session
 from typing import List
 from .. import crud, schemas, models
@@ -17,3 +17,12 @@ def get_session_details(session_id: str, db: Session = Depends(get_db), current_
         raise HTTPException(status_code=404, detail="Session not found")
     crud.log_action(db, current_user.id, "view_session", session_id)
     return session
+
+@router.delete("/{session_id}", status_code=204)
+def delete_session(session_id: str, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+    session = crud.get_session(db, session_id)
+    if not session or session.user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Session not found")
+    crud.log_action(db, current_user.id, "delete_session", session_id)
+    crud.delete_session_all(db, session)
+    return Response(status_code=204)

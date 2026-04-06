@@ -9,6 +9,8 @@ import {
 	Users,
 	FileText,
 	Zap,
+	MoreVertical,
+	Trash2,
 } from 'lucide-react';
 import api from '../api';
 import { useSidebar } from '../SidebarContext';
@@ -67,95 +69,208 @@ function StatusIcon({ status }) {
 	);
 }
 
-function SimCard({ session, onClick }) {
+function SimCard({ session, onClick, onDelete }) {
+	const [menuOpen, setMenuOpen] = useState(false);
+
+	const handleMenuToggle = (e) => {
+		e.stopPropagation();
+		setMenuOpen((prev) => !prev);
+	};
+
+	const handleDelete = (e) => {
+		e.stopPropagation();
+		setMenuOpen(false);
+		const label = session.title || `Simulation #${session.id}`;
+		if (
+			window.confirm(
+				`Delete "${label}"?\n\nThis will permanently remove all session data, seed files, and generated outputs.`,
+			)
+		) {
+			onDelete(session.session_id);
+		}
+	};
+
 	return (
-		<button
-			onClick={onClick}
-			style={{
-				display: 'flex',
-				flexDirection: 'column',
-				alignItems: 'flex-start',
-				gap: '0.6rem',
-				padding: '1rem',
-				background: 'var(--surface-container-lowest)',
-				border: '1px solid var(--outline-variant)',
-				borderRadius: '12px',
-				cursor: 'pointer',
-				textAlign: 'left',
-				transition: 'box-shadow 0.15s ease, border-color 0.15s ease',
-				width: '100%',
-			}}
-			onMouseEnter={(e) => {
-				e.currentTarget.style.boxShadow = 'var(--shadow-lg)';
-				e.currentTarget.style.borderColor = 'var(--outline)';
-			}}
-			onMouseLeave={(e) => {
-				e.currentTarget.style.boxShadow = 'none';
-				e.currentTarget.style.borderColor = 'var(--outline-variant)';
-			}}
-		>
-			{/* Top row: icon + status */}
+		<div style={{ position: 'relative' }}>
+			{/* Card */}
 			<div
+				onClick={onClick}
 				style={{
 					display: 'flex',
-					alignItems: 'center',
-					justifyContent: 'space-between',
+					flexDirection: 'column',
+					alignItems: 'flex-start',
+					gap: '0.6rem',
+					padding: '1rem',
+					background: 'var(--surface-container-lowest)',
+					border: '1px solid var(--outline-variant)',
+					borderRadius: '12px',
+					cursor: 'pointer',
+					textAlign: 'left',
+					transition:
+						'box-shadow 0.15s ease, border-color 0.15s ease',
 					width: '100%',
+					boxSizing: 'border-box',
+				}}
+				onMouseEnter={(e) => {
+					e.currentTarget.style.boxShadow = 'var(--shadow-lg)';
+					e.currentTarget.style.borderColor = 'var(--outline)';
+				}}
+				onMouseLeave={(e) => {
+					e.currentTarget.style.boxShadow = 'none';
+					e.currentTarget.style.borderColor =
+						'var(--outline-variant)';
 				}}
 			>
+				{/* Top row: icon + status */}
 				<div
 					style={{
-						width: 30,
-						height: 30,
-						borderRadius: '8px',
-						background: 'var(--surface-container-high)',
 						display: 'flex',
 						alignItems: 'center',
-						justifyContent: 'center',
+						justifyContent: 'space-between',
+						width: '100%',
 					}}
 				>
-					<StatusIcon status={session.status} />
+					<div
+						style={{
+							width: 30,
+							height: 30,
+							borderRadius: '8px',
+							background: 'var(--surface-container-high)',
+							display: 'flex',
+							alignItems: 'center',
+							justifyContent: 'center',
+						}}
+					>
+						<StatusIcon status={session.status} />
+					</div>
+					<StatusPill status={session.status} />
 				</div>
-				<StatusPill status={session.status} />
-			</div>
 
-			{/* Title */}
-			<p
-				style={{
-					margin: 0,
-					fontWeight: 600,
-					fontSize: '0.85rem',
-					color: 'var(--on-surface)',
-					lineHeight: 1.35,
-					overflow: 'hidden',
-					display: '-webkit-box',
-					WebkitLineClamp: 2,
-					WebkitBoxOrient: 'vertical',
-				}}
-			>
-				{session.title || `Simulation #${session.id}`}
-			</p>
-
-			{/* Date */}
-			{session.created_at && (
+				{/* Title */}
 				<p
 					style={{
 						margin: 0,
-						fontSize: '0.7rem',
-						color: 'var(--text-secondary)',
+						fontWeight: 600,
+						fontSize: '0.85rem',
+						color: 'var(--on-surface)',
+						lineHeight: 1.35,
+						overflow: 'hidden',
+						display: '-webkit-box',
+						WebkitLineClamp: 2,
+						WebkitBoxOrient: 'vertical',
 					}}
 				>
-					{new Date(session.created_at).toLocaleDateString(
-						undefined,
-						{
-							month: 'short',
-							day: 'numeric',
-							year: 'numeric',
-						},
-					)}
+					{session.title || `Simulation #${session.id}`}
 				</p>
+
+				{/* Bottom row: date + 3-dot menu */}
+				<div
+					style={{
+						display: 'flex',
+						alignItems: 'center',
+						justifyContent: 'space-between',
+						width: '100%',
+						marginTop: 'auto',
+					}}
+				>
+					{session.created_at ? (
+						<p
+							style={{
+								margin: 0,
+								fontSize: '0.7rem',
+								color: 'var(--text-secondary)',
+							}}
+						>
+							{new Date(session.created_at).toLocaleDateString(
+								undefined,
+								{
+									month: 'short',
+									day: 'numeric',
+									year: 'numeric',
+								},
+							)}
+						</p>
+					) : (
+						<span />
+					)}
+
+					{/* 3-dot menu trigger */}
+					<button
+						onClick={handleMenuToggle}
+						title="Options"
+						style={{
+							background: 'transparent',
+							border: 'none',
+							borderRadius: '6px',
+							padding: '0.2rem',
+							cursor: 'pointer',
+							display: 'flex',
+							alignItems: 'center',
+							justifyContent: 'center',
+							color: 'var(--text-secondary)',
+							flexShrink: 0,
+						}}
+					>
+						<MoreVertical size={14} />
+					</button>
+				</div>
+			</div>
+
+			{/* Dropdown */}
+			{menuOpen && (
+				<>
+					<div
+						style={{
+							position: 'fixed',
+							inset: 0,
+							zIndex: 99,
+						}}
+						onClick={() => setMenuOpen(false)}
+					/>
+					<div
+						style={{
+							position: 'absolute',
+							bottom: '2.2rem',
+							right: '0.5rem',
+							zIndex: 100,
+							background: 'var(--surface-container)',
+							border: '1px solid var(--outline-variant)',
+							borderRadius: '8px',
+							boxShadow: 'var(--shadow-lg)',
+							minWidth: '130px',
+							overflow: 'hidden',
+						}}
+					>
+						<button
+							onClick={handleDelete}
+							style={{
+								display: 'flex',
+								alignItems: 'center',
+								gap: '0.5rem',
+								width: '100%',
+								padding: '0.55rem 0.85rem',
+								background: 'transparent',
+								border: 'none',
+								cursor: 'pointer',
+								fontSize: '0.82rem',
+								color: '#dc2626',
+								textAlign: 'left',
+							}}
+							onMouseEnter={(e) =>
+								(e.currentTarget.style.background = '#fee2e2')
+							}
+							onMouseLeave={(e) =>
+								(e.currentTarget.style.background =
+									'transparent')
+							}
+						>
+							<Trash2 size={13} />
+							Delete
+						</button>
+					</div>
+				</>
 			)}
-		</button>
+		</div>
 	);
 }
 
@@ -171,6 +286,18 @@ export default function Simulations() {
 			.catch(() => {})
 			.finally(() => setLoading(false));
 	}, []);
+
+	const handleDelete = async (sessionId) => {
+		try {
+			await api.delete(`/sessions/${sessionId}`);
+			setSessions((prev) =>
+				prev.filter((s) => s.session_id !== sessionId),
+			);
+		} catch (err) {
+			console.error('Delete failed', err);
+			alert('Failed to delete simulation. Please try again.');
+		}
+	};
 
 	return (
 		<div
@@ -300,6 +427,7 @@ export default function Simulations() {
 								onClick={() =>
 									navigate(`/session/${s.session_id}`)
 								}
+								onDelete={handleDelete}
 							/>
 						))}
 					</div>

@@ -27,7 +27,6 @@ import CreateWorldModal from '../components/sw/CreateWorldModal';
 import WorldHealthCheck from '../components/sw/WorldHealthCheck';
 import ScenarioBranchGraph from '../components/sw/ScenarioBranchGraph';
 import RunScenarioModal from '../components/sw/RunScenarioModal';
-import ScenarioDiff from '../components/sw/ScenarioDiff';
 import SmallWorldReport from '../components/sw/SmallWorldReport';
 import SWFeedPanel from '../components/sw/SWFeedPanel';
 import { swAgents } from '../api';
@@ -750,11 +749,6 @@ export default function SmallWorld() {
 											label: 'Agents',
 											icon: Users,
 										},
-										{
-											key: 'compare',
-											label: 'Compare',
-											icon: BarChart2,
-										},
 									].map((item) => {
 										const TabIcon = item.icon;
 										return (
@@ -905,7 +899,14 @@ export default function SmallWorld() {
 												/>
 											</div>
 										) : agentGraphMode ? (
-											<div style={{ height: '520px' }}>
+											<div
+												style={{
+													height: '100%',
+													minHeight: 0,
+													display: 'flex',
+													flexDirection: 'column',
+												}}
+											>
 												<AgentRelationshipGraph
 													agents={agents}
 													relationships={
@@ -1009,24 +1010,6 @@ export default function SmallWorld() {
 											</div>
 										)}
 									</div>
-								</div>
-							)}
-
-							{/* ── COMPARE TAB ── */}
-							{worldDetailTab === 'compare' && (
-								<div
-									style={{
-										display: 'flex',
-										flexDirection: 'column',
-										flex: 1,
-										minHeight: 0,
-										overflow: 'hidden',
-									}}
-								>
-									<ScenarioDiff
-										worldId={selectedWorld.world_id}
-										scenarios={scenarios}
-									/>
 								</div>
 							)}
 

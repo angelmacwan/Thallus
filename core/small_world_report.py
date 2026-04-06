@@ -55,6 +55,15 @@ def generate_report(
                     except Exception:
                         pass
 
+    # Prefer agents.json (written by OASIS, preserves insertion order & realname)
+    agents_path = os.path.join(output_dir, "agents.json")
+    if os.path.exists(agents_path):
+        try:
+            with open(agents_path, encoding="utf-8") as f:
+                agent_profiles = json.load(f)
+        except Exception:
+            pass  # fall back to the DB-derived profiles passed in
+
     # Summarize activity
     activity_summary = _summarize_activity(activity_lines, agent_profiles)
 
@@ -89,7 +98,7 @@ Generate a comprehensive enterprise-grade analysis with ONLY this JSON structure
     {{"rank": 3, "factor": "<factor name>", "explanation": "<why this drove the outcome>"}}
   ],
   "agent_behaviors": [
-    {{"agent_name": "<name>", "role_in_outcome": "<protagonist|antagonist|neutral|amplifier>", "behavior_summary": "<what this agent specifically did>"}}
+    {{"agent_name": "<name>", "role_in_outcome": "<protagonist|antagonist|neutral|amplifier>", "behavior_summary": "<what this agent specifically did>", "sentiment_shift": "<became more positive|negative|neutral|stayed the same>"}}
   ],
   "bottlenecks_risks": ["<risk or bottleneck identified>", ...],
   "unexpected_outcomes": ["<surprising finding>", ...],
@@ -145,7 +154,70 @@ Rules:
         report["confidence_score"] = 0.0
 
     report["generated_at"] = datetime.now(timezone.utc).isoformat()
+
+    # Inject computationally-derived influence scores into agent_behaviors
+    influence_scores = _compute_influence_scores(activity_lines, agent_profiles)
+    for ab in report.get("agent_behaviors", []):
+        name = ab.get("agent_name", "")
+        score = influence_scores.get(name)
+        if score is None:
+            # Fall back to a case-insensitive partial match
+            name_lower = name.lower()
+            for k, v in influence_scores.items():
+                if k.lower() in name_lower or name_lower in k.lower():
+                    score = v
+                    break
+        ab["influence_score"] = round(score, 4) if score is not None else 0.0
+
     return report, usage
+
+
+def _compute_influence_scores(
+    activity_lines: list[dict],
+    agent_profiles: list[dict],
+) -> dict[str, float]:
+    """Compute per-agent influence scores (0-1) from actual simulation data.
+
+    Formula per post author:
+      raw_score = (num_likes * 1.0) + (num_shares * 2.0) + (comments_received * 1.5)
+
+    Scores are normalized against the agent with the highest raw score.
+    """
+    uid_to_name: dict[int, str] = {}
+    for i, p in enumerate(agent_profiles):
+        uid_to_name[i] = p.get("realname") or p.get("username") or p.get("name") or f"Agent_{i}"
+
+    raw: dict[str, float] = {name: 0.0 for name in uid_to_name.values()}
+
+    # Index post records by post_id (post records have post_id, no comment_id, no action field)
+    posts_by_id: dict = {}
+    for line in activity_lines:
+        if "post_id" in line and "comment_id" not in line and "action" not in line:
+            pid = line.get("post_id")
+            if pid is not None:
+                posts_by_id[pid] = line
+
+    # Accumulate likes + shares from post records (aggregated counts stored on the record)
+    for post in posts_by_id.values():
+        author = uid_to_name.get(post.get("user_id", -1))
+        if author and author in raw:
+            raw[author] += float(post.get("num_likes", 0)) * 1.0
+            raw[author] += float(post.get("num_shares", 0)) * 2.0
+
+    # Count comments received per post author
+    for line in activity_lines:
+        if "comment_id" in line and "action" not in line:
+            post_id = line.get("post_id")
+            if post_id is not None and post_id in posts_by_id:
+                post = posts_by_id[post_id]
+                author = uid_to_name.get(post.get("user_id", -1))
+                if author and author in raw:
+                    raw[author] += 1.5
+
+    max_score = max(raw.values(), default=0.0)
+    if max_score == 0.0:
+        return {name: 0.0 for name in raw}
+    return {name: round(score / max_score, 4) for name, score in raw.items()}
 
 
 def _summarize_activity(
@@ -196,7 +268,17 @@ def _summarize_activity(
         for c in comments
     )
 
+    # Compute influence rankings to include in the summary
+    influence_scores = _compute_influence_scores(activity_lines, agent_profiles)
+    sorted_influence = sorted(influence_scores.items(), key=lambda x: -x[1])
+    influence_str = ", ".join(
+        f"{name}: {round(score * 100)}%"
+        for name, score in sorted_influence[:8]
+        if score > 0
+    ) or "(no engagement recorded)"
+
     summary = f"Total events: {len(activity_lines)}\nMeaningful event breakdown: {counts_str}"
+    summary += f"\n\nInfluence ranking (by likes + shares + comments received, normalized):\n  {influence_str}"
     if post_samples:
         summary += f"\n\nSample posts:\n{post_samples}"
     if comment_samples:

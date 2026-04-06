@@ -450,7 +450,13 @@ export default function AgentRelationshipGraph({
 	return (
 		<div
 			ref={containerRef}
-			style={{ width: '100%', height: '100%', position: 'relative' }}
+			style={{
+				width: '100%',
+				height: '100%',
+				minHeight: 0,
+				flex: 1,
+				position: 'relative',
+			}}
 			onClick={edgeMenu ? closeEdgeMenu : undefined}
 		>
 			{/* Toolbar */}
