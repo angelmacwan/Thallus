@@ -3,6 +3,7 @@ pydantic
 pydantic[email]
 rich
 python-dotenv
+resend
 camel-oasis>=0.2.5
 fastapi
 uvicorn
@@ -15,3 +16,5 @@ python-dateutil
 python-louvain
 networkx
 numpy
+openpyxl
+pandas

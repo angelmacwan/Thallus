@@ -46,3 +46,14 @@ def require_credits(current_user: models.User = Depends(get_current_user)):
             ),
         )
     return current_user
+
+
+def require_admin(current_user: models.User = Depends(get_current_user)):
+    """Dependency that blocks the request if the user is not in ADMIN_EMAILS."""
+    from core.config import ADMIN_EMAILS
+    if current_user.email not in ADMIN_EMAILS:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin access required.",
+        )
+    return current_user

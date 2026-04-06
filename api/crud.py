@@ -1,6 +1,11 @@
 from sqlalchemy.orm import Session
 from . import models, schemas
 from .auth import get_password_hash
+import secrets
+from datetime import datetime, timedelta
+
+_OTP_EXPIRY_MINUTES = 10
+_OTP_MAX_ATTEMPTS = 5
 
 def get_user_by_email(db: Session, email: str):
     return db.query(models.User).filter(models.User.email == email).first()
@@ -208,6 +213,89 @@ def add_scenario_event(db: Session, scenario_db_id: int, event_type: str, messag
     return ev
 
 
+# ── Session deletion ──────────────────────────────────────────────────────────
+
+def delete_session_all(db: Session, session: models.Session) -> None:
+    """Delete a session and every artifact associated with it.
+
+    Removes (in dependency order):
+      - insight files + DB records (for session and all its scenarios)
+      - report files + DB records (for session and all its scenarios)
+      - scenario events, scenario chat messages
+      - scenarios
+      - simulation events, chat messages
+      - credit transactions (session_id nulled to preserve billing history)
+      - the session record itself
+      - the session directory on disk
+    """
+    import os, shutil
+
+    # ── 1. Delete each scenario and its children ──────────────────────────────
+    scenarios = db.query(models.Scenario).filter(models.Scenario.session_id == session.id).all()
+    for scenario in scenarios:
+        # Scenario insights
+        sc_insights = db.query(models.InsightRecord).filter(models.InsightRecord.scenario_id == scenario.id).all()
+        for ins in sc_insights:
+            if ins.file_path and os.path.isfile(ins.file_path):
+                os.remove(ins.file_path)
+            db.delete(ins)
+
+        # Scenario reports
+        sc_reports = db.query(models.Report).filter(models.Report.scenario_id == scenario.id).all()
+        for rep in sc_reports:
+            if rep.file_path and os.path.isfile(rep.file_path):
+                os.remove(rep.file_path)
+            db.delete(rep)
+
+        # Scenario events + chat messages
+        db.query(models.ScenarioEvent).filter(models.ScenarioEvent.scenario_id == scenario.id).delete()
+        db.query(models.ScenarioChatMessage).filter(models.ScenarioChatMessage.scenario_id == scenario.id).delete()
+
+        db.delete(scenario)
+
+    db.flush()
+
+    # ── 2. Session-level insights ─────────────────────────────────────────────
+    session_insights = db.query(models.InsightRecord).filter(models.InsightRecord.session_id == session.id).all()
+    for ins in session_insights:
+        if ins.file_path and os.path.isfile(ins.file_path):
+            os.remove(ins.file_path)
+        db.delete(ins)
+
+    # ── 3. Session-level reports ──────────────────────────────────────────────
+    session_reports = db.query(models.Report).filter(models.Report.session_id == session.id).all()
+    for rep in session_reports:
+        if rep.file_path and os.path.isfile(rep.file_path):
+            os.remove(rep.file_path)
+        db.delete(rep)
+
+    # ── 4. Simulation events + chat messages ──────────────────────────────────
+    db.query(models.SimulationEvent).filter(models.SimulationEvent.session_id == session.id).delete()
+    db.query(models.ChatMessage).filter(models.ChatMessage.session_id == session.id).delete()
+
+    # ── 5. Null out credit transaction refs (keep billing history) ────────────
+    db.query(models.CreditTransaction).filter(models.CreditTransaction.session_id == session.id).update(
+        {models.CreditTransaction.session_id: None}
+    )
+
+    db.flush()
+
+    # ── 6. Delete session directory ───────────────────────────────────────────
+    session_dir = None
+    if session.inputs_path:
+        # inputs_path = users_data/<email>/session_<uuid>/input
+        session_dir = os.path.dirname(session.inputs_path)
+    elif session.outputs_path:
+        session_dir = os.path.dirname(session.outputs_path)
+
+    if session_dir and os.path.isdir(session_dir):
+        shutil.rmtree(session_dir)
+
+    # ── 7. Delete the session record ──────────────────────────────────────────
+    db.delete(session)
+    db.commit()
+
+
 def get_scenario_events(db: Session, scenario_db_id: int):
     return (
         db.query(models.ScenarioEvent)
@@ -277,3 +365,75 @@ def redeem_promo_code(
     db.refresh(user)
 
     return True, f"Successfully redeemed {display_val} credits.", display_val
+
+
+# ── OTP operations ─────────────────────────────────────────────────────────────
+
+def create_otp(db: Session, email: str, purpose: str) -> "models.OTPCode":
+    """Generate a new 6-digit OTP, invalidating any previous unused codes for
+    the same email + purpose combination."""
+    db.query(models.OTPCode).filter(
+        models.OTPCode.email == email,
+        models.OTPCode.purpose == purpose,
+        models.OTPCode.used == False,
+    ).update({"used": True})
+
+    code = f"{secrets.randbelow(1_000_000):06d}"
+    now = datetime.utcnow()
+    otp = models.OTPCode(
+        email=email,
+        code=code,
+        purpose=purpose,
+        created_at=now,
+        expires_at=now + timedelta(minutes=_OTP_EXPIRY_MINUTES),
+        used=False,
+        attempts=0,
+    )
+    db.add(otp)
+    db.commit()
+    db.refresh(otp)
+    return otp
+
+
+def verify_otp(db: Session, email: str, code: str, purpose: str) -> "models.OTPCode | None":
+    """Verify an OTP code. Returns the OTPCode on success, None on failure.
+    Increments the attempt counter on wrong codes and marks the code used on
+    success."""
+    otp = (
+        db.query(models.OTPCode)
+        .filter(
+            models.OTPCode.email == email,
+            models.OTPCode.purpose == purpose,
+            models.OTPCode.used == False,
+        )
+        .order_by(models.OTPCode.created_at.desc())
+        .first()
+    )
+
+    if not otp:
+        return None
+    if otp.expires_at < datetime.utcnow():
+        return None
+    if otp.attempts >= _OTP_MAX_ATTEMPTS:
+        return None
+    if otp.code != code:
+        otp.attempts += 1
+        db.commit()
+        return None
+
+    otp.used = True
+    db.commit()
+    return otp
+
+
+def get_last_otp(db: Session, email: str, purpose: str) -> "models.OTPCode | None":
+    """Return the most recently created OTP for a given email + purpose, or None."""
+    return (
+        db.query(models.OTPCode)
+        .filter(
+            models.OTPCode.email == email,
+            models.OTPCode.purpose == purpose,
+        )
+        .order_by(models.OTPCode.created_at.desc())
+        .first()
+    )

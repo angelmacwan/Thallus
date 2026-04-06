@@ -4,6 +4,7 @@ import api from '../api';
 
 export default function SettingsModal({ open, onClose }) {
 	const [userData, setUserData] = useState(null);
+	const [version, setVersion] = useState(null);
 	const [loading, setLoading] = useState(false);
 	const [promoCode, setPromoCode] = useState('');
 	const [promoLoading, setPromoLoading] = useState(false);
@@ -14,10 +15,16 @@ export default function SettingsModal({ open, onClose }) {
 		setLoading(true);
 		setPromoMsg(null);
 		setPromoCode('');
-		api.get('/user/me')
-			.then((res) => setUserData(res.data))
-			.catch(() => setUserData(null))
-			.finally(() => setLoading(false));
+		Promise.all([
+			api
+				.get('/user/me')
+				.then((res) => setUserData(res.data))
+				.catch(() => setUserData(null)),
+			api
+				.get('/version')
+				.then((res) => setVersion(res.data.version))
+				.catch(() => setVersion(null)),
+		]).finally(() => setLoading(false));
 	}, [open]);
 
 	function handleRedeemCode() {
@@ -69,9 +76,10 @@ export default function SettingsModal({ open, onClose }) {
 				className="card"
 				style={{
 					width: '100%',
-					maxWidth: '420px',
-					padding: '1.75rem',
+					maxWidth: '500px',
+					padding: 0,
 					borderRadius: '16px',
+					overflow: 'hidden',
 				}}
 				onClick={(e) => e.stopPropagation()}
 			>
@@ -81,7 +89,8 @@ export default function SettingsModal({ open, onClose }) {
 						display: 'flex',
 						justifyContent: 'space-between',
 						alignItems: 'center',
-						marginBottom: '1.75rem',
+						padding: '1rem',
+						borderBottom: '1px solid var(--outline-variant)',
 					}}
 				>
 					<h2
@@ -112,7 +121,7 @@ export default function SettingsModal({ open, onClose }) {
 					<div
 						style={{
 							textAlign: 'center',
-							padding: '2rem 0',
+							padding: '2rem',
 							color: 'var(--text-secondary)',
 							fontSize: '0.85rem',
 						}}
@@ -120,264 +129,212 @@ export default function SettingsModal({ open, onClose }) {
 						Loading…
 					</div>
 				) : (
-					<>
-						{/* Account section */}
-						<div style={{ marginBottom: '1.5rem' }}>
-							<div
+					<div>
+						{/* Account row */}
+						<div
+							style={{
+								display: 'flex',
+								justifyContent: 'space-between',
+								alignItems: 'center',
+								padding: '1rem 1rem',
+								borderBottom:
+									'1px solid var(--outline-variant)',
+							}}
+						>
+							<span style={{ fontSize: '0.95rem' }}>Account</span>
+							<span
 								style={{
-									fontSize: '0.68rem',
-									fontWeight: 700,
-									textTransform: 'uppercase',
-									letterSpacing: '0.08em',
+									fontSize: '0.85rem',
 									color: 'var(--text-secondary)',
-									marginBottom: '0.65rem',
+									maxWidth: '200px',
+									textAlign: 'right',
+									wordBreak: 'break-all',
 								}}
 							>
-								Account
-							</div>
+								{userData?.email || '—'}
+							</span>
+						</div>
+
+						{/* Credits row */}
+						<div
+							style={{
+								display: 'flex',
+								justifyContent: 'space-between',
+								alignItems: 'center',
+								padding: '1rem 1rem',
+								borderBottom:
+									'1px solid var(--outline-variant)',
+							}}
+						>
+							<span style={{ fontSize: '0.95rem' }}>Credits</span>
 							<div
 								style={{
 									display: 'flex',
 									alignItems: 'center',
-									gap: '0.65rem',
-									padding: '0.75rem',
-									borderRadius: '10px',
-									background: 'var(--surface-container-high)',
+									gap: '0.5rem',
 								}}
 							>
-								<User
+								<Coins
 									size={16}
-									color="var(--text-secondary)"
+									color={barColor}
 									style={{ flexShrink: 0 }}
 								/>
 								<span
 									style={{
-										fontSize: '0.85rem',
-										fontWeight: 500,
-										wordBreak: 'break-all',
+										fontSize: '0.95rem',
+										fontWeight: 600,
+										color: barColor,
 									}}
 								>
-									{userData?.email || '—'}
+									{credits.toLocaleString()}
 								</span>
 							</div>
 						</div>
 
-						{/* Credits section */}
-						<div>
-							<div
-								style={{
-									fontSize: '0.68rem',
-									fontWeight: 700,
-									textTransform: 'uppercase',
-									letterSpacing: '0.08em',
-									color: 'var(--text-secondary)',
-									marginBottom: '0.65rem',
-								}}
-							>
-								Credits
-							</div>
-							<div
-								style={{
-									padding: '1rem',
-									borderRadius: '10px',
-									background: 'var(--surface-container-high)',
-								}}
-							>
-								<div
-									style={{
-										display: 'flex',
-										alignItems: 'center',
-										gap: '0.5rem',
-										marginBottom: '0.85rem',
-									}}
-								>
-									<Coins
-										size={16}
-										color={barColor}
-										style={{ flexShrink: 0 }}
-									/>
-									<span
-										style={{
-											fontSize: '1.4rem',
-											fontWeight: 700,
-											color: barColor,
-											lineHeight: 1,
-										}}
-									>
-										{credits.toLocaleString()}
-									</span>
-									<span
-										style={{
-											fontSize: '0.8rem',
-											color: 'var(--text-secondary)',
-											marginLeft: '0.1rem',
-										}}
-									>
-										credits
-									</span>
-								</div>
-
-								{credits <= 0 && (
-									<div
-										style={{
-											marginTop: '0.6rem',
-											fontSize: '0.75rem',
-											color: 'var(--text-secondary)',
-										}}
-									>
-										⚠ You have no credits remaining. Contact
-										support to top up.
-									</div>
-								)}
-							</div>
-
-							{credits <= 0 && (
-								<div
-									style={{
-										marginTop: '0.75rem',
-										padding: '0.65rem 0.85rem',
-										borderRadius: '8px',
-										background: 'rgba(220,38,38,0.08)',
-										border: '1px solid #dc2626',
-										fontSize: '0.78rem',
-										color: '#dc2626',
-										lineHeight: 1.5,
-									}}
-								>
-									Your credits are exhausted. You won't be
-									able to run new simulations, scenarios, or
-									insights until your balance is topped up.
-								</div>
-							)}
-						</div>
-
-						{/* Promo code section */}
-						<div style={{ marginTop: '1.5rem' }}>
-							<div
-								style={{
-									fontSize: '0.68rem',
-									fontWeight: 700,
-									textTransform: 'uppercase',
-									letterSpacing: '0.08em',
-									color: 'var(--text-secondary)',
-									marginBottom: '0.65rem',
-								}}
+						{/* Promo code row */}
+						<div
+							style={{
+								display: 'flex',
+								justifyContent: 'space-between',
+								alignItems: 'center',
+								gap: '1rem',
+								padding: '1rem 1rem',
+								borderBottom:
+									'1px solid var(--outline-variant)',
+							}}
+						>
+							<span
+								style={{ fontSize: '0.95rem', flexShrink: 0 }}
 							>
 								Promo Code
-							</div>
+							</span>
 							<div
 								style={{
-									padding: '1rem',
-									borderRadius: '10px',
-									background: 'var(--surface-container-high)',
+									display: 'flex',
+									gap: '0.5rem',
+									minWidth: 0,
+									flex: 1,
+									justifyContent: 'flex-end',
 								}}
 							>
 								<div
 									style={{
+										position: 'relative',
 										display: 'flex',
-										gap: '0.5rem',
+										flex: 1,
+										maxWidth: '180px',
 									}}
 								>
-									<div
+									<Tag
+										size={14}
+										color="var(--text-secondary)"
 										style={{
-											position: 'relative',
-											flex: 1,
+											position: 'absolute',
+											left: '0.65rem',
+											top: '50%',
+											transform: 'translateY(-50%)',
+											pointerEvents: 'none',
 										}}
-									>
-										<Tag
-											size={14}
-											color="var(--text-secondary)"
-											style={{
-												position: 'absolute',
-												left: '0.65rem',
-												top: '50%',
-												transform: 'translateY(-50%)',
-												pointerEvents: 'none',
-											}}
-										/>
-										<input
-											type="text"
-											value={promoCode}
-											onChange={(e) =>
-												setPromoCode(e.target.value)
-											}
-											onKeyDown={(e) =>
-												e.key === 'Enter' &&
-												handleRedeemCode()
-											}
-											placeholder="Enter code…"
-											disabled={promoLoading}
-											style={{
-												width: '100%',
-												paddingLeft: '2rem',
-												paddingRight: '0.75rem',
-												paddingTop: '0.5rem',
-												paddingBottom: '0.5rem',
-												borderRadius: '8px',
-												border: '1px solid var(--outline-variant)',
-												background: 'var(--surface)',
-												color: 'var(--text-primary)',
-												fontSize: '0.85rem',
-												outline: 'none',
-												boxSizing: 'border-box',
-											}}
-										/>
-									</div>
-									<button
-										onClick={handleRedeemCode}
-										disabled={
-											promoLoading || !promoCode.trim()
+									/>
+									<input
+										type="text"
+										value={promoCode}
+										onChange={(e) =>
+											setPromoCode(e.target.value)
 										}
+										onKeyDown={(e) =>
+											e.key === 'Enter' &&
+											handleRedeemCode()
+										}
+										placeholder="Code…"
+										disabled={promoLoading}
 										style={{
-											padding: '0.5rem 1rem',
-											borderRadius: '8px',
-											border: 'none',
-											background: 'var(--primary)',
-											color: 'var(--on-primary)',
-											fontSize: '0.85rem',
-											fontWeight: 600,
-											cursor:
-												promoLoading ||
-												!promoCode.trim()
-													? 'not-allowed'
-													: 'pointer',
-											opacity:
-												promoLoading ||
-												!promoCode.trim()
-													? 0.55
-													: 1,
-											whiteSpace: 'nowrap',
-										}}
-									>
-										{promoLoading ? 'Redeeming…' : 'Redeem'}
-									</button>
-								</div>
-
-								{promoMsg && (
-									<div
-										style={{
-											marginTop: '0.65rem',
-											padding: '0.55rem 0.75rem',
+											width: '100%',
+											paddingLeft: '2rem',
+											paddingRight: '0.5rem',
+											paddingTop: '0.4rem',
+											paddingBottom: '0.4rem',
 											borderRadius: '6px',
-											fontSize: '0.78rem',
-											lineHeight: 1.5,
-											background:
-												promoMsg.type === 'success'
-													? 'rgba(22,163,74,0.1)'
-													: 'rgba(220,38,38,0.08)',
-											border: `1px solid ${promoMsg.type === 'success' ? '#16a34a' : '#dc2626'}`,
-											color:
-												promoMsg.type === 'success'
-													? '#16a34a'
-													: '#dc2626',
+											border: '1px solid var(--outline-variant)',
+											background: 'var(--surface)',
+											color: 'var(--text-primary)',
+											fontSize: '0.75rem',
+											outline: 'none',
+											boxSizing: 'border-box',
 										}}
-									>
-										{promoMsg.text}
-									</div>
-								)}
+									/>
+								</div>
+								<button
+									onClick={handleRedeemCode}
+									disabled={promoLoading || !promoCode.trim()}
+									style={{
+										padding: '0.4rem 0.8rem',
+										borderRadius: '6px',
+										border: 'none',
+										background: 'var(--primary)',
+										color: 'var(--on-primary)',
+										fontSize: '0.75rem',
+										fontWeight: 600,
+										cursor:
+											promoLoading || !promoCode.trim()
+												? 'not-allowed'
+												: 'pointer',
+										opacity:
+											promoLoading || !promoCode.trim()
+												? 0.55
+												: 1,
+										whiteSpace: 'nowrap',
+										flexShrink: 0,
+									}}
+								>
+									{promoLoading ? '…' : 'Redeem'}
+								</button>
 							</div>
 						</div>
-					</>
+
+						{promoMsg && (
+							<div
+								style={{
+									padding: '0.75rem 1rem',
+									borderBottom:
+										'1px solid var(--outline-variant)',
+									fontSize: '0.75rem',
+									lineHeight: 1.4,
+									background:
+										promoMsg.type === 'success'
+											? 'rgba(22,163,74,0.08)'
+											: 'rgba(220,38,38,0.06)',
+									color:
+										promoMsg.type === 'success'
+											? '#16a34a'
+											: '#dc2626',
+								}}
+							>
+								{promoMsg.text}
+							</div>
+						)}
+
+						{/* Version row */}
+						<div
+							style={{
+								display: 'flex',
+								justifyContent: 'space-between',
+								alignItems: 'center',
+								padding: '1rem 1rem',
+							}}
+						>
+							<span style={{ fontSize: '0.95rem' }}>Version</span>
+							<span
+								style={{
+									fontSize: '0.85rem',
+									color: 'var(--text-secondary)',
+									fontFamily: 'monospace',
+								}}
+							>
+								{version || '—'}
+							</span>
+						</div>
+					</div>
 				)}
 			</div>
 		</div>

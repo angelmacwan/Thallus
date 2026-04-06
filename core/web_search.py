@@ -19,9 +19,10 @@ from google import genai
 from google.genai import types
 
 from core.config import MODEL_NAME
+from core.usage import UsageSummary
 
 
-def _extract_topics(seed_text: str, objective: str) -> list[str]:
+def _extract_topics(seed_text: str, objective: str) -> tuple[list[str], UsageSummary]:
     """Use Gemini to extract 3-7 concrete, searchable topics from the seed + objective."""
     client = genai.Client()
 
@@ -44,9 +45,15 @@ def _extract_topics(seed_text: str, objective: str) -> list[str]:
         model=MODEL_NAME,
         contents=prompt,
     )
+    usage = UsageSummary()
+    if response.usage_metadata:
+        usage.add(
+            input_tokens=response.usage_metadata.prompt_token_count or 0,
+            output_tokens=response.usage_metadata.candidates_token_count or 0,
+        )
     raw = response.text or ""
     topics = [line.strip() for line in raw.splitlines() if line.strip()]
-    return topics[:7]
+    return topics[:7], usage
 
 
 def _slugify(text: str) -> str:
@@ -58,8 +65,8 @@ def _slugify(text: str) -> str:
     return slug[:60]
 
 
-def _search_and_summarize(topic: str) -> str:
-    """Call Gemini with Google Search grounding and return a Markdown summary."""
+def _search_and_summarize(topic: str) -> tuple[str, UsageSummary]:
+    """Call Gemini with Google Search grounding and return a (Markdown summary, UsageSummary) tuple."""
     client = genai.Client()
 
     google_search_tool = types.Tool(google_search=types.GoogleSearch())
@@ -85,6 +92,14 @@ def _search_and_summarize(topic: str) -> str:
         ),
     )
 
+    usage = UsageSummary()
+    if response.usage_metadata:
+        usage.add(
+            input_tokens=response.usage_metadata.prompt_token_count or 0,
+            output_tokens=response.usage_metadata.candidates_token_count or 0,
+            grounded_prompts=1,
+        )
+
     text = response.text or ""
 
     # Append grounding source metadata if available
@@ -107,20 +122,20 @@ def _search_and_summarize(topic: str) -> str:
         if "## References" not in text and "## Sources" not in text:
             text += "\n\n## Web Sources\n" + "\n".join(unique_sources)
 
-    return text
+    return text, usage
 
 
 def run_web_search_grounding(
     inputs_path: str,
     objective: str = "",
     emit=None,
-) -> list[str]:
+) -> tuple[list[str], UsageSummary]:
     """
     Main entry point. Reads seed files from inputs_path, extracts topics,
     searches the web for each, and writes results back to inputs_path as
     ``{topic_slug}_web_results.md`` files.
 
-    Returns a list of file paths that were created.
+    Returns a (list of file paths created, UsageSummary) tuple.
     """
     def _emit(msg: str):
         if emit:
@@ -140,17 +155,20 @@ def run_web_search_grounding(
                     pass
     seed_text = "\n\n".join(seed_text_parts)
 
+    usage = UsageSummary()
+
     # ── 2. Extract topics ──────────────────────────────────────────────────
     _emit("Extracting search topics from seed documents…")
     try:
-        topics = _extract_topics(seed_text, objective)
+        topics, extract_usage = _extract_topics(seed_text, objective)
+        usage += extract_usage
     except Exception as exc:
         _emit(f"Topic extraction failed: {exc}")
-        return []
+        return [], usage
 
     if not topics:
         _emit("No topics extracted — skipping web search grounding")
-        return []
+        return [], usage
 
     _emit(f"Found {len(topics)} topics to search: {', '.join(topics[:3])}{'…' if len(topics) > 3 else ''}")
 
@@ -162,7 +180,8 @@ def run_web_search_grounding(
 
         _emit(f"Searching: {topic}")
         try:
-            summary = _search_and_summarize(topic)
+            summary, search_usage = _search_and_summarize(topic)
+            usage += search_usage
             header = f"# Web Research: {topic}\n\n*Retrieved automatically via Google Search grounding.*\n\n---\n\n"
             out_file.write_text(header + summary, encoding="utf-8")
             created_files.append(str(out_file))
@@ -171,4 +190,4 @@ def run_web_search_grounding(
             _emit(f"Search failed for '{topic}': {exc}")
 
     _emit(f"Web search grounding complete — {len(created_files)} document(s) added")
-    return created_files
+    return created_files, usage

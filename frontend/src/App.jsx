@@ -37,11 +37,20 @@ import {
 	UploadCloud,
 	Zap,
 	Coins,
+	Globe,
+	GitBranch,
+	BarChart2,
+	MessageSquare,
+	Activity,
 } from 'lucide-react';
 import { SidebarCtx } from './SidebarContext';
 import Auth from './views/Auth';
 import Home from './views/Home';
+import Landing from './views/Landing';
 import SessionView from './views/Session';
+import SmallWorldView from './views/SmallWorld';
+import SimulationsView from './views/Simulations';
+import AdminView from './views/Admin';
 import NewSimulationModal from './components/NewSimulationModal';
 import SettingsModal from './components/SettingsModal';
 
@@ -393,7 +402,7 @@ function SidebarSessionList({ navigate }) {
 function Sidebar() {
 	const navigate = useNavigate();
 	const location = useLocation();
-	const { sessionNav, setNewSimOpen } = React.useContext(SidebarCtx);
+	const { sessionNav, setNewSimOpen, swNav } = React.useContext(SidebarCtx);
 	const [profileOpen, setProfileOpen] = useState(false);
 	const [infoOpen, setInfoOpen] = useState(false);
 	const [settingsOpen, setSettingsOpen] = useState(false);
@@ -457,7 +466,124 @@ function Sidebar() {
 					className="sidebar-nav"
 					style={{ flex: 1 }}
 				>
-					{sessionNav ? (
+					{swNav ? (
+						<>
+							<button
+								className="sidebar-nav-btn"
+								onClick={() => swNav.onBack()}
+							>
+								<ArrowLeft size={15} />
+								Back
+							</button>
+							<div
+								style={{
+									height: '1px',
+									background: 'var(--outline-variant)',
+									margin: '0.5rem 0.85rem',
+								}}
+							/>
+							{/* World name */}
+							<div
+								style={{
+									padding: '0 0.85rem 0.5rem',
+									fontSize: '0.72rem',
+									fontWeight: 700,
+									color: 'var(--text-secondary)',
+									textTransform: 'uppercase',
+									letterSpacing: '0.08em',
+									whiteSpace: 'nowrap',
+									overflow: 'hidden',
+									textOverflow: 'ellipsis',
+								}}
+							>
+								{swNav.worldName}
+							</div>
+							{/* Scenario section header */}
+							<div
+								style={{
+									padding: '0 0.85rem 0.25rem',
+									fontSize: '0.65rem',
+									fontWeight: 700,
+									color: 'var(--accent-color)',
+									textTransform: 'uppercase',
+									letterSpacing: '0.08em',
+								}}
+							>
+								{swNav.scenarioName
+									? `◆ ${swNav.scenarioName}`
+									: 'No scenario selected'}
+							</div>
+							{/* Panel nav items */}
+							{[
+								{
+									id: 'report',
+									icon: <FileText size={15} />,
+									label: 'Report',
+								},
+								{
+									id: 'chat',
+									icon: <MessageSquare size={15} />,
+									label: 'Chat',
+								},
+								{
+									id: 'feed',
+									icon: <Rss size={15} />,
+									label: 'Social Feed',
+								},
+								{
+									id: 'stream',
+									icon: <Activity size={15} />,
+									label: 'Log',
+								},
+							].map((item) => (
+								<button
+									key={item.id}
+									className={`sidebar-nav-btn${swNav.activePanel === item.id ? ' active' : ''}`}
+									onClick={() =>
+										swNav.setActivePanel(item.id)
+									}
+								>
+									{item.icon}
+									{item.label}
+								</button>
+							))}
+							{/* Resimulate button — shown when a scenario is selected */}
+							{swNav.onResimulate && (
+								<>
+									<div
+										style={{
+											height: '1px',
+											background:
+												'var(--outline-variant)',
+											margin: '0.5rem 0.85rem',
+										}}
+									/>
+									<button
+										className="sidebar-nav-btn"
+										onClick={swNav.onResimulate}
+										disabled={
+											swNav.scenarioStatus === 'running'
+										}
+										style={{
+											opacity:
+												swNav.scenarioStatus ===
+												'running'
+													? 0.5
+													: 1,
+											cursor:
+												swNav.scenarioStatus ===
+												'running'
+													? 'not-allowed'
+													: 'pointer',
+										}}
+									>
+										<RefreshCw size={15} />
+										Resimulate
+									</button>
+								</>
+							)}
+						</>
+					) : sessionNav ? (
 						<>
 							<button
 								className="sidebar-nav-btn"
@@ -718,7 +844,20 @@ function Sidebar() {
 						</>
 					) : (
 						<>
-							<SidebarSessionList navigate={navigate} />
+							<button
+								className="sidebar-nav-btn"
+								onClick={() => navigate('/simulations')}
+							>
+								<LayoutList size={15} />
+								Simulations
+							</button>
+							<button
+								className="sidebar-nav-btn"
+								onClick={() => navigate('/small-world')}
+							>
+								<Globe size={14} />
+								Small World
+							</button>
 						</>
 					)}
 				</nav>
@@ -906,14 +1045,23 @@ function Sidebar() {
 function AppLayout() {
 	const location = useLocation();
 	const isAuth = location.pathname === '/login';
+	const isLanding = location.pathname === '/landing';
 	const token = localStorage.getItem('token');
-	const showSidebar = !!token && !isAuth;
+	const showSidebar = !!token && !isAuth && !isLanding;
 	const [sessionNav, setSessionNav] = useState(null);
+	const [swNav, setSwNav] = useState(null);
 	const [newSimOpen, setNewSimOpen] = useState(false);
 
 	return (
 		<SidebarCtx.Provider
-			value={{ sessionNav, setSessionNav, newSimOpen, setNewSimOpen }}
+			value={{
+				sessionNav,
+				setSessionNav,
+				swNav,
+				setSwNav,
+				newSimOpen,
+				setNewSimOpen,
+			}}
 		>
 			<div
 				style={{
@@ -933,14 +1081,32 @@ function AppLayout() {
 				>
 					<Routes>
 						<Route
+							path="/landing"
+							element={<Landing />}
+						/>
+						<Route
 							path="/login"
-							element={<Auth />}
+							element={
+								token ? (
+									<Navigate to="/simulations" />
+								) : (
+									<Auth />
+								)
+							}
 						/>
 						<Route
 							path="/"
 							element={
+								<Navigate
+									to={token ? '/simulations' : '/landing'}
+								/>
+							}
+						/>
+						<Route
+							path="/simulations"
+							element={
 								<PrivateRoute>
-									<Home />
+									<SimulationsView />
 								</PrivateRoute>
 							}
 						/>
@@ -949,6 +1115,22 @@ function AppLayout() {
 							element={
 								<PrivateRoute>
 									<SessionView />
+								</PrivateRoute>
+							}
+						/>
+						<Route
+							path="/small-world"
+							element={
+								<PrivateRoute>
+									<SmallWorldView />
+								</PrivateRoute>
+							}
+						/>
+						<Route
+							path="/admin"
+							element={
+								<PrivateRoute>
+									<AdminView />
 								</PrivateRoute>
 							}
 						/>

@@ -2,11 +2,31 @@ from pydantic import BaseModel, EmailStr
 from typing import List, Optional
 from datetime import datetime
 
+
+class WaitlistCreate(BaseModel):
+    email: EmailStr
+
 class UserBase(BaseModel):
     email: EmailStr
 
 class UserCreate(UserBase):
     password: str
+
+class VerifySignupRequest(BaseModel):
+    email: EmailStr
+    password: str
+    otp: str
+
+class SendOTPRequest(BaseModel):
+    email: EmailStr
+
+class SendResetOTPRequest(BaseModel):
+    email: EmailStr
+
+class ResetPasswordRequest(BaseModel):
+    email: EmailStr
+    otp: str
+    new_password: str
 
 class UserResponse(UserBase):
     id: int
@@ -345,5 +365,226 @@ class QAMetricsFullResponse(BaseModel):
     answers: List[QuestionAnswerResponse] = []
     aggregate: Optional[dict] = None
     error: Optional[str] = None
+
+
+# ── Small World schemas ───────────────────────────────────────────────────────
+
+class PersonalityTraits(BaseModel):
+    openness: Optional[float] = None          # 0-1
+    conscientiousness: Optional[float] = None
+    extraversion: Optional[float] = None
+    agreeableness: Optional[float] = None
+    neuroticism: Optional[float] = None
+    risk_tolerance: Optional[float] = None
+    decision_style: Optional[str] = None      # analytical, emotional, impulsive
+    motivation_drivers: Optional[List[str]] = None
+    core_beliefs: Optional[str] = None
+    biases: Optional[List[str]] = None
+
+
+class BehavioralAttributes(BaseModel):
+    communication_style: Optional[str] = None  # direct, passive, aggressive
+    influence_level: Optional[float] = None    # 0-1
+    adaptability: Optional[float] = None       # 0-1
+    loyalty: Optional[float] = None            # 0-1
+    stress_response: Optional[str] = None
+
+
+class ContextualState(BaseModel):
+    current_goals: Optional[List[str]] = None
+    current_frustrations: Optional[List[str]] = None
+    incentives: Optional[List[str]] = None
+    constraints: Optional[List[str]] = None
+
+
+class ExternalFactors(BaseModel):
+    salary: Optional[str] = None
+    work_environment: Optional[str] = None
+    market_exposure: Optional[str] = None
+
+
+class AgentCreate(BaseModel):
+    name: str
+    age: Optional[int] = None
+    gender: Optional[str] = None
+    location: Optional[str] = None
+    profession: Optional[str] = None
+    job_title: Optional[str] = None
+    organization: Optional[str] = None
+    personality_traits: Optional[PersonalityTraits] = None
+    behavioral_attributes: Optional[BehavioralAttributes] = None
+    contextual_state: Optional[ContextualState] = None
+    external_factors: Optional[ExternalFactors] = None
+
+
+class AgentUpdate(BaseModel):
+    name: Optional[str] = None
+    age: Optional[int] = None
+    gender: Optional[str] = None
+    location: Optional[str] = None
+    profession: Optional[str] = None
+    job_title: Optional[str] = None
+    organization: Optional[str] = None
+    personality_traits: Optional[PersonalityTraits] = None
+    behavioral_attributes: Optional[BehavioralAttributes] = None
+    contextual_state: Optional[ContextualState] = None
+    external_factors: Optional[ExternalFactors] = None
+
+
+class AgentRelationshipCreate(BaseModel):
+    target_agent_id: str   # agent_id UUID of target
+    type: str
+    strength: Optional[float] = 0.5
+    sentiment: Optional[str] = "neutral"
+    influence_direction: Optional[str] = "both"
+
+
+class AgentRelationshipUpdate(BaseModel):
+    type: Optional[str] = None
+    strength: Optional[float] = None
+    sentiment: Optional[str] = None
+    influence_direction: Optional[str] = None
+
+
+class AgentRelationshipResponse(BaseModel):
+    id: int
+    rel_id: str
+    source_agent_id: str
+    target_agent_id: str
+    source_agent_name: Optional[str] = None
+    target_agent_name: Optional[str] = None
+    type: str
+    strength: float
+    sentiment: str
+    influence_direction: str
+
+    class Config:
+        from_attributes = True
+
+
+class AgentResponse(BaseModel):
+    id: int
+    agent_id: str
+    world_id: Optional[str] = None
+    name: str
+    age: Optional[int] = None
+    gender: Optional[str] = None
+    location: Optional[str] = None
+    profession: Optional[str] = None
+    job_title: Optional[str] = None
+    organization: Optional[str] = None
+    personality_traits: Optional[dict] = None
+    behavioral_attributes: Optional[dict] = None
+    contextual_state: Optional[dict] = None
+    external_factors: Optional[dict] = None
+    created_at: datetime
+    updated_at: datetime
+    relationship_count: Optional[int] = 0
+
+    class Config:
+        from_attributes = True
+
+
+class AgentGraphResponse(BaseModel):
+    agents: List[AgentResponse]
+    relationships: List[AgentRelationshipResponse]
+
+
+class AgentGenerateRequest(BaseModel):
+    name: str
+    profession: Optional[str] = None
+    organization: Optional[str] = None
+    location: Optional[str] = None
+    age: Optional[int] = None
+    description: str   # free-text natural language description
+
+
+class AutoSuggestRelationshipsRequest(BaseModel):
+    agent_ids: List[str]   # list of agent_id UUIDs
+
+
+class WorldCreate(BaseModel):
+    name: str
+    description: Optional[str] = None
+
+
+class WorldUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+
+
+class WorldResponse(BaseModel):
+    id: int
+    world_id: str
+    name: str
+    description: Optional[str] = None
+    created_at: datetime
+    agent_count: int = 0
+    scenario_count: int = 0
+
+    class Config:
+        from_attributes = True
+
+
+class WorldScenarioCreate(BaseModel):
+    name: str
+    seed_text: Optional[str] = None
+    parent_scenario_id: Optional[str] = None   # scenario_id UUID
+
+
+class WorldScenarioResponse(BaseModel):
+    id: int
+    scenario_id: str
+    world_id: str
+    name: str
+    seed_text: Optional[str] = None
+    parent_scenario_id: Optional[str] = None
+    depth: int
+    status: str
+    outputs_path: Optional[str] = None
+    report_path: Optional[str] = None
+    created_at: datetime
+    children: List['WorldScenarioResponse'] = []
+
+    class Config:
+        from_attributes = True
+
+
+WorldScenarioResponse.model_rebuild()
+
+
+class WorldScenarioChatMessage(BaseModel):
+    text: str
+
+
+class WorldScenarioChatResponse(BaseModel):
+    id: int
+    is_user: bool
+    text: str
+    timestamp: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class WorldScenarioEventResponse(BaseModel):
+    id: int
+    type: str
+    message: str
+    timestamp: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class HealthCheckItem(BaseModel):
+    level: str       # warning, error, info
+    message: str
+    affected_agents: List[str] = []
+
+
+class ScenarioDiffRequest(BaseModel):
+    scenario_id_a: str
+    scenario_id_b: str
 
 

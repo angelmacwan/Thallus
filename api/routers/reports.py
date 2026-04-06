@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from .. import crud, schemas, models
 from ..deps import get_db, get_current_user
+from ..billing import deduct_credits
 
 router = APIRouter(prefix="/api/reports", tags=["reports"])
 
@@ -77,6 +78,16 @@ def generate_report(
         objective=objective,
         insights=insights if insights else None,
     )
+
+    # Deduct credits for the LLM calls made by ReportAgent
+    try:
+        deduct_credits(
+            db, current_user.id, ra._usage,
+            description=f"Report {report_uuid}",
+            session_db_id=db_session.id,
+        )
+    except Exception as billing_exc:
+        print(f"[billing] deduct_credits failed: {billing_exc}")
 
     db_report = crud.create_report(
         db=db,
