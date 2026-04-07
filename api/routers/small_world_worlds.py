@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import os
 import queue as _queue
+import re
 import shutil
 import sqlite3
 import threading
@@ -121,6 +122,7 @@ def _get_scenario_or_404(scenario_id: str, world_db_id: int, db: Session) -> mod
 
 def _get_user_data_base(user_email: str) -> str:
     safe_email = user_email.replace("@", "_at_").replace(".", "_")
+    safe_email = re.sub(r'[^a-zA-Z0-9_]', '_', safe_email)
     return os.path.join("users_data", safe_email)
 
 

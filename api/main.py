@@ -1,6 +1,9 @@
 from dotenv import load_dotenv
 load_dotenv()
 
+import logging
+import os
+
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
@@ -124,14 +127,20 @@ with engine.connect() as _conn:
         try:
             _conn.execute(text(_sql))
             _conn.commit()
-        except Exception:
-            pass  # column already exists
+        except Exception as _exc:
+            logging.warning("Migration skipped (likely already applied): %s... | reason: %s", _sql[:60], _exc)
 
 app = FastAPI(title="Thallus API")
 
+_raw_origins = os.getenv(
+    "ALLOWED_ORIGINS",
+    "https://thallus.staticalabs.com",
+)
+_allowed_origins = [o.strip() for o in _raw_origins.split(",") if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], # In production, restrict this
+    allow_origins=_allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

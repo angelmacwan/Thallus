@@ -2,6 +2,7 @@ import asyncio
 import json as _json
 import os
 import queue as _queue
+import re
 import sqlite3
 import uuid
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, BackgroundTasks, Form
@@ -144,6 +145,7 @@ async def upload_and_simulate(
     current_user: models.User = Depends(require_credits)
 ):
     email_safe = current_user.email.replace("@", "_at_").replace(".", "_")
+    email_safe = re.sub(r'[^a-zA-Z0-9_]', '_', email_safe)
     session_uuid = str(uuid.uuid4())
     base_dir = os.path.join("users_data", email_safe, f"session_{session_uuid}")
     inputs_path = os.path.join(base_dir, "input")
@@ -154,7 +156,12 @@ async def upload_and_simulate(
 
     # Save files
     for file in files:
-        file_location = os.path.join(inputs_path, file.filename)
+        # Sanitize filename: strip any directory component, then allowlist safe chars
+        raw_name = os.path.basename(file.filename or "")
+        safe_name = re.sub(r'[^a-zA-Z0-9._\- ]', '_', raw_name).strip()
+        if not safe_name:
+            safe_name = str(uuid.uuid4())
+        file_location = os.path.join(inputs_path, safe_name)
         with open(file_location, "wb") as f:
             f.write(await file.read())
 
