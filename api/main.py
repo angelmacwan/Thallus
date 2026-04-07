@@ -128,7 +128,11 @@ with engine.connect() as _conn:
             _conn.execute(text(_sql))
             _conn.commit()
         except Exception as _exc:
-            logging.warning("Migration skipped (likely already applied): %s... | reason: %s", _sql[:60], _exc)
+            _exc_str = str(_exc).lower()
+            if "duplicate column name" in _exc_str or "already exists" in _exc_str:
+                logging.debug("Migration already applied: %s...", _sql[:60])
+            else:
+                logging.warning("Migration failed unexpectedly: %s... | reason: %s", _sql[:60], _exc)
 
 app = FastAPI(title="Thallus API")
 
