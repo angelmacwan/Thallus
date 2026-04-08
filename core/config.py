@@ -63,6 +63,10 @@ promo_codes: dict = {
         "val": 1000,
         "users": 5,
     },
+    "WELCOMEAGAIN":{
+        "val": 1000,
+        "users": 10,
+    }
 }
 
 EMAIL_SENDER_ADDRESS = "noreply@staticalabs.com"

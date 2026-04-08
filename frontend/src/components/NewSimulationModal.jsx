@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { UploadCloud, Zap, X, Globe } from 'lucide-react';
 import api from '../api';
@@ -14,6 +14,11 @@ export default function NewSimulationModal({ open, onClose }) {
 	const [enableWebSearch, setEnableWebSearch] = useState(false);
 	const fileInputRef = useRef(null);
 	const navigate = useNavigate();
+
+	// Auto-enable web search when no seed documents are uploaded
+	useEffect(() => {
+		if (files.length === 0) setEnableWebSearch(true);
+	}, [files]);
 
 	const getAgentCount = (sliderValue) => {
 		const counts = [0, 50, 150, 300, 500];
@@ -36,8 +41,8 @@ export default function NewSimulationModal({ open, onClose }) {
 
 	const handleCreate = async (e) => {
 		e.preventDefault();
-		if (!files.length)
-			return alert('Please drop or select files to upload');
+		if (!objective.trim())
+			return alert('Investigation Objective is required.');
 		setUploading(true);
 
 		try {
@@ -46,8 +51,7 @@ export default function NewSimulationModal({ open, onClose }) {
 			const agentCount = getAgentCount(agentSlider);
 			if (agentCount > 0) formData.append('agent_count', agentCount);
 			if (title.trim()) formData.append('title', title.trim());
-			if (objective.trim())
-				formData.append('objective', objective.trim());
+			formData.append('objective', objective.trim());
 			Array.from(files).forEach((file) => formData.append('files', file));
 			formData.append(
 				'enable_web_search',
@@ -217,7 +221,18 @@ export default function NewSimulationModal({ open, onClose }) {
 						className="form-group"
 						style={{ margin: 0 }}
 					>
-						<label className="form-label">Seed Documents</label>
+						<label className="form-label">
+							Seed Documents{' '}
+							<span
+								style={{
+									fontWeight: 400,
+									color: 'var(--text-secondary)',
+									fontSize: '0.78rem',
+								}}
+							>
+								(optional)
+							</span>
+						</label>
 						<div
 							onDrop={handleDrop}
 							onDragOver={handleDragOver}
@@ -287,6 +302,17 @@ export default function NewSimulationModal({ open, onClose }) {
 								}
 							/>
 						</div>
+						<p
+							style={{
+								fontSize: '0.72rem',
+								color: 'var(--text-secondary)',
+								margin: '0.3rem 0 0',
+								lineHeight: 1.4,
+							}}
+						>
+							No documents? Web Search will automatically seed the
+							simulation with relevant results.
+						</p>
 					</div>
 
 					{/* Web Search Grounding */}

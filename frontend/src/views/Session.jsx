@@ -1339,6 +1339,11 @@ function ResimulateModal({ sessionUuid, session, onClose, onSuccess }) {
 		existingFiles.filter((f) => !filesToRemove.has(f)).length +
 		newFiles.length;
 
+	// Auto-enable web search when no seed files will remain
+	useEffect(() => {
+		if (keptCount === 0) setUseWebSearch(true);
+	}, [keptCount]);
+
 	const handleDrop = (e) => {
 		e.preventDefault();
 		setDragging(false);
@@ -1347,8 +1352,8 @@ function ResimulateModal({ sessionUuid, session, onClose, onSuccess }) {
 	};
 
 	const handleSubmit = async () => {
-		if (keptCount === 0) {
-			setError('At least one seed file is required.');
+		if (!objective.trim()) {
+			setError('Investigation Objective is required.');
 			return;
 		}
 		setSubmitting(true);
@@ -1358,8 +1363,7 @@ function ResimulateModal({ sessionUuid, session, onClose, onSuccess }) {
 			formData.append('rounds', rounds);
 			const agentCount = getAgentCount(agentSlider);
 			if (agentCount > 0) formData.append('agent_count', agentCount);
-			if (objective.trim())
-				formData.append('objective', objective.trim());
+			formData.append('objective', objective.trim());
 			formData.append('enable_web_search', useWebSearch);
 			if (filesToRemove.size > 0)
 				formData.append(
@@ -1632,11 +1636,12 @@ function ResimulateModal({ sessionUuid, session, onClose, onSuccess }) {
 								<p
 									style={{
 										fontSize: '0.75rem',
-										color: '#dc2626',
+										color: 'var(--text-secondary)',
 										margin: 0,
 									}}
 								>
-									At least one seed file is required.
+									No files selected — Web Search will seed the
+									simulation.
 								</p>
 							)}
 						</div>
@@ -1760,11 +1765,12 @@ function ResimulateModal({ sessionUuid, session, onClose, onSuccess }) {
 								Investigation Objective{' '}
 								<span
 									style={{
-										fontWeight: 400,
+										fontWeight: 600,
 										textTransform: 'none',
+										color: 'var(--accent-color)',
 									}}
 								>
-									(optional)
+									*
 								</span>
 							</label>
 							<textarea
@@ -1883,7 +1889,7 @@ function ResimulateModal({ sessionUuid, session, onClose, onSuccess }) {
 					</button>
 					<button
 						onClick={handleSubmit}
-						disabled={submitting || loadingInfo || keptCount === 0}
+						disabled={submitting || loadingInfo}
 						style={{
 							padding: '0.55rem 1.25rem',
 							borderRadius: '8px',
@@ -1894,17 +1900,14 @@ function ResimulateModal({ sessionUuid, session, onClose, onSuccess }) {
 							color: '#fff',
 							fontWeight: 700,
 							cursor:
-								submitting || loadingInfo || keptCount === 0
+								submitting || loadingInfo
 									? 'not-allowed'
 									: 'pointer',
 							fontSize: '0.85rem',
 							display: 'flex',
 							alignItems: 'center',
 							gap: '0.4rem',
-							opacity:
-								submitting || loadingInfo || keptCount === 0
-									? 0.65
-									: 1,
+							opacity: submitting || loadingInfo ? 0.65 : 1,
 						}}
 					>
 						<RefreshCw size={14} />

@@ -140,7 +140,7 @@ async def upload_and_simulate(
     title: str = Form(None),
     objective: str = Form(None),
     enable_web_search: bool = Form(False),
-    files: List[UploadFile] = File(...),
+    files: List[UploadFile] = File(default=[]),
     db: Session = Depends(get_db),
     current_user: models.User = Depends(require_credits)
 ):
@@ -705,11 +705,6 @@ async def resimulate(
         dest = os.path.join(inputs_path, os.path.basename(file.filename))
         with open(dest, "wb") as fh:
             fh.write(await file.read())
-
-    # Ensure at least one input file remains
-    remaining = [f for f in os.listdir(inputs_path) if os.path.isfile(os.path.join(inputs_path, f))] if os.path.exists(inputs_path) else []
-    if not remaining:
-        raise HTTPException(status_code=400, detail="At least one seed file is required")
 
     # 3. Clear all generated outputs
     if os.path.exists(outputs_path):
