@@ -59,13 +59,9 @@ OASIS_EST_OUTPUT_TOKENS_PER_AGENT_ROUND: int = 300
 # "val"   – credits (in display units, i.e. divided by CREDITS_PER_USD) to add.
 # "users" – maximum number of distinct users allowed to redeem this code.
 promo_codes: dict = {
-    "WELCOME100": {
-        "val": 1000,
-        "users": 5,
-    },
-    "WELCOMEAGAIN":{
-        "val": 1000,
-        "users": 10,
+    "IAMANGEL": {
+        "val": 9000,
+        "users": 1,
     }
 }
 
