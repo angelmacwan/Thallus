@@ -120,19 +120,19 @@ class ScenarioRunner:
 
         combined_profiles = [user_profile] + sim_profiles
 
-        # Inject objective into every non-seed agent's persona so the simulation
-        # stays anchored to the topic being scenario-tested.
+        # Inject objective into every non-seed agent's persona so agents stay
+        # anchored to the real-world topic being discussed.
         if self.objective:
             for profile in combined_profiles:
                 if not profile.get("is_seed_user"):
                     existing = (profile.get("persona") or "").strip()
                     profile["persona"] = (
                         f"{existing}\n\n"
-                        f"SIMULATION FOCUS: {self.objective}\n"
-                        "You MUST stay strictly within this topic in every post and comment. "
-                        "Do NOT introduce unrelated subjects."
+                        f"CURRENT EVENTS CONTEXT: {self.objective}\n"
+                        "This is real. Engage with this event authentically in every post and comment "
+                        "as though it is actually happening. Do NOT introduce unrelated subjects."
                     ).strip()
-            print(f"Objective injected into {len(combined_profiles) - 1} scenario agent persona(s).")
+            print(f"Context injected into {len(combined_profiles) - 1} scenario agent persona(s).")
 
         # Persist so InsightsEngine reads correct indices + can identify seed user
         scenario_dir = os.path.dirname(self.log_path)

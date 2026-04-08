@@ -129,18 +129,18 @@ class ProfileGenerator:
         # When adding on top of existing seed agents, frame the request accordingly
         if existing_names:
             role_note = (
-                f"These agents are ADDITIONAL participants being added to a simulation that already has "
-                f"{len(existing_names)} agents extracted from the seed documents "
+                f"These are ADDITIONAL participants joining a discussion that already includes "
+                f"{len(existing_names)} people extracted from the source documents "
                 f"({', '.join(list(existing_names)[:15])}{'…' if len(existing_names) > 15 else ''}). "
                 "Do NOT duplicate any of those names. Generate complementary perspectives."
             )
         else:
-            role_note = "Generate the full agent population for this simulation."
+            role_note = "Generate the full set of participants for this discussion."
 
-        prompt = f"""You are designing a realistic agent population for a multi-agent social simulation.
+        prompt = f"""You are creating profiles for a diverse group of real social media users who will be discussing the following real-world topic or event.
 
-SIMULATION OBJECTIVE:
-"{objective if objective else '(no specific objective — generate a diverse, relevant population)'}"
+TOPIC / EVENT:
+"{objective if objective else '(no specific topic — generate a diverse, relevant population)'}"
 
 DOCUMENT CONTEXT (knowledge graph extracted from uploaded materials):
 {doc_context}
@@ -165,12 +165,13 @@ POPULATION DESIGN RULES:
    - Industry journalists / media commentators
    - Competing service executives
    - Regulators / policy researchers (if relevant)
-   Each should have a clear professional stake in the objective.
+   Each should have a clear professional stake in the topic.
 
-3. Every agent's PERSONA must reflect their likely attitude toward the simulation objective:
+3. Every agent's PERSONA must reflect their genuine attitude toward this topic or event:
    - Some should be supportive, some opposed, some uncertain
-   - Their persona should foreshadow their debate position
-   - Personas must be authentic, specific, and grounded in their role
+   - Their persona should foreshadow their likely opinion
+   - Personas must be authentic, specific, and grounded in their real-world role
+   - IMPORTANT: personas must NOT reference being in a simulation or role-play — they are real people
 
 Generate exactly {count} agent profiles.
 Return ONLY a JSON array of {count} objects, each with these exact keys:
@@ -183,7 +184,7 @@ Return ONLY a JSON array of {count} objects, each with these exact keys:
   "mbti"              – Myers-Briggs type code, e.g. "INTJ"
   "country"           – country of residence
   "profession"        – profession
-  "interested_topics" – list of 2-4 interest topics directly related to the objective
+  "interested_topics" – list of 2-4 interest topics directly related to the topic
 """
 
         try:
@@ -318,7 +319,7 @@ Return ONLY a JSON array of {count} objects, each with these exact keys:
         mbti_types = ["INTJ", "ENTP", "INFP", "ESTJ", "ISFJ", "ENFJ", "ISTP", "ESFP"]
         
         objective_context = (
-            f"\nSimulation objective: \"{objective}\"\nPersonas and bios must reflect the agents' stance on this objective.\n"
+            f"\nTopic context: \"{objective}\"\nPersonas and bios must reflect the agents' genuine stance on this topic.\n"
             if objective else ""
         )
 
@@ -327,7 +328,7 @@ Return ONLY a JSON array of {count} objects, each with these exact keys:
         for i in range(0, count, batch_size):
             batch_count = min(batch_size, count - i)
             
-            prompt = f"""Generate {batch_count} diverse social media user profiles for a simulation.
+            prompt = f"""Generate {batch_count} diverse social media user profiles for people discussing a real-world topic.
 
 Base these profiles on the following context topics: {', '.join(topics[:10])}{objective_context}
 
@@ -493,8 +494,8 @@ Role:"""
     # ------------------------------------------------------------------
     def _generate_one(self, name: str, ent_type: str, objective: str = "") -> dict | None:
         objective_context = (
-            f"\n\nSimulation objective: \"{objective}\"\n"
-            "The bio and persona must reflect this person's likely stance or involvement with this objective."
+            f"\n\nContext: \"{objective}\"\n"
+            "The bio and persona must reflect this person's likely stance or involvement with this real-world topic."
             if objective else ""
         )
         prompt = f"""Generate an OASIS social-media user profile for {name}, a {ent_type}.{objective_context}

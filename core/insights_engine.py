@@ -210,36 +210,36 @@ class InsightsEngine:
             for post in a.get("sample_posts", [])[:2]
         )
 
-        prompt = f"""You are an expert simulation analyst reviewing a multi-agent social simulation.
+        prompt = f"""You are an expert analyst reviewing how a group of real people responded to a recent event or topic.
 
 USER QUERY: "{query}"
 
-SIMULATION OVERVIEW:
-- Total agents: {aggregate.get('total_agents', 0)}
+DISCUSSION OVERVIEW:
+- Total participants: {aggregate.get('total_agents', 0)}
 - Total posts made: {aggregate.get('total_posts', 0)}
 - Total interactions: {aggregate.get('total_interactions', 0)}
 
-AGENT PROFILES:
+PARTICIPANT PROFILES:
 {profiles_text}
 
-SAMPLE POSTS FROM THE SIMULATION:
+SAMPLE POSTS FROM THE DISCUSSION:
 {top_posts_text}
 
 TASK:
-Extract the following structured intelligence from the simulation data above, directly addressing the user's query:
+Extract the following structured intelligence from the discussion data above, directly addressing the user's query:
 
-1. OUTCOME DISTRIBUTION — What specific outcomes are the agents predicting? \
-Estimate the approximate % of agents predicting each outcome (e.g., churn increase, revenue growth, \
+1. OUTCOME DISTRIBUTION — What specific outcomes are the participants predicting? \
+Estimate the approximate % predicting each outcome (e.g., churn increase, revenue growth, \
 public backlash, long-term success, regulatory response, etc.).
 
-2. TOP RISKS — The 3 most significant risks or negative outcomes surfacing across the agent population.
+2. TOP RISKS — The 3 most significant risks or negative outcomes surfacing across the participant population.
 
 3. TOP OPPORTUNITIES — The 3 most significant positive outcomes or opportunities identified.
 
-4. KEY DISAGREEMENTS — The biggest point of disagreement between agent clusters \
-(i.e., where agents are most split). Name the opposing camps.
+4. KEY DISAGREEMENTS — The biggest point of disagreement between participant clusters \
+(i.e., where participants are most split). Name the opposing camps.
 
-5. BEHAVIORAL PATTERNS — Notable patterns in how agents engaged with the topic \
+5. BEHAVIORAL PATTERNS — Notable patterns in how participants engaged with the topic \
 (e.g., influence cascades, polarization, consensus formation, thought leaders).
 
 Return a JSON array of 4-6 insight objects. Each object must have:
@@ -293,36 +293,36 @@ Return ONLY the JSON array, no other text."""
             indent=2,
         )
 
-        prompt = f"""You are simulating a cast of agents in a multi-agent social simulation.
+        prompt = f"""You are roleplaying as each of the following people, based on their actual profiles and posting history.
 
 USER QUERY: "{query}"
 
-The agents below each have a unique personality, background, and posting history. \
-Simulate each agent's authentic initial response to the query based on who they are.
+The people below each have a unique personality, background, and posting history. \
+Generate each person's authentic initial response to the query based on who they are.
 
-AGENTS:
+PARTICIPANTS:
 {agents_json}
 
 TASK:
-For each agent, generate their honest initial position in response to the user's query. \
+For each person, generate their honest initial position in response to the user's query. \
 The position should feel authentic to their character — shaped by their persona, MBTI, \
-interests, and sample posts.
+interests, and actual posts. Treat the scenario as real: do NOT frame responses as hypothetical or simulated.
 
-When formulating positions, consider how each agent might view:
+When formulating positions, consider how each person might view:
 - The emotional or psychological dimensions of the query (sentiment around the topic)
 - How their ideas or values might spread or resonate with peers
 - Whether they see the issue as triggering cascading consequences
 - The stability or volatility of their stance on this—how firm vs uncertain they are
 - Points of potential consensus or disagreement with others
 
-Return a JSON array — one entry per agent — each with:
-- "agent_id": the agent's id string (e.g. "0", "1", ...)
-- "agent_name": the agent's name
-- "position": the agent's stance ("support" | "oppose" | "neutral") followed by 1-2 sentences of authentic character voice
-- "prediction": a specific, concrete outcome this agent predicts (1 sentence, e.g. \
+Return a JSON array — one entry per person — each with:
+- "agent_id": the person's id string (e.g. "0", "1", ...)
+- "agent_name": the person's name
+- "position": the person's stance ("support" | "oppose" | "neutral") followed by 1-2 sentences of authentic character voice
+- "prediction": a specific, concrete outcome this person predicts (1 sentence, e.g. \
   "Churn will increase ~15% in the first 3 months among casual users.")
 - "reasoning": why they hold this position, grounded in their profile or posts (1-2 sentences)
-- "confidence": 'high' | 'medium' | 'low' — how confident this agent is in their prediction
+- "confidence": 'high' | 'medium' | 'low' — how confident this person is in their prediction
 - "conviction_level": 'strong' | 'moderate' | 'weak' — how firm their stance is
 
 Return ONLY the JSON array. No other text."""
@@ -378,15 +378,15 @@ Return ONLY the JSON array. No other text."""
             for p in current_positions
         )
 
-        prompt = f"""You are facilitating debate round {round_num} of {total_rounds} in a multi-agent simulation.
+        prompt = f"""You are facilitating round {round_num} of {total_rounds} of a structured debate among real people about a real event or topic.
 
 USER QUERY: "{query}"
 
 CURRENT POSITIONS (end of round {round_num - 1}):
 {positions_text}
 
-Each agent has now read all other agents' positions and reasoning. Simulate each agent \
-updating their response. Agents may:
+Each person has now read all other participants' positions and reasoning. Generate each person's \
+updated response. Participants may:
 - Strengthen their original position with new arguments
 - Shift their stance if persuaded by another agent (sentiment/emotional shifts)
 - Find nuance or partial agreement (consensus formation)
@@ -457,7 +457,7 @@ Return ONLY the JSON array. No other text."""
             indent=2,
         )
 
-        prompt = f"""You are synthesizing the final results of a multi-agent debate simulation.
+        prompt = f"""You are synthesizing the final results of a structured debate about a real-world topic.
 
 USER QUERY: "{query}"
 

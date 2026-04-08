@@ -203,20 +203,20 @@ class QuestionMetrics:
 
     def _generate_questions(self, objective: str, agent_count: int) -> list[str]:
         """Generate 5-8 investigation questions from the objective (1 LLM call)."""
-        prompt = f"""You are designing an investigation plan for a multi-agent simulation.
+        prompt = f"""You are designing an investigation plan to analyze how real people responded to an event or topic.
 
-Simulation Objective: "{objective}"
-Number of agents in simulation: {agent_count}
+Topic / Event: "{objective}"
+Number of participants: {agent_count}
 
 Generate exactly 6 specific, measurable investigation questions that a researcher would \
-want answered to evaluate whether the simulation accomplished its objective. \
-Each question must be answerable with YES / NO / MAYBE based on observable agent behaviors \
-(what agents posted, how they interacted, what topics they discussed).
+want answered to evaluate how people reacted to this topic or event. \
+Each question must be answerable with YES / NO / MAYBE based on observable participant behaviors \
+(what they posted, how they interacted, what topics they discussed).
 
 Focus question types evenly across:
-- Behavioral outcomes (What did agents actually do?)
-- Sentiment / opinion outcomes (How did agents feel or express emotion?)
-- Social dynamics (How did agents interact with each other?)
+- Behavioral outcomes (What did participants actually do?)
+- Sentiment / opinion outcomes (How did participants feel or express emotion?)
+- Social dynamics (How did participants interact with each other?)
 - Emergent patterns (Did unexpected behaviors appear?)
 
 Return ONLY a JSON array of 6 question strings. No extra keys, no wrapper object.
@@ -255,19 +255,19 @@ Example format: ["Question 1?", "Question 2?", "Question 3?"]"""
         aggregate = behavior_summary.get("aggregate", {})
         action_log_sample = behavior_summary.get("action_log_sample", [])
 
-        prompt = f"""You are a rigorous simulation analyst. Answer the following investigation \
+        prompt = f"""You are a rigorous analyst. Answer the following investigation \
 questions based SOLELY on the evidence provided below. Do NOT invent, hallucinate, or assume \
-any agent behaviors that are not shown in the data.
+any participant behaviors that are not shown in the data.
 
 ═══════════════════════════════════════════
-SIMULATION OBJECTIVE
+TOPIC / EVENT (treat as real ground truth)
 ═══════════════════════════════════════════
 "{objective}"
 
 ═══════════════════════════════════════════
 AGGREGATE STATISTICS
 ═══════════════════════════════════════════
-- Total agents: {aggregate.get('total_agents', 0)}
+- Total participants: {aggregate.get('total_agents', 0)}
 - Total actions logged: {aggregate.get('total_actions', 0)}
 - Total posts made: {aggregate.get('total_posts', 0)}
 - Total social interactions (likes/shares/replies): {aggregate.get('total_interactions', 0)}
