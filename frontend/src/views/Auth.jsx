@@ -292,7 +292,7 @@ export default function Auth() {
 									Thallus
 								</p>
 								<p className="landing-brandmark-subtitle">
-									Simulation Engine
+									Decision Intelligence
 								</p>
 							</div>
 						</div>

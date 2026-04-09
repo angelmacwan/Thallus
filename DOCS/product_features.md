@@ -1,6 +1,6 @@
 # Thallus: Product Feature Documentation
 
-**Thallus** is an advanced AI-driven social media simulation engine designed to model the spread of narratives, evaluate human-like interactions, and anticipate behavioral outcomes. It is built to serve users—from researchers and strategic consultants to enterprise analysts—who need to understand complex social dynamics before they occur in the real world.
+**Thallus** is an advanced AI-driven social media Decision Intelligence designed to model the spread of narratives, evaluate human-like interactions, and anticipate behavioral outcomes. It is built to serve users—from researchers and strategic consultants to enterprise analysts—who need to understand complex social dynamics before they occur in the real world.
 
 The Thallus platform is built around two primary core features: **Automated Simulations** and **Small World(s)**. These are supported by a suite of analytical engines, scenario testing tools, and visualization dashboards.
 

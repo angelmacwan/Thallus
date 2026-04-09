@@ -456,7 +456,7 @@ function Sidebar() {
 					<div>
 						<div className="sidebar-brand-name">Thallus</div>
 						<div className="sidebar-brand-sub">
-							Simulation Engine
+							Decision Intelligence
 						</div>
 					</div>
 				</div>
