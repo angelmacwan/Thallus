@@ -226,6 +226,11 @@ export default function SmallWorld() {
 					setScenarioLiveStatus(
 						last.type === 'done' ? 'completed' : 'failed',
 					);
+					// Stop polling — scenario has reached a terminal state
+					setScenarioPollRef((prev) => {
+						clearInterval(prev);
+						return null;
+					});
 				}
 			}
 		} catch {}
@@ -251,11 +256,14 @@ export default function SmallWorld() {
 		fetchScenarioEvents(wId, sId).finally(() =>
 			setScenarioEventsLoading(false),
 		);
-		// Poll while running
+		// Only poll if the scenario is still in a non-terminal state
 		if (scenarioPollRef) clearInterval(scenarioPollRef);
-		const pid = setInterval(() => fetchScenarioEvents(wId, sId), 2500);
-		setScenarioPollRef(pid);
-		return () => clearInterval(pid);
+		const terminalStatuses = ['completed', 'failed', 'error'];
+		if (!terminalStatuses.includes(selectedScenario.status)) {
+			const pid = setInterval(() => fetchScenarioEvents(wId, sId), 2500);
+			setScenarioPollRef(pid);
+			return () => clearInterval(pid);
+		}
 	}, [selectedScenario?.scenario_id]);
 
 	useEffect(() => {
@@ -1106,49 +1114,156 @@ export default function SmallWorld() {
 												flexShrink: 0,
 												display: 'flex',
 												flexDirection: 'column',
-												background: 'var(--surface-container-lowest)',
+												background:
+													'var(--surface-container-lowest)',
 												border: '1px solid var(--outline-variant)',
 												borderRadius: '12px',
 												overflow: 'hidden',
 											}}
 										>
-											<div style={{ padding: '0.85rem 1rem', borderBottom: '1px solid var(--outline-variant)', fontWeight: 600, fontSize: '0.9rem' }}>
+											<div
+												style={{
+													padding: '0.85rem 1rem',
+													borderBottom:
+														'1px solid var(--outline-variant)',
+													fontWeight: 600,
+													fontSize: '0.9rem',
+												}}
+											>
 												Relationships
 											</div>
-											<div style={{ flex: 1, overflowY: 'auto', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
+											<div
+												style={{
+													flex: 1,
+													overflowY: 'auto',
+													padding: '1rem',
+													display: 'flex',
+													flexDirection: 'column',
+													gap: '0.65rem',
+												}}
+											>
 												{relLoading ? (
-													<div style={{ textAlign: 'center', color: 'var(--text-secondary)', padding: '2rem 0' }}>
-														<Loader2 size={20} style={{ animation: 'spin 1s linear infinite', margin: '0 auto 0.5rem' }} />
+													<div
+														style={{
+															textAlign: 'center',
+															color: 'var(--text-secondary)',
+															padding: '2rem 0',
+														}}
+													>
+														<Loader2
+															size={20}
+															style={{
+																animation:
+																	'spin 1s linear infinite',
+																margin: '0 auto 0.5rem',
+															}}
+														/>
 														Loading...
 													</div>
-												) : relationships.length === 0 ? (
-													<div style={{ textAlign: 'center', color: 'var(--text-secondary)', padding: '2rem 0', fontSize: '0.85rem' }}>No relationships found.</div>
+												) : relationships.length ===
+												  0 ? (
+													<div
+														style={{
+															textAlign: 'center',
+															color: 'var(--text-secondary)',
+															padding: '2rem 0',
+															fontSize: '0.85rem',
+														}}
+													>
+														No relationships found.
+													</div>
 												) : (
 													relationships.map((r) => {
-														const src = agents.find((a) => a.agent_id === r.source_agent_id);
-														const tgt = agents.find((a) => a.agent_id === r.target_agent_id);
+														const src = agents.find(
+															(a) =>
+																a.agent_id ===
+																r.source_agent_id,
+														);
+														const tgt = agents.find(
+															(a) =>
+																a.agent_id ===
+																r.target_agent_id,
+														);
 														return (
-															<div key={r.rel_id} style={{ background: 'var(--surface-container-low)', padding: '0.75rem', borderRadius: '8px', border: '1px solid var(--outline-variant)' }}>
-																<div style={{ fontWeight: 600, fontSize: '0.85rem', marginBottom: '0.35rem', color: 'var(--on-surface)' }}>
-																	{src?.name || 'Unknown'} <span style={{ color: 'var(--text-secondary)' }}>→</span> {tgt?.name || 'Unknown'}
+															<div
+																key={r.rel_id}
+																style={{
+																	background:
+																		'var(--surface-container-low)',
+																	padding:
+																		'0.75rem',
+																	borderRadius:
+																		'8px',
+																	border: '1px solid var(--outline-variant)',
+																}}
+															>
+																<div
+																	style={{
+																		fontWeight: 600,
+																		fontSize:
+																			'0.85rem',
+																		marginBottom:
+																			'0.35rem',
+																		color: 'var(--on-surface)',
+																	}}
+																>
+																	{src?.name ||
+																		'Unknown'}{' '}
+																	<span
+																		style={{
+																			color: 'var(--text-secondary)',
+																		}}
+																	>
+																		→
+																	</span>{' '}
+																	{tgt?.name ||
+																		'Unknown'}
 																</div>
-																<div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.75rem' }}>
-																	<span style={{ 
-																		background: 'var(--surface-container-high)', 
-																		padding: '0.1rem 0.4rem', 
-																		borderRadius: '4px',
-																		color: 'var(--text-secondary)',
-																		textTransform: 'capitalize',
-																		fontWeight: 500
-																	}}>
+																<div
+																	style={{
+																		display:
+																			'flex',
+																		alignItems:
+																			'center',
+																		gap: '0.5rem',
+																		fontSize:
+																			'0.75rem',
+																	}}
+																>
+																	<span
+																		style={{
+																			background:
+																				'var(--surface-container-high)',
+																			padding:
+																				'0.1rem 0.4rem',
+																			borderRadius:
+																				'4px',
+																			color: 'var(--text-secondary)',
+																			textTransform:
+																				'capitalize',
+																			fontWeight: 500,
+																		}}
+																	>
 																		{r.type}
 																	</span>
-																	<span style={{ 
-																		color: r.sentiment === 'positive' ? '#16a34a' : r.sentiment === 'negative' ? '#dc2626' : '#6366f1',
-																		textTransform: 'capitalize',
-																		fontWeight: 600
-																	}}>
-																		{r.sentiment}
+																	<span
+																		style={{
+																			color:
+																				r.sentiment ===
+																				'positive'
+																					? '#16a34a'
+																					: r.sentiment ===
+																						  'negative'
+																						? '#dc2626'
+																						: '#6366f1',
+																			textTransform:
+																				'capitalize',
+																			fontWeight: 600,
+																		}}
+																	>
+																		{
+																			r.sentiment
+																		}
 																	</span>
 																</div>
 															</div>
@@ -1171,10 +1286,18 @@ export default function SmallWorld() {
 												agents={agents}
 												relationships={relationships}
 												loading={relLoading}
-												onCreateRelationship={createRelationship}
-												onDeleteRelationship={deleteRelationship}
-												onUpdateRelationship={updateRelationship}
-												onAutoSuggest={autoSuggestRelationships}
+												onCreateRelationship={
+													createRelationship
+												}
+												onDeleteRelationship={
+													deleteRelationship
+												}
+												onUpdateRelationship={
+													updateRelationship
+												}
+												onAutoSuggest={
+													autoSuggestRelationships
+												}
 												suggestMsg={suggestMsg}
 											/>
 										</div>
