@@ -202,6 +202,25 @@ class PromoCodeUsage(Base):
     user = relationship("User", back_populates="promo_code_usages")
 
 
+class PromoCode(Base):
+    __tablename__ = "promo_codes"
+
+    id = Column(Integer, primary_key=True, index=True)
+    code = Column(String, unique=True, index=True, nullable=False)
+    val = Column(Integer, nullable=False)       # display credits to add
+    users = Column(Integer, nullable=False)     # max distinct users who can redeem
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class AllowedEmail(Base):
+    __tablename__ = "allowed_emails"
+
+    id = Column(Integer, primary_key=True, index=True)
+    email = Column(String, unique=True, index=True, nullable=False)
+    promoted_from_waitlist = Column(Boolean, default=False)
+    added_at = Column(DateTime, default=datetime.utcnow)
+
+
 class WaitlistEntry(Base):
     __tablename__ = "waitlist_entries"
 

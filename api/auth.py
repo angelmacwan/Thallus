@@ -2,8 +2,19 @@ from datetime import datetime, timedelta, timezone
 from jose import JWTError, jwt
 import bcrypt
 import os
+import sys
 
-SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key-for-development")
+_secret = os.getenv("SECRET_KEY")
+if not _secret:
+    print(
+        "\n[FATAL] SECRET_KEY environment variable is not set.\n"
+        "Set it to a long random string before starting the server.\n"
+        "Example: export SECRET_KEY=$(openssl rand -hex 32)\n",
+        file=sys.stderr,
+    )
+    sys.exit(1)
+
+SECRET_KEY: str = _secret
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7 # 7 days
 

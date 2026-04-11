@@ -123,6 +123,19 @@ _MIGRATIONS = [
     )""",
     # Add focus_topics to sessions (idempotent — fails silently if column exists)
     "ALTER TABLE sessions ADD COLUMN focus_topics TEXT DEFAULT NULL",
+    """CREATE TABLE IF NOT EXISTS promo_codes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        code VARCHAR UNIQUE NOT NULL,
+        val INTEGER NOT NULL,
+        users INTEGER NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )""",
+    """CREATE TABLE IF NOT EXISTS allowed_emails (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        email VARCHAR UNIQUE NOT NULL,
+        promoted_from_waitlist BOOLEAN DEFAULT 0,
+        added_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )""",
 ]
 with engine.connect() as _conn:
     for _sql in _MIGRATIONS:
@@ -135,6 +148,24 @@ with engine.connect() as _conn:
                 logging.debug("Migration already applied: %s...", _sql[:60])
             else:
                 logging.warning("Migration failed unexpectedly: %s... | reason: %s", _sql[:60], _exc)
+
+# ── Seed allowed_emails from static config (one-time) ───────────────────────
+def _seed_initial_data() -> None:
+    from .database import SessionLocal
+    from . import models as _m
+    from core.config import _INITIAL_ALLOWED_EMAILS
+
+    db = SessionLocal()
+    try:
+        # Seed allowed emails if table is empty
+        if db.query(_m.AllowedEmail).count() == 0:
+            for email_str in _INITIAL_ALLOWED_EMAILS:
+                db.add(_m.AllowedEmail(email=email_str.lower(), promoted_from_waitlist=False))
+            db.commit()
+    finally:
+        db.close()
+
+_seed_initial_data()
 
 app = FastAPI(title="Thallus API")
 

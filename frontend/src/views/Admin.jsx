@@ -13,6 +13,10 @@ import {
 	ChevronDown,
 	ChevronRight,
 	ListPlus,
+	UserCheck,
+	ShieldCheck,
+	Plus,
+	Tag,
 } from 'lucide-react';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -53,8 +57,18 @@ function Spinner() {
 	);
 }
 
-function ConfirmDeleteModal({ target, onConfirm, onCancel }) {
-	if (!target) return null;
+function ConfirmModal({
+	open,
+	icon: Icon,
+	iconColor,
+	title,
+	message,
+	confirmLabel,
+	confirmColor,
+	onConfirm,
+	onCancel,
+}) {
+	if (!open) return null;
 	return (
 		<div
 			style={{
@@ -82,13 +96,11 @@ function ConfirmDeleteModal({ target, onConfirm, onCancel }) {
 						marginBottom: '1rem',
 					}}
 				>
-					<AlertTriangle
+					<Icon
 						size={18}
-						color="#dc2626"
+						color={iconColor}
 					/>
-					<h3 style={{ margin: 0, fontSize: '1rem' }}>
-						Confirm Delete
-					</h3>
+					<h3 style={{ margin: 0, fontSize: '1rem' }}>{title}</h3>
 				</div>
 				<p
 					style={{
@@ -97,7 +109,7 @@ function ConfirmDeleteModal({ target, onConfirm, onCancel }) {
 						marginBottom: '1.25rem',
 					}}
 				>
-					{target.label} This action cannot be undone.
+					{message}
 				</p>
 				<div
 					style={{
@@ -117,7 +129,7 @@ function ConfirmDeleteModal({ target, onConfirm, onCancel }) {
 						onClick={onConfirm}
 						style={{
 							fontSize: '0.85rem',
-							background: '#dc2626',
+							background: confirmColor,
 							color: '#fff',
 							border: 'none',
 							borderRadius: '6px',
@@ -126,7 +138,7 @@ function ConfirmDeleteModal({ target, onConfirm, onCancel }) {
 							fontWeight: 600,
 						}}
 					>
-						Delete
+						{confirmLabel}
 					</button>
 				</div>
 			</div>
@@ -188,10 +200,39 @@ function Section({ icon: Icon, title, count, children }) {
 
 // ── Generic table ──────────────────────────────────────────────────────────────
 
-function AdminTable({ columns, rows, onDelete, onSave, editableFields }) {
+function AdminTable({
+	columns,
+	rows,
+	onDelete,
+	onSave,
+	editableFields,
+	customActions,
+	addRow,
+}) {
 	const [editingId, setEditingId] = useState(null);
 	const [editValues, setEditValues] = useState({});
 	const [deleteTarget, setDeleteTarget] = useState(null);
+	const [confirmAction, setConfirmAction] = useState(null); // { row, action }
+	const [addValues, setAddValues] = useState(() =>
+		Object.fromEntries(
+			(addRow?.fields || []).map((f) => [f.key, f.default ?? '']),
+		),
+	);
+	const [adding, setAdding] = useState(false);
+
+	const handleAdd = async () => {
+		setAdding(true);
+		try {
+			await addRow.onAdd(addValues);
+			setAddValues(
+				Object.fromEntries(
+					(addRow?.fields || []).map((f) => [f.key, f.default ?? '']),
+				),
+			);
+		} finally {
+			setAdding(false);
+		}
+	};
 
 	const startEdit = (row) => {
 		setEditingId(row.id);
@@ -218,6 +259,12 @@ function AdminTable({ columns, rows, onDelete, onSave, editableFields }) {
 		setDeleteTarget(null);
 	};
 
+	const handleConfirmAction = async () => {
+		if (!confirmAction) return;
+		await confirmAction.action.onClick(confirmAction.row);
+		setConfirmAction(null);
+	};
+
 	if (!rows || rows.length === 0) {
 		return (
 			<p
@@ -234,10 +281,100 @@ function AdminTable({ columns, rows, onDelete, onSave, editableFields }) {
 
 	return (
 		<>
-			<ConfirmDeleteModal
-				target={deleteTarget}
+			{addRow && (
+				<div
+					style={{
+						display: 'flex',
+						gap: '0.5rem',
+						alignItems: 'center',
+						padding: '0.75rem 1rem',
+						borderBottom: '1px solid var(--border-color)',
+						flexWrap: 'wrap',
+					}}
+				>
+					{addRow.fields.map((f) => (
+						<input
+							key={f.key}
+							placeholder={f.label}
+							type={f.type || 'text'}
+							value={addValues[f.key] ?? ''}
+							onChange={(e) =>
+								setAddValues((v) => ({
+									...v,
+									[f.key]:
+										f.type === 'number'
+											? e.target.value === ''
+												? ''
+												: Number(e.target.value)
+											: e.target.value,
+								}))
+							}
+							style={{
+								background: 'var(--surface-container)',
+								border: '1px solid var(--border-color)',
+								borderRadius: '5px',
+								padding: '0.3rem 0.6rem',
+								color: 'var(--text-primary)',
+								fontSize: '0.83rem',
+								minWidth: f.width || 120,
+							}}
+						/>
+					))}
+					<button
+						onClick={handleAdd}
+						disabled={adding}
+						style={{
+							display: 'flex',
+							alignItems: 'center',
+							gap: '0.3rem',
+							background: 'var(--accent-color)',
+							color: '#fff',
+							border: 'none',
+							borderRadius: '5px',
+							padding: '0.3rem 0.75rem',
+							cursor: adding ? 'not-allowed' : 'pointer',
+							fontSize: '0.83rem',
+							fontWeight: 600,
+							opacity: adding ? 0.6 : 1,
+						}}
+					>
+						<Plus size={12} /> {addRow.label || 'Add'}
+					</button>
+				</div>
+			)}
+			<ConfirmModal
+				open={!!deleteTarget}
+				icon={AlertTriangle}
+				iconColor="#dc2626"
+				title="Confirm Delete"
+				message={
+					deleteTarget
+						? `${deleteTarget.label} This action cannot be undone.`
+						: ''
+				}
+				confirmLabel="Delete"
+				confirmColor="#dc2626"
 				onConfirm={handleDelete}
 				onCancel={() => setDeleteTarget(null)}
+			/>
+			<ConfirmModal
+				open={!!confirmAction}
+				icon={confirmAction?.action.icon || UserCheck}
+				iconColor={confirmAction?.action.color || 'var(--accent-color)'}
+				title={confirmAction?.action.confirmTitle || 'Confirm Action'}
+				message={
+					confirmAction
+						? (confirmAction.action.confirmMessage?.(
+								confirmAction.row,
+							) ?? confirmAction.action.label)
+						: ''
+				}
+				confirmLabel={confirmAction?.action.confirmLabel || 'Confirm'}
+				confirmColor={
+					confirmAction?.action.color || 'var(--accent-color)'
+				}
+				onConfirm={handleConfirmAction}
+				onCancel={() => setConfirmAction(null)}
 			/>
 			<table
 				style={{
@@ -415,6 +552,27 @@ function AdminTable({ columns, rows, onDelete, onSave, editableFields }) {
 															<Pencil size={13} />
 														</button>
 													)}
+												{customActions?.map(
+													(action, idx) => (
+														<button
+															key={idx}
+															onClick={() =>
+																action.onClick(
+																	row,
+																)
+															}
+															title={action.label}
+															style={iconBtnStyle(
+																action.color ||
+																	'var(--accent-color)',
+															)}
+														>
+															<action.icon
+																size={13}
+															/>
+														</button>
+													),
+												)}
 												{onDelete && (
 													<button
 														onClick={() =>
@@ -462,23 +620,29 @@ export default function Admin() {
 	const [loading, setLoading] = useState(true);
 	const [authorized, setAuthorized] = useState(false);
 	const [users, setUsers] = useState([]);
+	const [allowedEmails, setAllowedEmails] = useState([]);
 	const [waitlistEntries, setWaitlistEntries] = useState([]);
 	const [attempts, setAttempts] = useState([]);
 	const [promoCodeUsages, setPromoCodeUsages] = useState([]);
+	const [promoCodes, setPromoCodes] = useState([]);
 
 	const loadAll = useCallback(async () => {
 		setLoading(true);
 		try {
-			const [u, w, a, p] = await Promise.all([
+			const [u, ae, w, a, pu, pc] = await Promise.all([
 				adminApi.users.list(),
+				adminApi.allowedEmails.list(),
 				adminApi.waitlistEntries.list(),
 				adminApi.unauthorizedAttempts.list(),
 				adminApi.promoCodeUsages.list(),
+				adminApi.promoCodes.list(),
 			]);
 			setUsers(u.data);
+			setAllowedEmails(ae.data);
 			setWaitlistEntries(w.data);
 			setAttempts(a.data);
-			setPromoCodeUsages(p.data);
+			setPromoCodeUsages(pu.data);
+			setPromoCodes(pc.data);
 		} catch {
 			// errors handled below
 		} finally {
@@ -584,6 +748,55 @@ export default function Admin() {
 				/>
 			</Section>
 
+			{/* Allowed Emails */}
+			<Section
+				icon={ShieldCheck}
+				title="Allowed Emails"
+				count={allowedEmails.length}
+			>
+				<AdminTable
+					rows={allowedEmails}
+					columns={[
+						{ key: 'id', label: 'ID' },
+						{ key: 'email', label: 'Email' },
+						{
+							key: 'promoted_from_waitlist',
+							label: 'Source',
+							render: (v) => (
+								<Badge
+									color={
+										v ? '#2563eb' : 'var(--text-secondary)'
+									}
+								>
+									{v ? 'Waitlist' : 'Manual'}
+								</Badge>
+							),
+						},
+						{ key: 'added_at', label: 'Added' },
+					]}
+					editableFields={[]}
+					onDelete={async (id) => {
+						await adminApi.allowedEmails.delete(id);
+						await loadAll();
+					}}
+					addRow={{
+						label: 'Add Email',
+						fields: [
+							{
+								key: 'email',
+								label: 'Email address',
+								type: 'text',
+								width: 260,
+							},
+						],
+						onAdd: async (vals) => {
+							await adminApi.allowedEmails.add(vals.email);
+							await loadAll();
+						},
+					}}
+				/>
+			</Section>
+
 			{/* Waitlist Entries */}
 			<Section
 				icon={ListPlus}
@@ -599,6 +812,22 @@ export default function Admin() {
 						{ key: 'created_at', label: 'Created' },
 					]}
 					editableFields={[]}
+					customActions={[
+						{
+							icon: UserCheck,
+							label: 'Promote to Allow List',
+							color: '#16a34a',
+							confirm: true,
+							confirmTitle: 'Promote to Allow List',
+							confirmMessage: (row) =>
+								`Move ${row.email} from the waitlist to the allow list? They will receive a welcome email.`,
+							confirmLabel: 'Promote',
+							onClick: async (row) => {
+								await adminApi.waitlistEntries.promote(row.id);
+								await loadAll();
+							},
+						},
+					]}
 				/>
 			</Section>
 
@@ -617,6 +846,66 @@ export default function Admin() {
 						{ key: 'timestamp', label: 'Timestamp' },
 					]}
 					editableFields={[]}
+				/>
+			</Section>
+
+			{/* Promo Codes */}
+			<Section
+				icon={Tag}
+				title="Promo Codes"
+				count={promoCodes.length}
+			>
+				<AdminTable
+					rows={promoCodes}
+					columns={[
+						{ key: 'id', label: 'ID' },
+						{ key: 'code', label: 'Code' },
+						{ key: 'val', label: 'Credits', type: 'number' },
+						{ key: 'users', label: 'Max Uses', type: 'number' },
+						{ key: 'created_at', label: 'Created' },
+					]}
+					editableFields={['val', 'users']}
+					onSave={async (id, vals) => {
+						await adminApi.promoCodes.update(id, vals);
+						await loadAll();
+					}}
+					onDelete={async (id) => {
+						await adminApi.promoCodes.delete(id);
+						await loadAll();
+					}}
+					addRow={{
+						label: 'Create Code',
+						fields: [
+							{
+								key: 'code',
+								label: 'Code (e.g. LAUNCH50)',
+								type: 'text',
+								width: 180,
+							},
+							{
+								key: 'val',
+								label: 'Credits',
+								type: 'number',
+								default: 500,
+								width: 90,
+							},
+							{
+								key: 'users',
+								label: 'Max Uses',
+								type: 'number',
+								default: 100,
+								width: 90,
+							},
+						],
+						onAdd: async (vals) => {
+							await adminApi.promoCodes.create({
+								code: vals.code,
+								val: Number(vals.val),
+								users: Number(vals.users),
+							});
+							await loadAll();
+						},
+					}}
 				/>
 			</Section>
 

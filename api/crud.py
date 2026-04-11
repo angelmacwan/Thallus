@@ -316,19 +316,19 @@ def redeem_promo_code(
     Attempt to redeem a promo code for a user.
 
     Returns (success, message, credits_added_display).
-    credits_added_display is in display units (i.e. val from config).
+    credits_added_display is in display units (i.e. val from the DB record).
     """
-    from core.config import promo_codes, CREDITS_PER_USD
+    from core.config import CREDITS_PER_USD
 
     code = code.strip()
 
-    # Validate code exists in config
-    if code not in promo_codes:
+    # Validate code exists in DB
+    promo = db.query(models.PromoCode).filter(models.PromoCode.code == code).first()
+    if not promo:
         return False, "Invalid promo code.", 0
 
-    config = promo_codes[code]
-    max_users: int = config["users"]
-    display_val: int = config["val"]
+    max_users: int = promo.users
+    display_val: int = promo.val
 
     # Check if this user already used this code
     already_used = (
@@ -365,6 +365,30 @@ def redeem_promo_code(
     db.refresh(user)
 
     return True, f"Successfully redeemed {display_val} credits.", display_val
+
+
+# ── Allowlist helpers ──────────────────────────────────────────────────────────
+
+def is_email_allowed(db: Session, email: str) -> bool:
+    """Return True if the email is in the allowed_emails table."""
+    return (
+        db.query(models.AllowedEmail)
+        .filter(models.AllowedEmail.email == email.lower())
+        .first()
+    ) is not None
+
+
+def promote_to_allowlist(db: Session, email: str) -> models.AllowedEmail:
+    """Add an email to allowed_emails (idempotent). Returns the row."""
+    email = email.strip().lower()
+    existing = db.query(models.AllowedEmail).filter(models.AllowedEmail.email == email).first()
+    if existing:
+        return existing
+    entry = models.AllowedEmail(email=email, promoted_from_waitlist=True)
+    db.add(entry)
+    db.commit()
+    db.refresh(entry)
+    return entry
 
 
 # ── OTP operations ─────────────────────────────────────────────────────────────

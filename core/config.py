@@ -1,3 +1,5 @@
+import os
+
 # Google GenAI model used for ingestion, ontology, and profiling
 MODEL_NAME = 'gemini-2.5-flash-lite'
 
@@ -11,23 +13,19 @@ OUTPUTS_BASE = "OUTPUTS"
 
 # Server environment: set to "DEV" to restrict registration to ALLOWED_EMAILS only.
 # Any other value allows anyone to register.
-SERVER = "DEV"
+SERVER = os.getenv("SERVER", "DEV")
 
 # Emails with full admin access to the /admin panel.
 ADMIN_EMAILS = {
-    "angel.macwan@staticalabs.com",
     "angelmacwan@staticalabs.com",
     "armacwan@gmail.com"
 }
 
-# Emails permitted to register when SERVER == "DEV"
-ALLOWED_EMAILS = {
-    "armacwan@gmail.com",
-    "maxbacon4699@gmail.com",
-    "angel.macwan@staticalabs.com",
+# Initial allowed emails seeded into the DB on first run.
+# After the first run the DB is the source of truth — edit via /admin.
+_INITIAL_ALLOWED_EMAILS: set[str] = {
     "angelmacwan@staticalabs.com",
-    "saskia.oditt@staticalabs.com",
-    "saskia.oditt@test.com",
+    "armacwan@gmail.com",
 }
 
 # ── Billing & Credits ─────────────────────────────────────────────────────────
@@ -55,14 +53,6 @@ OASIS_EST_INPUT_TOKENS_PER_AGENT_ROUND: int = 800
 OASIS_EST_OUTPUT_TOKENS_PER_AGENT_ROUND: int = 300
 
 # ── Promo Codes ───────────────────────────────────────────────────────────────
-# Each key is the promo code string.
-# "val"   – credits (in display units, i.e. divided by CREDITS_PER_USD) to add.
-# "users" – maximum number of distinct users allowed to redeem this code.
-promo_codes: dict = {
-    "IAMANGEL": {
-        "val": 9000,
-        "users": 1,
-    }
-}
+# Managed entirely via /admin — create, update and delete from the admin panel.
 
 EMAIL_SENDER_ADDRESS = "noreply@staticalabs.com"

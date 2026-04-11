@@ -116,7 +116,10 @@ export default function Auth() {
 			const status = err.response?.status;
 			const detail =
 				err.response?.data?.detail || 'Failed to send code. Try again.';
-			if (status === 409) {
+			if (status === 403) {
+				setStatusTone('warning');
+				setStatusMessage(detail);
+			} else if (status === 409) {
 				setError(
 					'An account with this email already exists. Sign in instead.',
 				);
@@ -379,10 +382,29 @@ export default function Auth() {
 							>
 								{statusTone === 'warning' && (
 									<p className="auth-status-label">
-										Unauthorised
+										Invite only
 									</p>
 								)}
 								<p>{statusMessage}</p>
+								{statusTone === 'warning' && (
+									<p
+										style={{
+											marginTop: '8px',
+											fontSize: '13px',
+										}}
+									>
+										<a
+											href="/#waitlist"
+											style={{
+												color: 'inherit',
+												textDecoration: 'underline',
+												fontWeight: 600,
+											}}
+										>
+											Request access on the waitlist →
+										</a>
+									</p>
+								)}
 							</div>
 						)}
 
