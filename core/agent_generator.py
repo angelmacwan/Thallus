@@ -145,13 +145,16 @@ Suggest realistic relationships between them. Return ONLY a JSON array where eac
 {{
   "source_agent_id": "<agent_id string>",
   "target_agent_id": "<agent_id string>",
-  "type": "<manager|peer|competitor|customer|mentor|direct_report|stakeholder>",
+  "type": "<free text describing the relationship (e.g., father, CEO, mentor, stakeholder, customer, peer, co-founder, rival, investor, friend, employee)>",
   "strength": <float 0-1>,
   "sentiment": "<positive|neutral|negative>",
   "influence_direction": "<source_to_target|target_to_source|both>"
 }}
 
 Rules:
+- The "type" field must be a natural relation, specific label (not generic like "related").
+- Relationships can be personal, professional, social, economic, or anything realistic.
+- Prefer precise roles (e.g., "CEO", "daughter", "co-founder", "direct manager", "landlord", "primary investor").
 - Only suggest relationships that make sense given each agent's role and organization.
 - Do not create self-relationships.
 - Be selective — not everyone needs to be connected to everyone.
