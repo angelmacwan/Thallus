@@ -11,7 +11,34 @@ Both frontend and backend run on one Ubuntu VM behind nginx, with Cloudflare pro
 
 ---
 
-## 1. Create the server & SSH in
+## 1. Create the Linode Cloud Firewall (UI — do this first)
+
+Do this **before** you create the Linode so you can attach it at creation time.
+
+1. In the Linode dashboard go to **Networking → Firewalls → Create Firewall**.
+2. Fill in the form:
+    - **Label**: `thallus-fw`
+    - **Default Inbound Policy**: `Drop`
+    - **Default Outbound Policy**: `Accept`
+    - Leave **Additional Linodes** empty for now (you'll assign the VM after creating it).
+3. Click **Create Firewall**.
+4. Open the new firewall, go to the **Rules** tab, and add these inbound rules:
+
+    | Label | Protocol | Port(s) | Sources                                       |
+    | ----- | -------- | ------- | --------------------------------------------- |
+    | SSH   | TCP      | 22      | Any (or restrict to your IP for extra safety) |
+    | HTTP  | TCP      | 80      | Any                                           |
+    | HTTPS | TCP      | 443     | Any                                           |
+
+5. Click **Save Changes**.
+
+> Port 8000 (uvicorn) is intentionally **not** opened — the backend only listens on `127.0.0.1` and nginx proxies to it.
+
+---
+
+## 2. Create the server & SSH in
+
+When creating the Linode, under **Add-ons → Firewall** select `thallus-fw`.
 
 Spin up a Linode (Nanode 1 GB or bigger). Grab the IP from the Linode dashboard.
 
@@ -21,7 +48,7 @@ ssh root@YOUR_LINODE_IP
 
 ---
 
-## 2. Basic hardening & packages
+## 3. Basic hardening & packages
 
 ```bash
 apt update && apt upgrade -y
@@ -40,11 +67,11 @@ ufw enable
 ufw status verbose
 ```
 
-**Do not** open port 8000 publicly. The backend only listens on `127.0.0.1` and nginx proxies to it.
+**Do not** open port 8000 publicly — UFW is a secondary safety net; the Linode Cloud Firewall set up in step 1 is the primary wall.
 
 ---
 
-## 3. Cloudflare DNS
+## 4. Cloudflare DNS
 
 In the Cloudflare dashboard for `staticalabs.com`:
 
@@ -85,7 +112,7 @@ chmod 600 /etc/ssl/cloudflare/thallus.key
 
 ---
 
-## 4. Clone the repo
+## 5. Clone the repo
 
 ```bash
 mkdir -p /opt && cd /opt
@@ -96,7 +123,7 @@ chown -R deploy:deploy /opt/thallus
 
 ---
 
-## 5. Environment variables
+## 6. Environment variables
 
 Create `/opt/thallus/.env` — this file is loaded by the backend on startup:
 
@@ -121,7 +148,7 @@ openssl rand -hex 32
 
 ---
 
-## 6. Backend — Python venv + systemd
+## 7. Backend — Python venv + systemd
 
 ```bash
 cd /opt/thallus
@@ -160,7 +187,7 @@ systemctl status thallus-backend --no-pager
 
 ---
 
-## 7. Frontend — build & serve via nginx
+## 8. Frontend — build & serve via nginx
 
 ```bash
 cd /opt/thallus/frontend
@@ -172,7 +199,7 @@ The built static files land in `/opt/thallus/frontend/dist`.
 
 ---
 
-## 8. nginx configuration
+## 9. nginx configuration
 
 ```bash
 cat > /etc/nginx/sites-available/thallus <<'EOF'
@@ -225,7 +252,7 @@ nginx -t && systemctl restart nginx
 
 ---
 
-## 9. Verify everything is running
+## 10. Verify everything is running
 
 ```bash
 systemctl status thallus-backend --no-pager
@@ -237,7 +264,7 @@ Open `https://thallus.staticalabs.com` — you should see the frontend. Check th
 
 ---
 
-## 10. Updating code
+## 11. Updating code
 
 ```bash
 cd /opt/thallus
@@ -258,7 +285,7 @@ systemctl restart nginx
 
 ---
 
-## 11. Rollback
+## 12. Rollback
 
 ```bash
 cd /opt/thallus
