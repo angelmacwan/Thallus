@@ -52,7 +52,5 @@ CREDITS_PER_USD: int = 1000
 OASIS_EST_INPUT_TOKENS_PER_AGENT_ROUND: int = 800
 OASIS_EST_OUTPUT_TOKENS_PER_AGENT_ROUND: int = 300
 
-# ── Promo Codes ───────────────────────────────────────────────────────────────
-# Managed entirely via /admin — create, update and delete from the admin panel.
 
 EMAIL_SENDER_ADDRESS = "noreply@staticalabs.com"

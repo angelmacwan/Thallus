@@ -17,21 +17,28 @@ import {
 	ShieldCheck,
 	Plus,
 	Tag,
+	Database,
+	Activity,
+	MailPlus,
+	Sparkles,
+	TrendingUp,
+	Clock3,
+	ShieldAlert,
+	ArrowUpRight,
 } from 'lucide-react';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function Badge({ children, color = 'var(--text-secondary)' }) {
+function Badge({
+	children,
+	color = 'var(--text-secondary)',
+	tone = 'neutral',
+}) {
 	return (
 		<span
+			className={`admin-badge admin-badge-${tone}`}
 			style={{
-				fontSize: '0.7rem',
-				fontWeight: 600,
-				padding: '0.15rem 0.5rem',
-				borderRadius: '999px',
-				background: 'var(--surface-container-high)',
 				color,
-				border: '1px solid var(--border-color)',
 			}}
 		>
 			{children}
@@ -71,71 +78,39 @@ function ConfirmModal({
 	if (!open) return null;
 	return (
 		<div
+			className="admin-modal-backdrop"
 			style={{
-				position: 'fixed',
-				inset: 0,
-				background: 'rgba(0,0,0,0.45)',
-				backdropFilter: 'blur(4px)',
 				zIndex: 3000,
-				display: 'flex',
-				alignItems: 'center',
-				justifyContent: 'center',
 			}}
 			onClick={onCancel}
 		>
 			<div
-				className="card"
-				style={{ padding: '1.5rem', maxWidth: 400, width: '90%' }}
+				className="card admin-modal"
+				style={{ maxWidth: 420, width: '90%' }}
 				onClick={(e) => e.stopPropagation()}
 			>
-				<div
-					style={{
-						display: 'flex',
-						alignItems: 'center',
-						gap: '0.6rem',
-						marginBottom: '1rem',
-					}}
-				>
+				<div className="admin-modal-header">
 					<Icon
 						size={18}
 						color={iconColor}
 					/>
 					<h3 style={{ margin: 0, fontSize: '1rem' }}>{title}</h3>
 				</div>
-				<p
-					style={{
-						fontSize: '0.88rem',
-						color: 'var(--text-secondary)',
-						marginBottom: '1.25rem',
-					}}
-				>
-					{message}
-				</p>
-				<div
-					style={{
-						display: 'flex',
-						gap: '0.5rem',
-						justifyContent: 'flex-end',
-					}}
-				>
+				<p className="admin-modal-copy">{message}</p>
+				<div className="admin-modal-actions">
 					<button
 						className="btn-secondary"
 						onClick={onCancel}
-						style={{ fontSize: '0.85rem' }}
+						style={{ fontSize: '0.85rem', padding: '0.65rem 1rem' }}
 					>
 						Cancel
 					</button>
 					<button
+						className="admin-danger-button"
 						onClick={onConfirm}
 						style={{
 							fontSize: '0.85rem',
 							background: confirmColor,
-							color: '#fff',
-							border: 'none',
-							borderRadius: '6px',
-							padding: '0.4rem 1rem',
-							cursor: 'pointer',
-							fontWeight: 600,
 						}}
 					>
 						{confirmLabel}
@@ -146,54 +121,108 @@ function ConfirmModal({
 	);
 }
 
+function formatCurrency(value) {
+	if (typeof value !== 'number' || Number.isNaN(value)) return '—';
+	return new Intl.NumberFormat('en-US', {
+		style: 'currency',
+		currency: 'USD',
+		maximumFractionDigits: value >= 100 ? 0 : 2,
+	}).format(value);
+}
+
+function formatNumber(value) {
+	if (typeof value !== 'number' || Number.isNaN(value)) return '—';
+	return new Intl.NumberFormat('en-US').format(value);
+}
+
+function formatDateTime(value) {
+	if (!value) return '—';
+	const date = new Date(value);
+	if (Number.isNaN(date.getTime())) return value;
+	return new Intl.DateTimeFormat('en-US', {
+		month: 'short',
+		day: 'numeric',
+		year: 'numeric',
+		hour: 'numeric',
+		minute: '2-digit',
+	}).format(date);
+}
+
+function getLatestDate(rows, field) {
+	const timestamps = rows
+		.map((row) => new Date(row[field]).getTime())
+		.filter((value) => !Number.isNaN(value));
+
+	if (timestamps.length === 0) return null;
+	return new Date(Math.max(...timestamps));
+}
+
+function MetricCard({ icon: Icon, label, value, detail, tone = 'navy' }) {
+	return (
+		<div className={`admin-metric-card admin-tone-${tone}`}>
+			<div className="admin-metric-icon-wrap">
+				<Icon size={18} />
+			</div>
+			<div>
+				<p className="admin-eyebrow">{label}</p>
+				<p className="admin-metric-value">{value}</p>
+				{detail && <p className="admin-metric-detail">{detail}</p>}
+			</div>
+		</div>
+	);
+}
+
+function InsightCard({ title, value, detail, icon: Icon, tone = 'gold' }) {
+	return (
+		<div className={`admin-insight-card admin-tone-${tone}`}>
+			<div className="admin-insight-header">
+				<p className="admin-eyebrow">{title}</p>
+				<Icon size={16} />
+			</div>
+			<p className="admin-insight-value">{value}</p>
+			<p className="admin-insight-detail">{detail}</p>
+		</div>
+	);
+}
+
 // ── Section wrapper ────────────────────────────────────────────────────────────
 
-function Section({ icon: Icon, title, count, children }) {
+function Section({ icon: Icon, title, subtitle, count, children }) {
 	const [open, setOpen] = useState(true);
 	return (
-		<div
-			className="card"
-			style={{ marginBottom: '1.25rem', overflow: 'hidden' }}
-		>
+		<div className="card admin-section-card">
 			<button
+				className="admin-section-toggle"
 				onClick={() => setOpen((o) => !o)}
-				style={{
-					width: '100%',
-					display: 'flex',
-					alignItems: 'center',
-					gap: '0.6rem',
-					background: 'none',
-					border: 'none',
-					cursor: 'pointer',
-					padding: '1rem 1.25rem',
-					color: 'var(--text-primary)',
-					textAlign: 'left',
-				}}
 			>
-				<Icon
-					size={16}
-					color="var(--accent-color)"
-				/>
-				<span style={{ fontWeight: 700, fontSize: '0.95rem', flex: 1 }}>
-					{title}
-				</span>
-				{count !== undefined && (
-					<Badge>
-						{count} row{count !== 1 ? 's' : ''}
-					</Badge>
-				)}
-				{open ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
-			</button>
-			{open && (
-				<div
-					style={{
-						borderTop: '1px solid var(--border-color)',
-						overflowX: 'auto',
-					}}
-				>
-					{children}
+				<div className="admin-section-heading">
+					<div className="admin-section-icon">
+						<Icon
+							size={16}
+							color="var(--accent-color)"
+						/>
+					</div>
+					<div>
+						<p className="admin-section-title">{title}</p>
+						{subtitle && (
+							<p className="admin-section-subtitle">{subtitle}</p>
+						)}
+					</div>
 				</div>
-			)}
+				<div className="admin-section-meta">
+					{count !== undefined && (
+						<Badge>
+							{count} row{count !== 1 ? 's' : ''}
+						</Badge>
+					)}
+					{open ? (
+						<ChevronDown size={15} />
+					) : (
+						<ChevronRight size={15} />
+					)}
+				</div>
+			</button>
+			{open && <div className="admin-section-body">{children}</div>}
 		</div>
 	);
 }
@@ -282,18 +311,10 @@ function AdminTable({
 	return (
 		<>
 			{addRow && (
-				<div
-					style={{
-						display: 'flex',
-						gap: '0.5rem',
-						alignItems: 'center',
-						padding: '0.75rem 1rem',
-						borderBottom: '1px solid var(--border-color)',
-						flexWrap: 'wrap',
-					}}
-				>
+				<div className="admin-add-row">
 					{addRow.fields.map((f) => (
 						<input
+							className="admin-input"
 							key={f.key}
 							placeholder={f.label}
 							type={f.type || 'text'}
@@ -309,34 +330,13 @@ function AdminTable({
 											: e.target.value,
 								}))
 							}
-							style={{
-								background: 'var(--surface-container)',
-								border: '1px solid var(--border-color)',
-								borderRadius: '5px',
-								padding: '0.3rem 0.6rem',
-								color: 'var(--text-primary)',
-								fontSize: '0.83rem',
-								minWidth: f.width || 120,
-							}}
+							style={{ minWidth: f.width || 120 }}
 						/>
 					))}
 					<button
+						className="admin-add-button"
 						onClick={handleAdd}
 						disabled={adding}
-						style={{
-							display: 'flex',
-							alignItems: 'center',
-							gap: '0.3rem',
-							background: 'var(--accent-color)',
-							color: '#fff',
-							border: 'none',
-							borderRadius: '5px',
-							padding: '0.3rem 0.75rem',
-							cursor: adding ? 'not-allowed' : 'pointer',
-							fontSize: '0.83rem',
-							fontWeight: 600,
-							opacity: adding ? 0.6 : 1,
-						}}
 					>
 						<Plus size={12} /> {addRow.label || 'Add'}
 					</button>
@@ -376,241 +376,225 @@ function AdminTable({
 				onConfirm={handleConfirmAction}
 				onCancel={() => setConfirmAction(null)}
 			/>
-			<table
-				style={{
-					width: '100%',
-					borderCollapse: 'collapse',
-					fontSize: '0.83rem',
-				}}
-			>
-				<thead>
-					<tr style={{ background: 'var(--surface-container-high)' }}>
-						{columns.map((col) => (
-							<th
-								key={col.key}
-								style={{
-									padding: '0.55rem 1rem',
-									textAlign: 'left',
-									fontWeight: 600,
-									fontSize: '0.72rem',
-									letterSpacing: '0.05em',
-									textTransform: 'uppercase',
-									color: 'var(--text-secondary)',
-									borderBottom:
-										'1px solid var(--border-color)',
-									whiteSpace: 'nowrap',
-								}}
-							>
-								{col.label}
-							</th>
-						))}
-						<th
-							style={{
-								padding: '0.55rem 1rem',
-								borderBottom: '1px solid var(--border-color)',
-							}}
-						/>
-					</tr>
-				</thead>
-				<tbody>
-					{rows.map((row) => {
-						const isEditing = editingId === row.id;
-						return (
-							<tr
-								key={row.id}
-								style={{
-									borderBottom:
-										'1px solid var(--border-color)',
-									background: isEditing
-										? 'var(--surface-container-high)'
-										: undefined,
-								}}
-							>
-								{columns.map((col) => {
-									const isEditable = editableFields?.includes(
-										col.key,
-									);
-									return (
-										<td
-											key={col.key}
-											style={{
-												padding: '0.55rem 1rem',
-												verticalAlign: 'middle',
-												whiteSpace: 'nowrap',
-											}}
-										>
-											{isEditing && isEditable ? (
-												<input
-													value={
-														editValues[col.key] ??
-														''
-													}
-													onChange={(e) =>
-														setEditValues((v) => ({
-															...v,
-															[col.key]:
-																col.type ===
-																'number'
-																	? parseFloat(
-																			e
-																				.target
-																				.value,
-																		)
-																	: e.target
-																			.value,
-														}))
-													}
-													type={col.type || 'text'}
-													step={
-														col.type === 'number'
-															? '0.000001'
-															: undefined
-													}
-													style={{
-														background:
-															'var(--surface-container)',
-														border: '1px solid var(--accent-color)',
-														borderRadius: '4px',
-														padding:
-															'0.25rem 0.4rem',
-														color: 'var(--text-primary)',
-														fontSize: '0.83rem',
-														width: '100%',
-														minWidth: 80,
-													}}
-												/>
-											) : col.render ? (
-												col.render(row[col.key], row)
-											) : (
-												<span
-													style={{
-														color:
-															row[col.key] == null
-																? 'var(--text-secondary)'
-																: undefined,
-													}}
-												>
-													{row[col.key] != null
-														? String(row[col.key])
-														: '—'}
-												</span>
-											)}
-										</td>
-									);
-								})}
-								<td
-									style={{
-										padding: '0.4rem 1rem',
-										verticalAlign: 'middle',
-										whiteSpace: 'nowrap',
-									}}
+			<div className="admin-table-wrap">
+				<table className="admin-table">
+					<thead>
+						<tr>
+							{columns.map((col) => (
+								<th
+									key={col.key}
+									className="admin-table-head"
 								>
-									<div
-										style={{
-											display: 'flex',
-											gap: '0.35rem',
-											justifyContent: 'flex-end',
-										}}
-									>
-										{isEditing ? (
-											<>
-												<button
-													onClick={() =>
-														handleSave(row)
-													}
-													title="Save"
-													style={iconBtnStyle(
-														'#16a34a',
-													)}
-												>
-													<Check size={13} />
-												</button>
-												<button
-													onClick={cancelEdit}
-													title="Cancel"
-													style={iconBtnStyle(
-														'#6b7280',
-													)}
-												>
-													<X size={13} />
-												</button>
-											</>
-										) : (
-											<>
-												{editableFields &&
-													editableFields.length > 0 &&
-													onSave && (
-														<button
-															onClick={() =>
-																startEdit(row)
-															}
-															title="Edit"
-															style={iconBtnStyle(
-																'var(--accent-color)',
-															)}
-														>
-															<Pencil size={13} />
-														</button>
-													)}
-												{customActions?.map(
-													(action, idx) => (
-														<button
-															key={idx}
-															onClick={() =>
-																action.onClick(
-																	row,
+									{col.label}
+								</th>
+							))}
+							<th className="admin-table-head admin-table-actions-head" />
+						</tr>
+					</thead>
+					<tbody>
+						{rows.map((row) => {
+							const isEditing = editingId === row.id;
+							return (
+								<tr
+									key={row.id}
+									className={
+										isEditing ? 'admin-row-editing' : ''
+									}
+								>
+									{columns.map((col) => {
+										const isEditable =
+											editableFields?.includes(col.key);
+										return (
+											<td
+												key={col.key}
+												className="admin-table-cell"
+											>
+												{isEditing && isEditable ? (
+													<input
+														className="admin-input"
+														value={
+															editValues[
+																col.key
+															] ?? ''
+														}
+														onChange={(e) =>
+															setEditValues(
+																(v) => ({
+																	...v,
+																	[col.key]:
+																		col.type ===
+																		'number'
+																			? parseFloat(
+																					e
+																						.target
+																						.value,
+																				)
+																			: e
+																					.target
+																					.value,
+																}),
+															)
+														}
+														type={
+															col.type || 'text'
+														}
+														step={
+															col.type ===
+															'number'
+																? '0.000001'
+																: undefined
+														}
+														style={{
+															width: '100%',
+															minWidth: 80,
+														}}
+													/>
+												) : col.render ? (
+													col.render(
+														row[col.key],
+														row,
+													)
+												) : (
+													<span
+														style={{
+															color:
+																row[col.key] ==
+																null
+																	? 'var(--text-secondary)'
+																	: undefined,
+														}}
+													>
+														{row[col.key] != null
+															? String(
+																	row[
+																		col.key
+																	],
 																)
-															}
-															title={action.label}
-															style={iconBtnStyle(
-																action.color ||
-																	'var(--accent-color)',
-															)}
-														>
-															<action.icon
-																size={13}
-															/>
-														</button>
-													),
+															: '—'}
+													</span>
 												)}
-												{onDelete && (
+											</td>
+										);
+									})}
+									<td className="admin-table-cell admin-table-actions">
+										<div className="admin-action-group">
+											{isEditing ? (
+												<>
 													<button
 														onClick={() =>
-															setDeleteTarget({
-																id: row.id,
-																label: `Delete record #${row.id}?`,
-															})
+															handleSave(row)
 														}
-														title="Delete"
+														title="Save"
 														style={iconBtnStyle(
-															'#dc2626',
+															'#16a34a',
 														)}
 													>
-														<Trash2 size={13} />
+														<Check size={13} />
 													</button>
-												)}
-											</>
-										)}
-									</div>
-								</td>
-							</tr>
-						);
-					})}
-				</tbody>
-			</table>
+													<button
+														onClick={cancelEdit}
+														title="Cancel"
+														style={iconBtnStyle(
+															'#6b7280',
+														)}
+													>
+														<X size={13} />
+													</button>
+												</>
+											) : (
+												<>
+													{editableFields &&
+														editableFields.length >
+															0 &&
+														onSave && (
+															<button
+																onClick={() =>
+																	startEdit(
+																		row,
+																	)
+																}
+																title="Edit"
+																style={iconBtnStyle(
+																	'var(--accent-color)',
+																)}
+															>
+																<Pencil
+																	size={13}
+																/>
+															</button>
+														)}
+													{customActions?.map(
+														(action, idx) => (
+															<button
+																key={idx}
+																onClick={() =>
+																	action.confirm
+																		? setConfirmAction(
+																				{
+																					row,
+																					action,
+																				},
+																			)
+																		: action.onClick(
+																				row,
+																			)
+																}
+																title={
+																	action.label
+																}
+																style={iconBtnStyle(
+																	action.color ||
+																		'var(--accent-color)',
+																)}
+															>
+																<action.icon
+																	size={13}
+																/>
+															</button>
+														),
+													)}
+													{onDelete && (
+														<button
+															onClick={() =>
+																setDeleteTarget(
+																	{
+																		id: row.id,
+																		label: `Delete record #${row.id}?`,
+																	},
+																)
+															}
+															title="Delete"
+															style={iconBtnStyle(
+																'#dc2626',
+															)}
+														>
+															<Trash2 size={13} />
+														</button>
+													)}
+												</>
+											)}
+										</div>
+									</td>
+								</tr>
+							);
+						})}
+					</tbody>
+				</table>
+			</div>
 		</>
 	);
 }
 
 const iconBtnStyle = (color) => ({
-	background: 'none',
-	border: '1px solid var(--border-color)',
-	borderRadius: '5px',
-	padding: '0.25rem 0.4rem',
+	background: 'rgba(255, 255, 255, 0.8)',
+	border: '1px solid rgba(18, 40, 60, 0.12)',
+	borderRadius: '10px',
+	padding: '0.4rem 0.5rem',
 	cursor: 'pointer',
 	color,
 	display: 'flex',
 	alignItems: 'center',
+	justifyContent: 'center',
 });
 
 // ── Main Admin View ────────────────────────────────────────────────────────────
@@ -650,6 +634,25 @@ export default function Admin() {
 		}
 	}, []);
 
+	const totalCredits = users.reduce(
+		(total, user) => total + (Number(user.credits) || 0),
+		0,
+	);
+	const activeUsers = users.filter((user) => user.is_active).length;
+	const activationRate = users.length
+		? `${Math.round((activeUsers / users.length) * 100)}% active`
+		: 'No users yet';
+	const waitlistConversion =
+		waitlistEntries.length + allowedEmails.length
+			? `${Math.round(
+					(allowedEmails.length /
+						(waitlistEntries.length + allowedEmails.length)) *
+						100,
+				)}% approved`
+			: 'No access requests';
+	const lastAttemptAt = getLatestDate(attempts, 'timestamp');
+	const latestRedemption = getLatestDate(promoCodeUsages, 'redeemed_at');
+
 	// Verify admin access first
 	useEffect(() => {
 		adminApi
@@ -664,56 +667,170 @@ export default function Admin() {
 	if (!authorized || loading) return <Spinner />;
 
 	return (
-		<div
-			style={{ padding: '1.5rem 2rem', maxWidth: 1200, margin: '0 auto' }}
-		>
-			{/* Header */}
-			<div
-				style={{
-					display: 'flex',
-					alignItems: 'center',
-					justifyContent: 'space-between',
-					marginBottom: '1.5rem',
-				}}
-			>
-				<div>
-					<h1
-						style={{
-							margin: 0,
-							fontSize: '1.4rem',
-							fontWeight: 800,
-						}}
+		<div className="admin-dashboard">
+			<section className="admin-hero">
+				<div className="admin-hero-copy">
+					<Badge
+						tone="navy"
+						color="#ffffff"
 					>
-						Admin Panel
-					</h1>
-					<p
-						style={{
-							margin: '0.25rem 0 0',
-							fontSize: '0.85rem',
-							color: 'var(--text-secondary)',
-						}}
-					>
-						View, edit, and delete database records
+						Operations Control Center
+					</Badge>
+					<h1 className="admin-title">Executive Admin Dashboard</h1>
+					<p className="admin-subtitle">
+						Monitor access, revenue levers, and platform integrity
+						from one controlled surface. All existing admin actions
+						remain live.
 					</p>
+					<div className="admin-hero-actions">
+						<button
+							className="btn"
+							onClick={loadAll}
+						>
+							<RefreshCw size={15} /> Refresh Live Data
+						</button>
+						<button
+							className="btn-secondary admin-secondary-button"
+							onClick={() => navigate('/simulations')}
+						>
+							Return to Platform <ArrowUpRight size={15} />
+						</button>
+					</div>
 				</div>
-				<button
-					className="btn-secondary"
-					onClick={loadAll}
-					style={{
-						display: 'flex',
-						alignItems: 'center',
-						gap: '0.4rem',
-						fontSize: '0.83rem',
-					}}
-				>
-					<RefreshCw size={13} /> Refresh
-				</button>
-			</div>
+				<div className="admin-hero-aside">
+					<InsightCard
+						title="Access Pipeline"
+						value={waitlistConversion}
+						detail={`${allowedEmails.length} approved, ${waitlistEntries.length} pending review`}
+						icon={MailPlus}
+						tone="gold"
+					/>
+					<InsightCard
+						title="Fraud Watch"
+						value={
+							attempts.length
+								? `${attempts.length} flagged`
+								: 'Clear'
+						}
+						detail={
+							lastAttemptAt
+								? `Latest attempt ${formatDateTime(lastAttemptAt)}`
+								: 'No unauthorized registrations logged'
+						}
+						icon={ShieldAlert}
+						tone="crimson"
+					/>
+				</div>
+			</section>
+
+			<section className="admin-brief-grid">
+				<div className="card admin-brief-card">
+					<div className="admin-brief-header">
+						<div>
+							<p className="admin-eyebrow">Operational Brief</p>
+							<h2 className="admin-brief-title">
+								Platform health at a glance
+							</h2>
+						</div>
+						<Activity
+							size={18}
+							color="var(--accent-color)"
+						/>
+					</div>
+					<div className="admin-brief-list">
+						<div className="admin-brief-item">
+							<TrendingUp size={16} />
+							<span>
+								{activeUsers} active accounts currently
+								provisioned.
+							</span>
+						</div>
+						<div className="admin-brief-item">
+							<MailPlus size={16} />
+							<span>
+								{allowedEmails.length} users cleared for
+								onboarding from the access list.
+							</span>
+						</div>
+						<div className="admin-brief-item">
+							<Clock3 size={16} />
+							<span>
+								{waitlistEntries.length} contacts are waiting
+								for manual review or promotion.
+							</span>
+						</div>
+						<div className="admin-brief-item">
+							<Sparkles size={16} />
+							<span>
+								{promoCodes.length} promotion programs are
+								available for controlled distribution.
+							</span>
+						</div>
+					</div>
+				</div>
+
+				<div className="card admin-brief-card admin-brief-card-accent">
+					<div className="admin-brief-header">
+						<div>
+							<p className="admin-eyebrow">Key Metrics</p>
+							<h2 className="admin-brief-title">
+								Executive scorecard
+							</h2>
+						</div>
+						<Database
+							size={18}
+							color="var(--accent-color)"
+						/>
+					</div>
+					<div className="admin-brief-metrics">
+						<MetricCard
+							icon={Users}
+							label="User Base"
+							value={formatNumber(users.length)}
+							detail={activationRate}
+							tone="navy"
+						/>
+						<MetricCard
+							icon={Coins}
+							label="Credits in Circulation"
+							value={formatCurrency(totalCredits)}
+							detail={`${promoCodeUsages.length} promo redemptions captured`}
+							tone="emerald"
+						/>
+						<MetricCard
+							icon={Tag}
+							label="Active Promotions"
+							value={formatNumber(promoCodes.length)}
+							detail={
+								latestRedemption
+									? `Latest redemption ${formatDateTime(latestRedemption)}`
+									: 'No promo usage yet'
+							}
+							tone="gold"
+						/>
+						<MetricCard
+							icon={Database}
+							label="Operational Records"
+							value={formatNumber(
+								users.length +
+									allowedEmails.length +
+									waitlistEntries.length +
+									attempts.length +
+									promoCodes.length +
+									promoCodeUsages.length,
+							)}
+							detail="Across users, access control, and promotions"
+							tone="slate"
+						/>
+					</div>
+				</div>
+			</section>
 
 			{/* Users */}
 			<Section
 				icon={Users}
 				title="Users"
+				subtitle="Account status, email identity, and credit allocation"
 				count={users.length}
 			>
 				<AdminTable
@@ -725,7 +842,10 @@ export default function Admin() {
 							key: 'is_active',
 							label: 'Active',
 							render: (v) => (
-								<Badge color={v ? '#16a34a' : '#dc2626'}>
+								<Badge
+									color={v ? '#166534' : '#991b1b'}
+									tone={v ? 'success' : 'danger'}
+								>
 									{v ? 'Yes' : 'No'}
 								</Badge>
 							),
@@ -733,7 +853,7 @@ export default function Admin() {
 						{
 							key: 'credits',
 							label: 'Credits (USD)',
-							render: (v) => v?.toFixed(6),
+							render: (v) => formatCurrency(v),
 						},
 					]}
 					editableFields={['email', 'is_active', 'credits']}
@@ -752,6 +872,7 @@ export default function Admin() {
 			<Section
 				icon={ShieldCheck}
 				title="Allowed Emails"
+				subtitle="Manual and waitlist-promoted access approvals"
 				count={allowedEmails.length}
 			>
 				<AdminTable
@@ -765,14 +886,19 @@ export default function Admin() {
 							render: (v) => (
 								<Badge
 									color={
-										v ? '#2563eb' : 'var(--text-secondary)'
+										v ? '#1d4ed8' : 'var(--text-secondary)'
 									}
+									tone={v ? 'info' : 'neutral'}
 								>
 									{v ? 'Waitlist' : 'Manual'}
 								</Badge>
 							),
 						},
-						{ key: 'added_at', label: 'Added' },
+						{
+							key: 'added_at',
+							label: 'Added',
+							render: (v) => formatDateTime(v),
+						},
 					]}
 					editableFields={[]}
 					onDelete={async (id) => {
@@ -801,6 +927,7 @@ export default function Admin() {
 			<Section
 				icon={ListPlus}
 				title="Waitlist Entries"
+				subtitle="Pending access requests awaiting review or promotion"
 				count={waitlistEntries.length}
 			>
 				<AdminTable
@@ -809,7 +936,11 @@ export default function Admin() {
 						{ key: 'id', label: 'ID' },
 						{ key: 'email', label: 'Email' },
 						{ key: 'ip_address', label: 'IP Address' },
-						{ key: 'created_at', label: 'Created' },
+						{
+							key: 'created_at',
+							label: 'Created',
+							render: (v) => formatDateTime(v),
+						},
 					]}
 					editableFields={[]}
 					customActions={[
@@ -835,6 +966,7 @@ export default function Admin() {
 			<Section
 				icon={AlertTriangle}
 				title="Unauthorized Register Attempts"
+				subtitle="Suspicious registration events requiring audit awareness"
 				count={attempts.length}
 			>
 				<AdminTable
@@ -843,7 +975,11 @@ export default function Admin() {
 						{ key: 'id', label: 'ID' },
 						{ key: 'email', label: 'Email' },
 						{ key: 'ip_address', label: 'IP Address' },
-						{ key: 'timestamp', label: 'Timestamp' },
+						{
+							key: 'timestamp',
+							label: 'Timestamp',
+							render: (v) => formatDateTime(v),
+						},
 					]}
 					editableFields={[]}
 				/>
@@ -853,6 +989,7 @@ export default function Admin() {
 			<Section
 				icon={Tag}
 				title="Promo Codes"
+				subtitle="Credit campaigns, allocation limits, and redemption design"
 				count={promoCodes.length}
 			>
 				<AdminTable
@@ -860,9 +997,18 @@ export default function Admin() {
 					columns={[
 						{ key: 'id', label: 'ID' },
 						{ key: 'code', label: 'Code' },
-						{ key: 'val', label: 'Credits', type: 'number' },
+						{
+							key: 'val',
+							label: 'Credits',
+							type: 'number',
+							render: (v) => formatNumber(v),
+						},
 						{ key: 'users', label: 'Max Uses', type: 'number' },
-						{ key: 'created_at', label: 'Created' },
+						{
+							key: 'created_at',
+							label: 'Created',
+							render: (v) => formatDateTime(v),
+						},
 					]}
 					editableFields={['val', 'users']}
 					onSave={async (id, vals) => {
@@ -913,6 +1059,7 @@ export default function Admin() {
 			<Section
 				icon={Coins}
 				title="Promo Code Usages"
+				subtitle="Redemption history across accounts and campaigns"
 				count={promoCodeUsages.length}
 			>
 				<AdminTable
@@ -922,7 +1069,11 @@ export default function Admin() {
 						{ key: 'user_id', label: 'User ID' },
 						{ key: 'email', label: 'Email' },
 						{ key: 'code', label: 'Code' },
-						{ key: 'redeemed_at', label: 'Redeemed At' },
+						{
+							key: 'redeemed_at',
+							label: 'Redeemed At',
+							render: (v) => formatDateTime(v),
+						},
 					]}
 					editableFields={[]}
 				/>
