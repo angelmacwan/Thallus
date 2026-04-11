@@ -1,6 +1,7 @@
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, field_validator
 from typing import List, Optional
 from datetime import datetime
+import json
 
 
 class WaitlistCreate(BaseModel):
@@ -48,6 +49,17 @@ class SessionResponse(BaseModel):
     rounds: int
     inputs_path: str
     outputs_path: str
+    focus_topics: Optional[List[str]] = None
+
+    @field_validator("focus_topics", mode="before")
+    @classmethod
+    def parse_focus_topics(cls, v):
+        if isinstance(v, str):
+            try:
+                return json.loads(v)
+            except Exception:
+                return []
+        return v
 
     class Config:
         from_attributes = True

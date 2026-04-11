@@ -11,6 +11,7 @@ import {
 	GraduationCap,
 	Globe,
 } from 'lucide-react';
+import { useNotifications } from '../hooks/useNotifications';
 
 export default function Home() {
 	const [title, setTitle] = useState('');
@@ -24,6 +25,7 @@ export default function Home() {
 	const [appVersion, setAppVersion] = useState(null);
 	const fileInputRef = useRef(null);
 	const navigate = useNavigate();
+	const { ensurePermission } = useNotifications();
 
 	useEffect(() => {
 		api.get('/version')
@@ -37,6 +39,7 @@ export default function Home() {
 		e.preventDefault();
 		if (!files.length)
 			return alert('Please drop or select files to upload');
+		await ensurePermission();
 		setUploading(true);
 		try {
 			const formData = new FormData();

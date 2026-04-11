@@ -35,6 +35,7 @@ class Session(Base):
     rounds = Column(Integer, default=1)
     inputs_path = Column(String)  # path to seed documents
     outputs_path = Column(String) # path to simulation outputs
+    focus_topics = Column(Text, nullable=True)  # JSON-encoded list of user-defined search topics
 
     owner = relationship("User", back_populates="sessions")
     chat_messages = relationship("ChatMessage", back_populates="session")

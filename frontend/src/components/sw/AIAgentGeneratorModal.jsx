@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { X, Wand2, Loader } from 'lucide-react';
 import api from '../../api';
+import { useNotifications } from '../../hooks/useNotifications';
 
 export default function AIAgentGeneratorModal({
 	open,
@@ -18,6 +19,7 @@ export default function AIAgentGeneratorModal({
 	});
 	const [loading, setLoading] = useState(false);
 	const [error, setError] = useState('');
+	const { ensurePermission, notify } = useNotifications();
 
 	const setField = (k, v) => setForm((prev) => ({ ...prev, [k]: v }));
 
@@ -26,6 +28,7 @@ export default function AIAgentGeneratorModal({
 		if (!form.name.trim()) return setError('Name is required');
 		if (!form.description.trim())
 			return setError('Description is required');
+		await ensurePermission();
 		setLoading(true);
 		setError('');
 		try {
@@ -39,6 +42,10 @@ export default function AIAgentGeneratorModal({
 					age: form.age ? Number(form.age) : null,
 					description: form.description.trim(),
 				},
+			);
+			notify(
+				'Agent Generated',
+				`"${form.name.trim()}" profile has been created.`,
 			);
 			onGenerated(res.data);
 			onClose();

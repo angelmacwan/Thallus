@@ -121,6 +121,8 @@ _MIGRATIONS = [
         ip_address VARCHAR,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )""",
+    # Add focus_topics to sessions (idempotent — fails silently if column exists)
+    "ALTER TABLE sessions ADD COLUMN focus_topics TEXT DEFAULT NULL",
 ]
 with engine.connect() as _conn:
     for _sql in _MIGRATIONS:

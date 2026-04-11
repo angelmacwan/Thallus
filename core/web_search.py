@@ -151,6 +151,7 @@ def run_web_search_grounding(
     inputs_path: str,
     objective: str = "",
     emit=None,
+    focus_topics: list[str] | None = None,
 ) -> tuple[list[str], UsageSummary]:
     """
     Main entry point. Reads seed files from inputs_path, extracts topics,
@@ -193,6 +194,14 @@ def run_web_search_grounding(
         return [], usage
 
     _emit(f"Found {len(topics)} topics to search: {', '.join(topics[:3])}{'…' if len(topics) > 3 else ''}")
+
+    # ── 2b. Inject user-defined focus topics (deduplicated) ────────────────
+    if focus_topics:
+        topics_lower = {t.lower() for t in topics}
+        added = [t for t in focus_topics if t.strip() and t.strip().lower() not in topics_lower]
+        if added:
+            _emit(f"Adding {len(added)} user-defined focus topic(s): {', '.join(added[:3])}{'…' if len(added) > 3 else ''}")
+            topics = topics + added
 
     # ── 3. Search each topic and save results ──────────────────────────────
     created_files: list[str] = []
