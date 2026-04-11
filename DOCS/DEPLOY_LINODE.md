@@ -54,20 +54,31 @@ ssh root@YOUR_LINODE_IP
 apt update && apt upgrade -y
 adduser deploy
 usermod -aG sudo deploy
-apt install -y curl git ufw python3.11 python3.11-venv python3-pip nodejs npm nginx
+apt install -y curl git ufw
 ```
 
-Firewall — allow only SSH, HTTP, and HTTPS:
+> **Note:** Ubuntu 24.04 ships Python 3.12 by default. Python 3.11 must be installed via the `deadsnakes` PPA:
 
 ```bash
-ufw allow OpenSSH
-ufw allow 80/tcp
-ufw allow 443/tcp
-ufw enable
-ufw status verbose
+apt install -y software-properties-common
+add-apt-repository -y ppa:deadsnakes/ppa
+apt update
+apt install -y python3.11 python3.11-venv python3.11-distutils
 ```
 
-**Do not** open port 8000 publicly — UFW is a secondary safety net; the Linode Cloud Firewall set up in step 1 is the primary wall.
+Install Node.js 20 via NodeSource (Vite 8 requires Node 20+; Ubuntu's default `apt` package is Node 18 and will fail):
+
+```bash
+curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+apt install -y nodejs nginx
+```
+
+Verify:
+
+```bash
+python3.11 --version
+# should print Python 3.11.x
+```
 
 ---
 
@@ -83,10 +94,15 @@ In the Cloudflare dashboard for `staticalabs.com`:
 
 2. **SSL/TLS → Overview** → set mode to **Full (strict)**
 
-3. **SSL/TLS → Origin Server → Create Certificate**
-    - Leave defaults (RSA 2048, 15-year validity, hostname `thallus.staticalabs.com`)
+3. **SSL/TLS → Origin Server** (left sidebar item, directly under "Overview")
+    - You land on the **Origin Server** page — look for the **Origin Certificates** section
+    - Click **Create Certificate**
+    - Choose **Generate private key and CSR with Cloudflare**, key type **RSA (2048)**
+    - Hostnames: leave as-is (`thallus.staticalabs.com` should already be listed)
+    - Certificate validity: 15 years
     - Click **Create**
-    - Copy the **Origin Certificate** (the PEM block) and the **Private Key**
+    - On the next screen, set **Key Format** to **PEM**
+    - **Copy both values now** — the Origin Certificate and the Private Key. Cloudflare will never show the private key again after you close this dialog.
 
 Back on the server, save both:
 
@@ -116,7 +132,7 @@ chmod 600 /etc/ssl/cloudflare/thallus.key
 
 ```bash
 mkdir -p /opt && cd /opt
-git clone https://github.com/your-org/your-repo.git thallus
+git clone https://github.com/angelmacwan/Thallus.git thallus
 cd thallus
 chown -R deploy:deploy /opt/thallus
 ```
@@ -128,22 +144,12 @@ chown -R deploy:deploy /opt/thallus
 Create `/opt/thallus/.env` — this file is loaded by the backend on startup:
 
 ```bash
-cat > /opt/thallus/.env <<'EOF'
-SECRET_KEY=<run: openssl rand -hex 32>
-GEMINI_API_KEY=<your Gemini API key>
-RESEND_API_KEY=<your Resend API key>
-SERVER=PROD
-ALLOWED_ORIGINS=https://thallus.staticalabs.com
-EOF
-
-chmod 600 /opt/thallus/.env
-chown deploy:deploy /opt/thallus/.env
+nano /opt/thallus/.env
 ```
 
-Generate the `SECRET_KEY` value with:
-
 ```bash
-openssl rand -hex 32
+chmod 600 /opt/thallus/.env
+chown deploy:deploy /opt/thallus/.env
 ```
 
 ---
