@@ -19,34 +19,7 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { Wand2, LayoutGrid } from 'lucide-react';
-
-/**
- * Fruchterman-Reingold force-directed layout.
- * Returns a map of { [nodeId]: { x, y } }.
- */
-function gridLayout(nodeIds) {
-	const n = nodeIds.length;
-	if (n === 0) return {};
-
-	const COL_W = 210; // horizontal gap between node centres
-	const ROW_H = 120; // vertical gap between node centres
-
-	// Pick columns to make a roughly square grid
-	const cols = Math.ceil(Math.sqrt(n));
-
-	const pos = {};
-	nodeIds.forEach((id, i) => {
-		const col = i % cols;
-		const row = Math.floor(i / cols);
-		pos[id] = {
-			x: col * COL_W,
-			y: row * ROW_H,
-		};
-	});
-
-	return pos;
-}
-
+import { dagreLayout } from '../../utils/layoutUtils';
 
 const SENTIMENT_COLORS = {
 	positive: '#16a34a',
@@ -116,12 +89,13 @@ const nodeTypes = { agentNode: AgentNode };
 
 /**
  * Lives inside <ReactFlow> so it has access to useReactFlow().
- * Handles both auto-fit and grid-layout triggering.
+ * Handles both auto-fit and Dagre-based layout triggering.
  */
 function GraphController({
 	edgeCount,
 	layoutTrigger,
 	agents,
+	relationships,
 	setNodes,
 	savePositions,
 }) {
@@ -137,11 +111,24 @@ function GraphController({
 		return () => clearTimeout(t);
 	}, [edgeCount, fitView, layoutTrigger]);
 
-	// Run grid layout when trigger increments
+	// Run Dagre layout when trigger increments
 	useEffect(() => {
 		if (layoutTrigger === 0) return;
-		const nodeIds = agents.map((a) => a.agent_id);
-		const positions = gridLayout(nodeIds);
+
+		// Prepare nodes and edges for Dagre
+		const nodes = agents.map((a) => ({ id: a.agent_id }));
+		const edges = relationships.map((r) => ({
+			source: r.source_agent_id,
+			target: r.target_agent_id,
+		}));
+
+		// Get Dagre positions
+		const positions = dagreLayout(nodes, edges, {
+			direction: 'LR',
+			rankSep: 130,
+			nodeSep: 90,
+		});
+
 		setNodes((prev) =>
 			prev.map((n) =>
 				positions[n.id] ? { ...n, position: positions[n.id] } : n,
@@ -242,9 +229,9 @@ export default function AgentRelationshipGraph({
 				const cached = posCache.current[a.agent_id];
 				const position = existing?.position ??
 					cached ?? {
-					x: 300 + radius * Math.cos(i * angleStep),
-					y: 250 + radius * Math.sin(i * angleStep),
-				};
+						x: 300 + radius * Math.cos(i * angleStep),
+						y: 250 + radius * Math.sin(i * angleStep),
+					};
 				return {
 					id: a.agent_id,
 					position,
@@ -420,10 +407,11 @@ export default function AgentRelationshipGraph({
 							color: suggestMsg.startsWith('Error')
 								? '#dc2626'
 								: '#16a34a',
-							border: `1px solid ${suggestMsg.startsWith('Error')
+							border: `1px solid ${
+								suggestMsg.startsWith('Error')
 									? '#fca5a5'
 									: '#86efac'
-								}`,
+							}`,
 							borderRadius: '7px',
 							fontSize: '0.78rem',
 							fontWeight: 500,
@@ -453,6 +441,7 @@ export default function AgentRelationshipGraph({
 					edgeCount={edges.length}
 					layoutTrigger={layoutTrigger}
 					agents={agents}
+					relationships={relationships}
 					setNodes={setNodes}
 					savePositions={savePositions}
 				/>
@@ -568,8 +557,8 @@ function EdgeContextMenu({ x, y, edge, onEdit, onDelete, onClose }) {
 			<button
 				style={btnStyle(false)}
 				onMouseEnter={(e) =>
-				(e.currentTarget.style.background =
-					'var(--surface-container-high)')
+					(e.currentTarget.style.background =
+						'var(--surface-container-high)')
 				}
 				onMouseLeave={(e) =>
 					(e.currentTarget.style.background = 'transparent')
@@ -755,12 +744,12 @@ function RelTypeModal({
 										color: 'var(--text-primary)',
 									}}
 									onMouseEnter={(e) =>
-									(e.currentTarget.style.background =
-										'var(--surface-container-high)')
+										(e.currentTarget.style.background =
+											'var(--surface-container-high)')
 									}
 									onMouseLeave={(e) =>
-									(e.currentTarget.style.background =
-										'transparent')
+										(e.currentTarget.style.background =
+											'transparent')
 									}
 								>
 									{t}

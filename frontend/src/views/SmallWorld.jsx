@@ -62,7 +62,6 @@ export default function SmallWorld() {
 	const [agentsLoading, setAgentsLoading] = useState(false);
 	const [relationships, setRelationships] = useState([]);
 	const [relLoading, setRelLoading] = useState(false);
-	const [agentGraphMode, setAgentGraphMode] = useState(false);
 
 	const [createAgentOpen, setCreateAgentOpen] = useState(false);
 	const [editAgent, setEditAgent] = useState(null);
@@ -389,7 +388,6 @@ export default function SmallWorld() {
 	useEffect(() => {
 		if (selectedWorld) {
 			setWorldDetailTab('scenarios');
-			setAgentGraphMode(false);
 			setSuggestMsg(null);
 			setAgents([]);
 			setRelationships([]);
@@ -409,12 +407,12 @@ export default function SmallWorld() {
 	}, [selectedWorld?.world_id]);
 
 	useEffect(() => {
-		if (agentGraphMode && selectedWorld) {
+		if (worldDetailTab === 'relations' && selectedWorld) {
 			loadAgentGraph(selectedWorld.world_id);
-		} else if (!agentGraphMode && selectedWorld) {
+		} else if (worldDetailTab === 'agents' && selectedWorld) {
 			loadAgents(selectedWorld.world_id);
 		}
-	}, [agentGraphMode]);
+	}, [worldDetailTab, selectedWorld?.world_id]);
 
 	// ── Agent actions ─────────────────────────────────────────
 	const saveAgent = async (payload) => {
@@ -427,7 +425,7 @@ export default function SmallWorld() {
 		} else {
 			await api.post(`/small-world/worlds/${worldId}/agents/`, payload);
 		}
-		if (agentGraphMode) {
+		if (worldDetailTab === 'relations') {
 			loadAgentGraph(worldId);
 		} else {
 			loadAgents(worldId);
@@ -439,7 +437,7 @@ export default function SmallWorld() {
 			return;
 		const worldId = selectedWorld.world_id;
 		await api.delete(`/small-world/worlds/${worldId}/agents/${id}`);
-		if (agentGraphMode) {
+		if (worldDetailTab === 'relations') {
 			loadAgentGraph(worldId);
 		} else {
 			loadAgents(worldId);
@@ -456,7 +454,7 @@ export default function SmallWorld() {
 	const handleBulkImported = () => {
 		setBulkOpen(false);
 		const worldId = selectedWorld.world_id;
-		if (agentGraphMode) {
+		if (worldDetailTab === 'relations') {
 			loadAgentGraph(worldId);
 		} else {
 			loadAgents(worldId);
@@ -873,6 +871,11 @@ export default function SmallWorld() {
 											label: 'Agents',
 											icon: Users,
 										},
+										{
+											key: 'relations',
+											label: 'Agent Relations',
+											icon: Globe,
+										},
 									].map((item) => {
 										const TabIcon = item.icon;
 										return (
@@ -967,35 +970,6 @@ export default function SmallWorld() {
 												() => setBulkOpen(true),
 											)}
 										</div>
-										<button
-											onClick={() =>
-												setAgentGraphMode((m) => !m)
-											}
-											style={{
-												marginLeft: 'auto',
-												display: 'flex',
-												alignItems: 'center',
-												gap: '0.35rem',
-												fontSize: '0.82rem',
-												padding: '0.45rem 0.9rem',
-												border: '1px solid var(--outline-variant)',
-												borderRadius: '8px',
-												cursor: 'pointer',
-												fontWeight: 600,
-												background: agentGraphMode
-													? 'var(--secondary-container)'
-													: 'var(--surface-container-high)',
-												color: agentGraphMode
-													? 'var(--on-secondary-container)'
-													: 'var(--text-primary)',
-												transition: 'background 0.15s',
-											}}
-										>
-											<GitBranch size={13} />
-											{agentGraphMode
-												? 'List View'
-												: 'Relationship Graph'}
-										</button>
 									</div>
 
 									{/* Agent content */}
@@ -1003,9 +977,7 @@ export default function SmallWorld() {
 										style={{
 											flex: 1,
 											minHeight: 0,
-											overflowY: agentGraphMode
-												? 'hidden'
-												: 'auto',
+											overflowY: 'auto',
 										}}
 									>
 										{agentsLoading ? (
@@ -1020,36 +992,6 @@ export default function SmallWorld() {
 												<Users
 													size={22}
 													style={{ opacity: 0.4 }}
-												/>
-											</div>
-										) : agentGraphMode ? (
-											<div
-												style={{
-													height: '100%',
-													minHeight: 0,
-													display: 'flex',
-													flexDirection: 'column',
-												}}
-											>
-												<AgentRelationshipGraph
-													agents={agents}
-													relationships={
-														relationships
-													}
-													loading={relLoading}
-													onCreateRelationship={
-														createRelationship
-													}
-													onDeleteRelationship={
-														deleteRelationship
-													}
-													onUpdateRelationship={
-														updateRelationship
-													}
-													onAutoSuggest={
-														autoSuggestRelationships
-													}
-													suggestMsg={suggestMsg}
 												/>
 											</div>
 										) : agents.length === 0 ? (
@@ -1133,6 +1075,109 @@ export default function SmallWorld() {
 												))}
 											</div>
 										)}
+									</div>
+								</div>
+							)}
+
+							{/* ── AGENT RELATIONS TAB ── */}
+							{worldDetailTab === 'relations' && (
+								<div
+									style={{
+										display: 'flex',
+										flexDirection: 'column',
+										flex: 1,
+										minHeight: 0,
+										overflow: 'hidden',
+									}}
+								>
+									<div
+										style={{
+											display: 'flex',
+											gap: '1.5rem',
+											flex: 1,
+											minHeight: 0,
+											overflow: 'hidden',
+										}}
+									>
+										{/* Left panel: List view */}
+										<div
+											style={{
+												width: '30%',
+												flexShrink: 0,
+												display: 'flex',
+												flexDirection: 'column',
+												background: 'var(--surface-container-lowest)',
+												border: '1px solid var(--outline-variant)',
+												borderRadius: '12px',
+												overflow: 'hidden',
+											}}
+										>
+											<div style={{ padding: '0.85rem 1rem', borderBottom: '1px solid var(--outline-variant)', fontWeight: 600, fontSize: '0.9rem' }}>
+												Relationships
+											</div>
+											<div style={{ flex: 1, overflowY: 'auto', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
+												{relLoading ? (
+													<div style={{ textAlign: 'center', color: 'var(--text-secondary)', padding: '2rem 0' }}>
+														<Loader2 size={20} style={{ animation: 'spin 1s linear infinite', margin: '0 auto 0.5rem' }} />
+														Loading...
+													</div>
+												) : relationships.length === 0 ? (
+													<div style={{ textAlign: 'center', color: 'var(--text-secondary)', padding: '2rem 0', fontSize: '0.85rem' }}>No relationships found.</div>
+												) : (
+													relationships.map((r) => {
+														const src = agents.find((a) => a.agent_id === r.source_agent_id);
+														const tgt = agents.find((a) => a.agent_id === r.target_agent_id);
+														return (
+															<div key={r.rel_id} style={{ background: 'var(--surface-container-low)', padding: '0.75rem', borderRadius: '8px', border: '1px solid var(--outline-variant)' }}>
+																<div style={{ fontWeight: 600, fontSize: '0.85rem', marginBottom: '0.35rem', color: 'var(--on-surface)' }}>
+																	{src?.name || 'Unknown'} <span style={{ color: 'var(--text-secondary)' }}>→</span> {tgt?.name || 'Unknown'}
+																</div>
+																<div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.75rem' }}>
+																	<span style={{ 
+																		background: 'var(--surface-container-high)', 
+																		padding: '0.1rem 0.4rem', 
+																		borderRadius: '4px',
+																		color: 'var(--text-secondary)',
+																		textTransform: 'capitalize',
+																		fontWeight: 500
+																	}}>
+																		{r.type}
+																	</span>
+																	<span style={{ 
+																		color: r.sentiment === 'positive' ? '#16a34a' : r.sentiment === 'negative' ? '#dc2626' : '#6366f1',
+																		textTransform: 'capitalize',
+																		fontWeight: 600
+																	}}>
+																		{r.sentiment}
+																	</span>
+																</div>
+															</div>
+														);
+													})
+												)}
+											</div>
+										</div>
+
+										{/* Right panel: Graph view */}
+										<div
+											style={{
+												flex: 1,
+												display: 'flex',
+												flexDirection: 'column',
+												minHeight: 0,
+											}}
+										>
+											<AgentRelationshipGraph
+												agents={agents}
+												relationships={relationships}
+												loading={relLoading}
+												onCreateRelationship={createRelationship}
+												onDeleteRelationship={deleteRelationship}
+												onUpdateRelationship={updateRelationship}
+												onAutoSuggest={autoSuggestRelationships}
+												suggestMsg={suggestMsg}
+											/>
+										</div>
 									</div>
 								</div>
 							)}

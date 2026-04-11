@@ -12,6 +12,7 @@
   "dependencies": {
     "@xyflow/react": "^12.10.2",
     "axios": "^1.13.6",
+    "dagre": "^0.8.5",
     "html2pdf.js": "^0.14.0",
     "jwt-decode": "^4.0.0",
     "lucide-react": "^0.577.0",
