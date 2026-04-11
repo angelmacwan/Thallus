@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import api from '../api';
 import { useSidebar } from '../SidebarContext';
+import { useNotifications } from '../hooks/useNotifications';
 
 import AgentCard from '../components/sw/AgentCard';
 import CreateAgentModal from '../components/sw/CreateAgentModal';
@@ -45,6 +46,7 @@ const EVENT_COLOR = {
 
 export default function SmallWorld() {
 	const { setSwNav } = useSidebar();
+	const { ensurePermission, notify } = useNotifications();
 
 	// ── World list state ──────────────────────────────────────
 	const [worlds, setWorlds] = useState([]);
@@ -91,6 +93,7 @@ export default function SmallWorld() {
 	const [scenarioChatLoading, setScenarioChatLoading] = useState(false);
 	const [scenarioLiveStatus, setScenarioLiveStatus] = useState(null);
 	const [scenarioPollRef, setScenarioPollRef] = useState(null);
+	const prevScenarioLiveStatusRef = useRef(null);
 
 	// ── Load worlds ───────────────────────────────────────────
 	const loadWorlds = useCallback(() => {
@@ -288,7 +291,22 @@ export default function SmallWorld() {
 			.catch(() => {});
 	}, [swPanelTab, selectedScenario?.scenario_id]);
 
+	// Notify when scenario transitions from running → completed / failed
+	useEffect(() => {
+		if (
+			scenarioLiveStatus === 'completed' &&
+			prevScenarioLiveStatusRef.current === 'running'
+		) {
+			notify(
+				'Scenario Complete',
+				`"${selectedScenario?.name || 'Your scenario'}" has finished running.`,
+			);
+		}
+		prevScenarioLiveStatusRef.current = scenarioLiveStatus;
+	}, [scenarioLiveStatus]);
+
 	const handleResimulateSuccess = () => {
+		ensurePermission();
 		setShowResimulateModal(false);
 		setScenarioReport(null);
 		setScenarioEvents([]);
@@ -504,6 +522,7 @@ export default function SmallWorld() {
 	};
 
 	const handleScenarioCreated = (s) => {
+		ensurePermission();
 		// Optimistically add scenario as running in the graph
 		setLiveStatuses((prev) => new Map(prev).set(s.scenario_id, 'running'));
 		setScenarios((prev) => [...prev, s]);

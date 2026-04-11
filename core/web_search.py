@@ -23,7 +23,7 @@ from core.usage import UsageSummary
 
 
 def _extract_topics(seed_text: str, objective: str) -> tuple[list[str], UsageSummary]:
-    """Use Gemini to extract 3-7 concrete, searchable topics from the seed + objective."""
+    """Use Gemini to extract 7-12 concrete, searchable topics from the seed + objective."""
     client = genai.Client()
 
     combined = ""
@@ -35,9 +35,16 @@ def _extract_topics(seed_text: str, objective: str) -> tuple[list[str], UsageSum
     prompt = (
         "You are extracting search topics from a simulation brief.\n\n"
         f"{combined}\n\n"
-        "List 3 to 7 specific, concrete search queries (one per line, no bullets or numbering) "
-        "that would help a researcher gather current news, data, and context about the above topic. "
-        "Each query should be suitable for a Google News or web search. "
+        "List 7 to 12 specific, concrete search queries (one per line, no bullets or numbering) "
+        "that would help a researcher build a comprehensive, well-rounded picture of the topic.\n"
+        "Cover a diverse range of angles:\n"
+        "- Recent breaking news and investigative journalism\n"
+        "- Public opinion, community reactions, and grassroots discussion\n"
+        "- Government reports, official statements, and policy documents\n"
+        "- Economic data, statistics, and market analysis\n"
+        "- Expert commentary, academic perspectives, and think-tank analyses\n"
+        "- Controversy, criticism, and opposing viewpoints\n"
+        "Each query should be suitable for a Google web search. "
         "Return ONLY the search queries, nothing else."
     )
 
@@ -53,7 +60,7 @@ def _extract_topics(seed_text: str, objective: str) -> tuple[list[str], UsageSum
         )
     raw = response.text or ""
     topics = [line.strip() for line in raw.splitlines() if line.strip()]
-    return topics[:7], usage
+    return topics[:12], usage
 
 
 def _slugify(text: str) -> str:
@@ -72,14 +79,29 @@ def _search_and_summarize(topic: str) -> tuple[str, UsageSummary]:
     google_search_tool = types.Tool(google_search=types.GoogleSearch())
 
     prompt = (
-        f"Search the web for up-to-date information about: **{topic}**\n\n"
-        "Write a detailed Markdown summary (600-1000 words) covering:\n"
-        "- Recent news and developments\n"
-        "- Key facts, statistics, and data points\n"
-        "- Expert opinions or official statements\n"
-        "- Market or social sentiment (if applicable)\n"
-        "- Stock prices, economic indicators, or metrics (if applicable)\n\n"
-        "Include the sources you found as a References section at the end with URLs where available. "
+        f"Search the web extensively for information about: **{topic}**\n\n"
+        "Write a comprehensive, long-form Markdown report (1200-2000 words) that covers ALL of the following:\n\n"
+        "## Required sections:\n"
+        "### 1. Breaking News & Recent Developments\n"
+        "Pull from major news outlets (Reuters, AP, BBC, NYT, WSJ, Guardian, local outlets) — include dates and specifics.\n\n"
+        "### 2. Public Sentiment & Community Discussion\n"
+        "Search Reddit, public forums, and community threads for real reactions. Quote or paraphrase actual discussions. "
+        "Include subreddit names or forum sources where found. Look for upvoted/popular threads.\n\n"
+        "### 3. Social Media & Viral Reactions\n"
+        "Search Twitter/X, Threads, and Bluesky for notable posts, trending hashtags, and viral moments related to this topic. "
+        "Include specific quotes or post summaries where available.\n\n"
+        "### 4. Government & Official Sources\n"
+        "Find government publications, official reports, policy documents, regulatory statements, "
+        "government blog posts, and statements from public officials or agencies.\n\n"
+        "### 5. Expert & Academic Perspectives\n"
+        "Include think-tank analyses, academic papers, expert interviews, and professional commentary.\n\n"
+        "### 6. Key Facts, Statistics & Data\n"
+        "Include hard numbers, economic indicators, survey results, polling data, and verifiable metrics.\n\n"
+        "### 7. Criticism, Controversy & Opposing Views\n"
+        "Include dissenting opinions, controversies, or critical perspectives found in the sources.\n\n"
+        "Aim for MAXIMUM coverage — the more perspectives and sources, the better. "
+        "Every section should have multiple data points.\n\n"
+        "Include ALL sources found as a References section at the end with URLs. "
         "Format everything as clean Markdown."
     )
 
@@ -129,6 +151,7 @@ def run_web_search_grounding(
     inputs_path: str,
     objective: str = "",
     emit=None,
+    focus_topics: list[str] | None = None,
 ) -> tuple[list[str], UsageSummary]:
     """
     Main entry point. Reads seed files from inputs_path, extracts topics,
@@ -171,6 +194,14 @@ def run_web_search_grounding(
         return [], usage
 
     _emit(f"Found {len(topics)} topics to search: {', '.join(topics[:3])}{'…' if len(topics) > 3 else ''}")
+
+    # ── 2b. Inject user-defined focus topics (deduplicated) ────────────────
+    if focus_topics:
+        topics_lower = {t.lower() for t in topics}
+        added = [t for t in focus_topics if t.strip() and t.strip().lower() not in topics_lower]
+        if added:
+            _emit(f"Adding {len(added)} user-defined focus topic(s): {', '.join(added[:3])}{'…' if len(added) > 3 else ''}")
+            topics = topics + added
 
     # ── 3. Search each topic and save results ──────────────────────────────
     created_files: list[str] = []

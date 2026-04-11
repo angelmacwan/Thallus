@@ -89,12 +89,24 @@ export const adminApi = {
   },
   waitlistEntries: {
     list: () => api.get('/admin/waitlist-entries'),
+    promote: (id) => api.post(`/admin/allowed-emails/promote/${id}`),
+  },
+  allowedEmails: {
+    list: () => api.get('/admin/allowed-emails'),
+    add: (email) => api.post('/admin/allowed-emails', { email }),
+    delete: (id) => api.delete(`/admin/allowed-emails/${id}`),
   },
   unauthorizedAttempts: {
     list: () => api.get('/admin/unauthorized-attempts'),
   },
   promoCodeUsages: {
     list: () => api.get('/admin/promo-code-usages'),
+  },
+  promoCodes: {
+    list: () => api.get('/admin/promo-codes'),
+    create: (data) => api.post('/admin/promo-codes', data),
+    update: (id, data) => api.patch(`/admin/promo-codes/${id}`, data),
+    delete: (id) => api.delete(`/admin/promo-codes/${id}`),
   },
 };
 

@@ -75,12 +75,12 @@ def generate_report(
         agent_summary_lines.append(f"- {name} ({role})")
     agent_summary = "\n".join(agent_summary_lines)
 
-    prompt = f"""You are an enterprise decision intelligence analyst. Analyze the following simulation data and produce a structured JSON report.
+    prompt = f"""You are an enterprise decision intelligence analyst. Analyze the following agent discussion data and produce a structured JSON report.
 
 WORLD CONTEXT: {world_description}
 
 SCENARIO: {scenario_name}
-SEED (what-if prompt): {seed_text}
+SCENARIO DESCRIPTION (treat as ground truth — this event really happened): {seed_text}
 
 AGENTS IN SIMULATION:
 {agent_summary}

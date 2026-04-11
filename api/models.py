@@ -35,6 +35,7 @@ class Session(Base):
     rounds = Column(Integer, default=1)
     inputs_path = Column(String)  # path to seed documents
     outputs_path = Column(String) # path to simulation outputs
+    focus_topics = Column(Text, nullable=True)  # JSON-encoded list of user-defined search topics
 
     owner = relationship("User", back_populates="sessions")
     chat_messages = relationship("ChatMessage", back_populates="session")
@@ -199,6 +200,25 @@ class PromoCodeUsage(Base):
     redeemed_at = Column(DateTime, default=datetime.utcnow)
 
     user = relationship("User", back_populates="promo_code_usages")
+
+
+class PromoCode(Base):
+    __tablename__ = "promo_codes"
+
+    id = Column(Integer, primary_key=True, index=True)
+    code = Column(String, unique=True, index=True, nullable=False)
+    val = Column(Integer, nullable=False)       # display credits to add
+    users = Column(Integer, nullable=False)     # max distinct users who can redeem
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class AllowedEmail(Base):
+    __tablename__ = "allowed_emails"
+
+    id = Column(Integer, primary_key=True, index=True)
+    email = Column(String, unique=True, index=True, nullable=False)
+    promoted_from_waitlist = Column(Boolean, default=False)
+    added_at = Column(DateTime, default=datetime.utcnow)
 
 
 class WaitlistEntry(Base):

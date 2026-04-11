@@ -6,6 +6,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import api from '../api';
 import InsightsDashboard from '../components/InsightsDashboard';
 import { useSidebar } from '../SidebarContext';
+import { useNotifications } from '../hooks/useNotifications';
 import {
 	RefreshCw,
 	Send,
@@ -28,6 +29,7 @@ import {
 	Globe,
 	FolderOpen,
 	File,
+	Search,
 } from 'lucide-react';
 
 mermaid.initialize({ startOnLoad: false, theme: 'neutral' });
@@ -1306,6 +1308,8 @@ function ResimulateModal({ sessionUuid, session, onClose, onSuccess }) {
 	const [filesToRemove, setFilesToRemove] = useState(new Set());
 	const [newFiles, setNewFiles] = useState([]);
 	const [useWebSearch, setUseWebSearch] = useState(false);
+	const [focusTopics, setFocusTopics] = useState([]);
+	const [topicInput, setTopicInput] = useState('');
 	const [submitting, setSubmitting] = useState(false);
 	const [error, setError] = useState(null);
 	const [dragging, setDragging] = useState(false);
@@ -1322,6 +1326,7 @@ function ResimulateModal({ sessionUuid, session, onClose, onSuccess }) {
 				setObjective(res.data.objective || '');
 				// Only show user-uploaded files (backend now excludes _web_results.md)
 				setExistingFiles(res.data.files || []);
+				setFocusTopics(res.data.focus_topics || []);
 			})
 			.catch(() => {})
 			.finally(() => setLoadingInfo(false));
@@ -1339,6 +1344,11 @@ function ResimulateModal({ sessionUuid, session, onClose, onSuccess }) {
 		existingFiles.filter((f) => !filesToRemove.has(f)).length +
 		newFiles.length;
 
+	// Auto-enable web search when no seed files will remain
+	useEffect(() => {
+		if (keptCount === 0) setUseWebSearch(true);
+	}, [keptCount]);
+
 	const handleDrop = (e) => {
 		e.preventDefault();
 		setDragging(false);
@@ -1347,8 +1357,8 @@ function ResimulateModal({ sessionUuid, session, onClose, onSuccess }) {
 	};
 
 	const handleSubmit = async () => {
-		if (keptCount === 0) {
-			setError('At least one seed file is required.');
+		if (!objective.trim()) {
+			setError('Investigation Objective is required.');
 			return;
 		}
 		setSubmitting(true);
@@ -1358,9 +1368,10 @@ function ResimulateModal({ sessionUuid, session, onClose, onSuccess }) {
 			formData.append('rounds', rounds);
 			const agentCount = getAgentCount(agentSlider);
 			if (agentCount > 0) formData.append('agent_count', agentCount);
-			if (objective.trim())
-				formData.append('objective', objective.trim());
+			formData.append('objective', objective.trim());
 			formData.append('enable_web_search', useWebSearch);
+			if (focusTopics.length > 0)
+				formData.append('focus_topics', JSON.stringify(focusTopics));
 			if (filesToRemove.size > 0)
 				formData.append(
 					'remove_files',
@@ -1632,11 +1643,12 @@ function ResimulateModal({ sessionUuid, session, onClose, onSuccess }) {
 								<p
 									style={{
 										fontSize: '0.75rem',
-										color: '#dc2626',
+										color: 'var(--text-secondary)',
 										margin: 0,
 									}}
 								>
-									At least one seed file is required.
+									No files selected — Web Search will seed the
+									simulation.
 								</p>
 							)}
 						</div>
@@ -1760,11 +1772,12 @@ function ResimulateModal({ sessionUuid, session, onClose, onSuccess }) {
 								Investigation Objective{' '}
 								<span
 									style={{
-										fontWeight: 400,
+										fontWeight: 600,
 										textTransform: 'none',
+										color: 'var(--accent-color)',
 									}}
 								>
-									(optional)
+									*
 								</span>
 							</label>
 							<textarea
@@ -1840,6 +1853,165 @@ function ResimulateModal({ sessionUuid, session, onClose, onSuccess }) {
 								</p>
 							</div>
 						</div>
+
+						{/* Focus Topics */}
+						{useWebSearch && (
+							<div
+								style={{
+									display: 'flex',
+									flexDirection: 'column',
+									gap: '0.5rem',
+								}}
+							>
+								<label
+									style={{
+										fontSize: '0.82rem',
+										fontWeight: 600,
+										color: 'var(--on-surface)',
+										display: 'flex',
+										alignItems: 'center',
+										gap: '0.35rem',
+									}}
+								>
+									<Search size={13} />
+									Focus Topics
+									<span
+										style={{
+											fontSize: '0.68rem',
+											fontWeight: 400,
+											color: 'var(--text-secondary)',
+										}}
+									>
+										— optional
+									</span>
+								</label>
+								<p
+									style={{
+										fontSize: '0.72rem',
+										color: 'var(--text-secondary)',
+										margin: 0,
+										lineHeight: 1.4,
+									}}
+								>
+									Specific topics to search directly on the
+									web. Press Enter or comma to add.
+								</p>
+								<div
+									style={{
+										display: 'flex',
+										flexWrap: 'wrap',
+										gap: '0.4rem',
+										padding: '0.5rem',
+										background:
+											'var(--surface-variant, rgba(0,0,0,0.04))',
+										borderRadius: '8px',
+										border: '1.5px solid var(--outline-variant)',
+										minHeight: '2.4rem',
+										alignItems: 'center',
+									}}
+								>
+									{focusTopics.map((topic) => (
+										<span
+											key={topic}
+											style={{
+												display: 'inline-flex',
+												alignItems: 'center',
+												gap: '0.3rem',
+												background:
+													'rgba(var(--accent-rgb, 37,99,235),0.12)',
+												color: 'var(--accent-color)',
+												borderRadius: '999px',
+												padding:
+													'0.2rem 0.55rem 0.2rem 0.65rem',
+												fontSize: '0.75rem',
+												fontWeight: 500,
+											}}
+										>
+											{topic}
+											<button
+												type="button"
+												onClick={() =>
+													setFocusTopics((prev) =>
+														prev.filter(
+															(t) => t !== topic,
+														),
+													)
+												}
+												style={{
+													background: 'none',
+													border: 'none',
+													cursor: 'pointer',
+													padding: 0,
+													lineHeight: 1,
+													color: 'var(--accent-color)',
+													display: 'flex',
+													alignItems: 'center',
+												}}
+											>
+												<X size={11} />
+											</button>
+										</span>
+									))}
+									<input
+										type="text"
+										value={topicInput}
+										onChange={(e) => {
+											const val = e.target.value;
+											if (val.endsWith(',')) {
+												const trimmed = val
+													.slice(0, -1)
+													.trim();
+												if (
+													trimmed &&
+													!focusTopics.includes(
+														trimmed,
+													)
+												)
+													setFocusTopics((prev) => [
+														...prev,
+														trimmed,
+													]);
+												setTopicInput('');
+											} else {
+												setTopicInput(val);
+											}
+										}}
+										onKeyDown={(e) => {
+											if (e.key === 'Enter') {
+												e.preventDefault();
+												const trimmed =
+													topicInput.trim();
+												if (
+													trimmed &&
+													!focusTopics.includes(
+														trimmed,
+													)
+												)
+													setFocusTopics((prev) => [
+														...prev,
+														trimmed,
+													]);
+												setTopicInput('');
+											}
+										}}
+										placeholder={
+											focusTopics.length === 0
+												? 'e.g. US Iran War, tech layoffs, AI regulation…'
+												: 'Add another topic…'
+										}
+										style={{
+											border: 'none',
+											outline: 'none',
+											background: 'transparent',
+											fontSize: '0.8rem',
+											color: 'var(--on-surface)',
+											minWidth: '10rem',
+											flex: 1,
+										}}
+									/>
+								</div>
+							</div>
+						)}
 					</>
 				)}
 
@@ -1883,7 +2055,7 @@ function ResimulateModal({ sessionUuid, session, onClose, onSuccess }) {
 					</button>
 					<button
 						onClick={handleSubmit}
-						disabled={submitting || loadingInfo || keptCount === 0}
+						disabled={submitting || loadingInfo}
 						style={{
 							padding: '0.55rem 1.25rem',
 							borderRadius: '8px',
@@ -1894,17 +2066,14 @@ function ResimulateModal({ sessionUuid, session, onClose, onSuccess }) {
 							color: '#fff',
 							fontWeight: 700,
 							cursor:
-								submitting || loadingInfo || keptCount === 0
+								submitting || loadingInfo
 									? 'not-allowed'
 									: 'pointer',
 							fontSize: '0.85rem',
 							display: 'flex',
 							alignItems: 'center',
 							gap: '0.4rem',
-							opacity:
-								submitting || loadingInfo || keptCount === 0
-									? 0.65
-									: 1,
+							opacity: submitting || loadingInfo ? 0.65 : 1,
 						}}
 					>
 						<RefreshCw size={14} />
@@ -2156,7 +2325,14 @@ export default function SessionView() {
 
 	const messagesEndRef = useRef(null);
 	const logEndRef = useRef(null);
+	const prevSessionStatusRef = useRef(null);
 	const { setSessionNav } = useSidebar();
+	const { ensurePermission, notify } = useNotifications();
+
+	// Request notification permission proactively when a simulation is running
+	useEffect(() => {
+		if (session?.status === 'running') ensurePermission();
+	}, [session?.status]);
 
 	useEffect(() => {
 		const agentCount = (artifacts.agents || []).length;
@@ -2215,6 +2391,17 @@ export default function SessionView() {
 		if (showLoader) setLoading(true);
 		try {
 			const res = await api.get(`/sessions/${id}`);
+			// Notify when transitioning from running → completed
+			if (
+				res.data.status === 'completed' &&
+				prevSessionStatusRef.current === 'running'
+			) {
+				notify(
+					'Simulation Complete',
+					`"${res.data.title || 'Your simulation'}" has finished running.`,
+				);
+			}
+			prevSessionStatusRef.current = res.data.status;
 			setSession(res.data);
 			if (res.data.status === 'completed') {
 				const [chatRes, artRes] = await Promise.all([
@@ -2274,6 +2461,7 @@ export default function SessionView() {
 	};
 
 	const handleRunScenario = async (scenario) => {
+		ensurePermission();
 		try {
 			await api.post(`/scenarios/${scenario.scenario_id}/run`);
 			// Update local state optimistically
@@ -2306,6 +2494,12 @@ export default function SessionView() {
 				}));
 				if (ev.type === 'done' || ev.type === 'error') {
 					es.close();
+					if (ev.type === 'done') {
+						notify(
+							'Scenario Complete',
+							'Your scenario has finished running.',
+						);
+					}
 					// Refresh scenarios list to get updated status
 					setTimeout(() => fetchScenarios(), 800);
 				}

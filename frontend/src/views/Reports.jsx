@@ -4,6 +4,7 @@ import remarkGfm from 'remark-gfm';
 import api from '../api';
 import { FileText, RefreshCw, X, Trash2, Plus, Download } from 'lucide-react';
 import mermaid from 'mermaid';
+import { useNotifications } from '../hooks/useNotifications';
 
 mermaid.initialize({ startOnLoad: false, theme: 'neutral' });
 
@@ -254,6 +255,7 @@ function GenerateReportModal({ onClose, onCreated }) {
 	const [description, setDescription] = useState('');
 	const [generating, setGenerating] = useState(false);
 	const [error, setError] = useState(null);
+	const { ensurePermission, notify } = useNotifications();
 
 	useEffect(() => {
 		api.get('/sessions/')
@@ -272,12 +274,14 @@ function GenerateReportModal({ onClose, onCreated }) {
 	const handleSubmit = async (e) => {
 		e.preventDefault();
 		if (!selectedSession || !description.trim()) return;
+		await ensurePermission();
 		setGenerating(true);
 		setError(null);
 		try {
 			const res = await api.post(`/reports/generate/${selectedSession}`, {
 				description: description.trim(),
 			});
+			notify('Report Ready', `Your report has been generated.`);
 			onCreated(res.data);
 			onClose();
 		} catch (err) {

@@ -1,6 +1,9 @@
 from dotenv import load_dotenv
 load_dotenv()
 
+import logging
+import os
+
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
@@ -118,20 +121,63 @@ _MIGRATIONS = [
         ip_address VARCHAR,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )""",
+    # Add focus_topics to sessions (idempotent — fails silently if column exists)
+    "ALTER TABLE sessions ADD COLUMN focus_topics TEXT DEFAULT NULL",
+    """CREATE TABLE IF NOT EXISTS promo_codes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        code VARCHAR UNIQUE NOT NULL,
+        val INTEGER NOT NULL,
+        users INTEGER NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )""",
+    """CREATE TABLE IF NOT EXISTS allowed_emails (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        email VARCHAR UNIQUE NOT NULL,
+        promoted_from_waitlist BOOLEAN DEFAULT 0,
+        added_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )""",
 ]
 with engine.connect() as _conn:
     for _sql in _MIGRATIONS:
         try:
             _conn.execute(text(_sql))
             _conn.commit()
-        except Exception:
-            pass  # column already exists
+        except Exception as _exc:
+            _exc_str = str(_exc).lower()
+            if "duplicate column name" in _exc_str or "already exists" in _exc_str:
+                logging.debug("Migration already applied: %s...", _sql[:60])
+            else:
+                logging.warning("Migration failed unexpectedly: %s... | reason: %s", _sql[:60], _exc)
+
+# ── Seed allowed_emails from static config (one-time) ───────────────────────
+def _seed_initial_data() -> None:
+    from .database import SessionLocal
+    from . import models as _m
+    from core.config import _INITIAL_ALLOWED_EMAILS
+
+    db = SessionLocal()
+    try:
+        # Seed allowed emails if table is empty
+        if db.query(_m.AllowedEmail).count() == 0:
+            for email_str in _INITIAL_ALLOWED_EMAILS:
+                db.add(_m.AllowedEmail(email=email_str.lower(), promoted_from_waitlist=False))
+            db.commit()
+    finally:
+        db.close()
+
+_seed_initial_data()
 
 app = FastAPI(title="Thallus API")
 
+_raw_origins = os.getenv(
+    "ALLOWED_ORIGINS",
+    "https://thallus.staticalabs.com",
+)
+_allowed_origins = [o.strip() for o in _raw_origins.split(",") if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], # In production, restrict this
+    allow_origins=_allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

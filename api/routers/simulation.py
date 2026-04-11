@@ -2,6 +2,7 @@ import asyncio
 import json as _json
 import os
 import queue as _queue
+import re
 import sqlite3
 import uuid
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, BackgroundTasks, Form
@@ -39,7 +40,7 @@ def _get_current_user_query(
     return user
 
 
-def run_simulation_task(session_id: int, session_uuid: str, inputs_path: str, outputs_path: str, rounds: int, agent_count: int, emit, enable_web_search: bool = False, objective: str = "", user_id: int = None):
+def run_simulation_task(session_id: int, session_uuid: str, inputs_path: str, outputs_path: str, rounds: int, agent_count: int, emit, enable_web_search: bool = False, objective: str = "", user_id: int = None, focus_topics: list = None):
     # Runs in background task thread
     from ..database import SessionLocal
     from ..billing import UsageSummary, deduct_credits
@@ -67,7 +68,7 @@ def run_simulation_task(session_id: int, session_uuid: str, inputs_path: str, ou
         if enable_web_search:
             try:
                 from core.web_search import run_web_search_grounding
-                _, ws_usage = run_web_search_grounding(inputs_path, objective=objective, emit=emit)
+                _, ws_usage = run_web_search_grounding(inputs_path, objective=objective, emit=emit, focus_topics=focus_topics or [])
                 usage += ws_usage
             except Exception as ws_exc:
                 emit("stage", f"Web search grounding skipped: {ws_exc}")
@@ -139,11 +140,13 @@ async def upload_and_simulate(
     title: str = Form(None),
     objective: str = Form(None),
     enable_web_search: bool = Form(False),
-    files: List[UploadFile] = File(...),
+    focus_topics: str = Form(None),  # JSON-encoded list of user-defined search topics
+    files: List[UploadFile] = File(default=[]),
     db: Session = Depends(get_db),
     current_user: models.User = Depends(require_credits)
 ):
     email_safe = current_user.email.replace("@", "_at_").replace(".", "_")
+    email_safe = re.sub(r'[^a-zA-Z0-9_]', '_', email_safe)
     session_uuid = str(uuid.uuid4())
     base_dir = os.path.join("users_data", email_safe, f"session_{session_uuid}")
     inputs_path = os.path.join(base_dir, "input")
@@ -154,7 +157,12 @@ async def upload_and_simulate(
 
     # Save files
     for file in files:
-        file_location = os.path.join(inputs_path, file.filename)
+        # Sanitize filename: strip any directory component, then allowlist safe chars
+        raw_name = os.path.basename(file.filename or "")
+        safe_name = re.sub(r'[^a-zA-Z0-9._\- ]', '_', raw_name).strip()
+        if not safe_name:
+            safe_name = str(uuid.uuid4())
+        file_location = os.path.join(inputs_path, safe_name)
         with open(file_location, "wb") as f:
             f.write(await file.read())
 
@@ -164,9 +172,18 @@ async def upload_and_simulate(
         with open(objective_path, "w", encoding="utf-8") as f:
             f.write(objective.strip())
 
+    # Parse and persist focus topics
+    focus_topics_list: list = []
+    if focus_topics:
+        try:
+            focus_topics_list = _json.loads(focus_topics)
+        except Exception:
+            focus_topics_list = []
+
     # Create session
     db_session = crud.create_session(db, current_user.id, inputs_path, outputs_path, rounds, title)
     db_session.session_id = session_uuid
+    db_session.focus_topics = _json.dumps(focus_topics_list) if focus_topics_list else None
     db.commit()
     db.refresh(db_session)
 
@@ -201,6 +218,7 @@ async def upload_and_simulate(
         enable_web_search,
         objective or "",
         current_user.id,
+        focus_topics_list,
     )
 
     return db_session
@@ -609,6 +627,7 @@ def get_seed_info(
         "rounds": db_session.rounds,
         "objective": objective,
         "title": db_session.title,
+        "focus_topics": _json.loads(db_session.focus_topics) if db_session.focus_topics else [],
     }
 
 
@@ -657,6 +676,7 @@ async def resimulate(
     agent_count: int = Form(None),
     objective: str = Form(None),
     enable_web_search: bool = Form(False),
+    focus_topics: str = Form(None),  # JSON-encoded list of user-defined search topics
     add_files: List[UploadFile] = File(default=[]),
     remove_files: str = Form(None),  # JSON array of filenames to remove
     db: Session = Depends(get_db),
@@ -698,11 +718,6 @@ async def resimulate(
         dest = os.path.join(inputs_path, os.path.basename(file.filename))
         with open(dest, "wb") as fh:
             fh.write(await file.read())
-
-    # Ensure at least one input file remains
-    remaining = [f for f in os.listdir(inputs_path) if os.path.isfile(os.path.join(inputs_path, f))] if os.path.exists(inputs_path) else []
-    if not remaining:
-        raise HTTPException(status_code=400, detail="At least one seed file is required")
 
     # 3. Clear all generated outputs
     if os.path.exists(outputs_path):
@@ -752,6 +767,14 @@ async def resimulate(
     # 6. Update session record
     db_session.rounds = rounds
     db_session.status = "pending"
+    # Parse and persist focus topics
+    focus_topics_list: list = []
+    if focus_topics:
+        try:
+            focus_topics_list = _json.loads(focus_topics)
+        except Exception:
+            focus_topics_list = []
+    db_session.focus_topics = _json.dumps(focus_topics_list) if focus_topics_list else None
     db.commit()
     db.refresh(db_session)
 
@@ -783,6 +806,8 @@ async def resimulate(
         emit,
         enable_web_search,
         objective or "",
+        None,
+        focus_topics_list,
     )
 
     return db_session

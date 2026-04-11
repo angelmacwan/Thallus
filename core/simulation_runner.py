@@ -190,16 +190,16 @@ class SimulationRunner:
     # ------------------------------------------------------------------
 
     def _inject_objective_into_profiles(self, profiles: list[dict]) -> list[dict]:
-        """Return a copy of profiles with the simulation objective appended to each persona."""
+        """Return a copy of profiles with the objective context appended to each persona."""
         import copy
         injected = copy.deepcopy(profiles)
         for agent in injected:
             existing = (agent.get("persona") or "").strip()
             agent["persona"] = (
                 f"{existing}\n\n"
-                f"SIMULATION FOCUS: {self.objective}\n"
-                "You MUST stay strictly within this topic in every post and comment. "
-                "Do NOT introduce unrelated subjects."
+                f"CURRENT EVENTS CONTEXT: {self.objective}\n"
+                "This is a real situation. Engage with this topic authentically in every post and comment "
+                "as though it is actually happening. Do NOT introduce unrelated subjects."
             ).strip()
         return injected
 
@@ -245,21 +245,20 @@ class SimulationRunner:
             context += "\n\nRelationships:\n" + "\n".join(relation_lines)
 
         objective_line = (
-            f"\nSimulation objective: {self.objective}\n"
-            "All posts MUST relate directly to this objective.\n"
+            f"\nFocus topic: {self.objective}\n"
+            "All posts MUST relate directly to this topic.\n"
             if self.objective else ""
         )
         prompt = (
-            "You are seeding a social media simulation platform with opening posts.\n"
-            "Based on the following knowledge graph context, write 4 natural, engaging "
-            "social media posts that spark discussion directly relevant to the simulation topic. "
-            "These will be the first posts users see and react to.\n\n"
+            "Write 4 natural, engaging social media posts reacting to a real-world event or topic. "
+            "Based on the following context, write posts that spark authentic discussion about what is happening. "
+            "These will be the first posts people see and react to.\n\n"
             f"{objective_line}"
             f"Context:\n{context}\n\n"
             "Requirements:\n"
-            "- Each post should be 1-3 sentences, written naturally as if by a real social media user\n"
+            "- Each post should be 1-3 sentences, written naturally as if by a real social media user reacting to real news\n"
             "- Do NOT use label prefixes like 'Notable ORGANIZATION:' or 'Key CONCEPT:'\n"
-            "- Every post must directly address the simulation objective\n"
+            "- Every post must directly address the topic as though it really happened\n"
             "- Vary the angle (analytical, curious, opinionated, etc.)\n"
             "- Return ONLY a JSON array of 4 strings, nothing else"
         )

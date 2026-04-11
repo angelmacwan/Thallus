@@ -4,7 +4,7 @@ from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from .. import crud, schemas, auth, models
 from ..deps import get_db, get_current_user
-from core.config import SERVER, ALLOWED_EMAILS, FREE_CREDITS_ON_SIGNUP_USD, CREDITS_PER_USD
+from core.config import SERVER, FREE_CREDITS_ON_SIGNUP_USD, CREDITS_PER_USD, ADMIN_EMAILS
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -58,6 +58,19 @@ def join_waitlist(payload: schemas.WaitlistCreate, request: Request, db: Session
 def send_signup_otp(payload: schemas.SendOTPRequest, db: Session = Depends(get_db)):
     email = payload.email.strip().lower()
 
+    # Reject if not on the allowlist (when SERVER == "DEV")
+    # Admin emails are always allowed regardless of allowlist
+    if SERVER == "DEV" and email not in ADMIN_EMAILS and not crud.is_email_allowed(db, email):
+        crud.log_unauthorized_register(db, email=email)
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=(
+                "Thallus is currently invite-only. "
+                "Your email address is not on the access list. "
+                "You can request access by joining the waitlist on our homepage."
+            ),
+        )
+
     # Reject if email is already registered
     if crud.get_user_by_email(db, email=email):
         raise HTTPException(status_code=409, detail="An account with this email already exists.")
@@ -95,12 +108,16 @@ def register(payload: schemas.VerifySignupRequest, db: Session = Depends(get_db)
             detail="Invalid or expired verification code.",
         )
 
-    # DEV-mode gate
-    if SERVER == "DEV" and email not in ALLOWED_EMAILS:
+    # DEV-mode gate — admin emails always bypass this check
+    if SERVER == "DEV" and email not in ADMIN_EMAILS and not crud.is_email_allowed(db, email):
         crud.log_unauthorized_register(db, email=email)
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="This email is not authorised to create an account.",
+            detail=(
+                "Thallus is currently invite-only. "
+                "Your email address is not on the access list. "
+                "You can request access by joining the waitlist on our homepage."
+            ),
         )
 
     if crud.get_user_by_email(db, email=email):
@@ -186,6 +203,11 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password",
             headers={"WWW-Authenticate": "Bearer"},
+        )
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This account has been deactivated. Contact support if you believe this is an error.",
         )
     access_token_expires = timedelta(minutes=auth.ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = auth.create_access_token(

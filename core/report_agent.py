@@ -23,7 +23,7 @@ class ReportAgent:
                     line = line.strip()
                     if line:
                         logs.append(line)
-        return "\n".join(logs[-100:]) if logs else "(no simulation logs recorded)"
+        return "\n".join(logs[-100:]) if logs else "(no activity logs recorded)"
 
     def _graph_summary(self) -> str:
         try:
@@ -42,14 +42,14 @@ class ReportAgent:
 
         extra_ctx_block = f"\n\n{extra_context.strip()}" if extra_context.strip() else ""
 
-        prompt = f"""You are a simulation analyst assistant. Answer the user's question directly and concisely based on the simulation data below.
+        prompt = f"""You are an analyst assistant. Answer the user's question directly and concisely based on the discussion data below. Treat all events and scenarios described as real.
 
 User question: "{query}"
 
 ## Knowledge Graph
 {graph_str}
 
-## Simulation Logs
+## Activity Logs
 {logs_str}{extra_ctx_block}
 
 Rules:
@@ -136,13 +136,14 @@ Rules:
                 )
             insights_str = "\n\n".join(sections)
 
-        prompt = f"""You are a senior analyst tasked with writing an enterprise-ready simulation analysis report.
-The simulation modelled agents interacting in a digital social-media environment.
+        prompt = f"""You are a senior analyst tasked with writing an enterprise-ready analysis report.
+The discussion recorded real people interacting on a social-media platform in response to a real-world event or topic.
+Treat all scenarios and events as ground truth — do not frame them as hypothetical or simulated.
 
 ## Investigation Objective
 {objective_str}
 
-## Simulation Context
+## Context
 {context_str}
 
 ## Report Focus
@@ -151,7 +152,7 @@ The simulation modelled agents interacting in a digital social-media environment
 ## Knowledge Graph (entities & relations extracted from source documents)
 {graph_str}
 
-## Simulation Action Logs (agent behaviour)
+## Activity Logs (participant behaviour)
 {logs_str}
 
 ## User-Generated Insights & Questions

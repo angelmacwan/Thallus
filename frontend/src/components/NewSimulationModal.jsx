@@ -1,7 +1,8 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { UploadCloud, Zap, X, Globe } from 'lucide-react';
+import { UploadCloud, Zap, X, Globe, Search } from 'lucide-react';
 import api from '../api';
+import { useNotifications } from '../hooks/useNotifications';
 
 export default function NewSimulationModal({ open, onClose }) {
 	const [title, setTitle] = useState('');
@@ -12,8 +13,16 @@ export default function NewSimulationModal({ open, onClose }) {
 	const [uploading, setUploading] = useState(false);
 	const [dragging, setDragging] = useState(false);
 	const [enableWebSearch, setEnableWebSearch] = useState(false);
+	const [focusTopics, setFocusTopics] = useState([]);
+	const [topicInput, setTopicInput] = useState('');
 	const fileInputRef = useRef(null);
 	const navigate = useNavigate();
+	const { ensurePermission } = useNotifications();
+
+	// Auto-enable web search when no seed documents are uploaded
+	useEffect(() => {
+		if (files.length === 0) setEnableWebSearch(true);
+	}, [files]);
 
 	const getAgentCount = (sliderValue) => {
 		const counts = [0, 50, 150, 300, 500];
@@ -27,6 +36,8 @@ export default function NewSimulationModal({ open, onClose }) {
 		setRounds(3);
 		setAgentSlider(0);
 		setEnableWebSearch(false);
+		setFocusTopics([]);
+		setTopicInput('');
 	};
 
 	const handleClose = () => {
@@ -36,8 +47,9 @@ export default function NewSimulationModal({ open, onClose }) {
 
 	const handleCreate = async (e) => {
 		e.preventDefault();
-		if (!files.length)
-			return alert('Please drop or select files to upload');
+		if (!objective.trim())
+			return alert('Investigation Objective is required.');
+		await ensurePermission();
 		setUploading(true);
 
 		try {
@@ -46,13 +58,14 @@ export default function NewSimulationModal({ open, onClose }) {
 			const agentCount = getAgentCount(agentSlider);
 			if (agentCount > 0) formData.append('agent_count', agentCount);
 			if (title.trim()) formData.append('title', title.trim());
-			if (objective.trim())
-				formData.append('objective', objective.trim());
+			formData.append('objective', objective.trim());
 			Array.from(files).forEach((file) => formData.append('files', file));
 			formData.append(
 				'enable_web_search',
 				enableWebSearch ? 'true' : 'false',
 			);
+			if (focusTopics.length > 0)
+				formData.append('focus_topics', JSON.stringify(focusTopics));
 
 			const res = await api.post('/simulation/upload', formData, {
 				headers: { 'Content-Type': 'multipart/form-data' },
@@ -217,7 +230,18 @@ export default function NewSimulationModal({ open, onClose }) {
 						className="form-group"
 						style={{ margin: 0 }}
 					>
-						<label className="form-label">Seed Documents</label>
+						<label className="form-label">
+							Seed Documents{' '}
+							<span
+								style={{
+									fontWeight: 400,
+									color: 'var(--text-secondary)',
+									fontSize: '0.78rem',
+								}}
+							>
+								(optional)
+							</span>
+						</label>
 						<div
 							onDrop={handleDrop}
 							onDragOver={handleDragOver}
@@ -287,6 +311,17 @@ export default function NewSimulationModal({ open, onClose }) {
 								}
 							/>
 						</div>
+						<p
+							style={{
+								fontSize: '0.72rem',
+								color: 'var(--text-secondary)',
+								margin: '0.3rem 0 0',
+								lineHeight: 1.4,
+							}}
+						>
+							No documents? Web Search will automatically seed the
+							simulation with relevant results.
+						</p>
 					</div>
 
 					{/* Web Search Grounding */}
@@ -347,6 +382,160 @@ export default function NewSimulationModal({ open, onClose }) {
 							</p>
 						</div>
 					</label>
+
+					{/* Focus Topics */}
+					{enableWebSearch && (
+						<div
+							style={{
+								display: 'flex',
+								flexDirection: 'column',
+								gap: '0.5rem',
+							}}
+						>
+							<label
+								style={{
+									fontSize: '0.82rem',
+									fontWeight: 600,
+									color: 'var(--on-surface)',
+									display: 'flex',
+									alignItems: 'center',
+									gap: '0.35rem',
+								}}
+							>
+								<Search size={13} />
+								Focus Topics
+								<span
+									style={{
+										fontSize: '0.68rem',
+										fontWeight: 400,
+										color: 'var(--text-secondary)',
+									}}
+								>
+									— optional
+								</span>
+							</label>
+							<p
+								style={{
+									fontSize: '0.72rem',
+									color: 'var(--text-secondary)',
+									margin: 0,
+									lineHeight: 1.4,
+								}}
+							>
+								Specific topics to search directly on the web.
+								Press Enter or comma to add.
+							</p>
+							<div
+								style={{
+									display: 'flex',
+									flexWrap: 'wrap',
+									gap: '0.4rem',
+									padding: '0.5rem',
+									background:
+										'var(--surface-variant, rgba(0,0,0,0.04))',
+									borderRadius: '8px',
+									border: '1.5px solid var(--outline-variant)',
+									minHeight: '2.4rem',
+									alignItems: 'center',
+								}}
+							>
+								{focusTopics.map((topic) => (
+									<span
+										key={topic}
+										style={{
+											display: 'inline-flex',
+											alignItems: 'center',
+											gap: '0.3rem',
+											background:
+												'rgba(var(--accent-rgb, 37,99,235),0.12)',
+											color: 'var(--accent-color)',
+											borderRadius: '999px',
+											padding:
+												'0.2rem 0.55rem 0.2rem 0.65rem',
+											fontSize: '0.75rem',
+											fontWeight: 500,
+										}}
+									>
+										{topic}
+										<button
+											type="button"
+											onClick={() =>
+												setFocusTopics((prev) =>
+													prev.filter(
+														(t) => t !== topic,
+													),
+												)
+											}
+											style={{
+												background: 'none',
+												border: 'none',
+												cursor: 'pointer',
+												padding: 0,
+												lineHeight: 1,
+												color: 'var(--accent-color)',
+												display: 'flex',
+												alignItems: 'center',
+											}}
+										>
+											<X size={11} />
+										</button>
+									</span>
+								))}
+								<input
+									type="text"
+									value={topicInput}
+									onChange={(e) => {
+										const val = e.target.value;
+										if (val.endsWith(',')) {
+											const trimmed = val
+												.slice(0, -1)
+												.trim();
+											if (
+												trimmed &&
+												!focusTopics.includes(trimmed)
+											)
+												setFocusTopics((prev) => [
+													...prev,
+													trimmed,
+												]);
+											setTopicInput('');
+										} else {
+											setTopicInput(val);
+										}
+									}}
+									onKeyDown={(e) => {
+										if (e.key === 'Enter') {
+											e.preventDefault();
+											const trimmed = topicInput.trim();
+											if (
+												trimmed &&
+												!focusTopics.includes(trimmed)
+											)
+												setFocusTopics((prev) => [
+													...prev,
+													trimmed,
+												]);
+											setTopicInput('');
+										}
+									}}
+									placeholder={
+										focusTopics.length === 0
+											? 'e.g. US Iran War, tech layoffs, AI regulation…'
+											: 'Add another topic…'
+									}
+									style={{
+										border: 'none',
+										outline: 'none',
+										background: 'transparent',
+										fontSize: '0.8rem',
+										color: 'var(--on-surface)',
+										minWidth: '10rem',
+										flex: 1,
+									}}
+								/>
+							</div>
+						</div>
+					)}
 
 					{/* Rounds */}
 					<div

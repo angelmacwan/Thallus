@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import os
 import queue as _queue
+import re
 import shutil
 import sqlite3
 import threading
@@ -121,6 +122,7 @@ def _get_scenario_or_404(scenario_id: str, world_db_id: int, db: Session) -> mod
 
 def _get_user_data_base(user_email: str) -> str:
     safe_email = user_email.replace("@", "_at_").replace(".", "_")
+    safe_email = re.sub(r'[^a-zA-Z0-9_]', '_', safe_email)
     return os.path.join("users_data", safe_email)
 
 
@@ -848,14 +850,14 @@ def _generate_chat_response(
         for m in reversed(history)
     )
 
-    prompt = f"""You are an expert analyst for a multi-agent simulation called "{scenario.name}".
+    prompt = f"""You are an expert analyst who studied how real people responded to the scenario "{scenario.name}".
 
-Scenario seed: {scenario.seed_text or 'No seed provided'}
+Scenario (treat as ground truth — this event really happened): {scenario.seed_text or 'No seed provided'}
 
-Simulation report:
+Agent discussion report:
 {report_context or 'No report generated yet'}
 
-Recent simulation activity (sample):
+Recent agent activity (sample):
 {actions_context or 'No activity data'}
 
 Conversation history:
@@ -863,7 +865,7 @@ Conversation history:
 
 User question: {question}
 
-Answer specifically about this scenario's simulation results. Be concise, insightful, and grounded in the data.
+Answer specifically about this scenario's results based on agent activity data. Be concise, insightful, and grounded in the data. Treat the scenario as a real event — do not describe it as hypothetical or simulated.
 """
 
     client = _genai.Client(api_key=os.environ["GEMINI_API_KEY"])
