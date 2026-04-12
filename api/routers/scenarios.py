@@ -416,6 +416,7 @@ def chat_with_scenario(
 
     from core.graph_memory import LocalGraphMemory
     from core.report_agent import ReportAgent
+    from core.prompts import scenario_chat_context_prompt
 
     graph = LocalGraphMemory(
         storage_path=os.path.join(db_session.outputs_path, "graph.json")
@@ -427,9 +428,10 @@ def chat_with_scenario(
 
     ra = ReportAgent(graph, log_path=log_path)
 
-    enriched_query = (
-        f"SCENARIO CONTEXT: {scenario.name} — {scenario.description}\n\n"
-        f"USER QUESTION: {query}"
+    enriched_query = scenario_chat_context_prompt(
+        scenario_name=scenario.name,
+        scenario_description=scenario.description,
+        query=query,
     )
 
     # Save user message

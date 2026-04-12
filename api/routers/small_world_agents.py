@@ -146,37 +146,60 @@ def download_template(world_id: str):
     ws = wb.active
     ws.title = "Agents"
 
-    columns = [
+    # Required / scalar columns
+    scalar_columns = [
         "name", "age", "gender", "location", "profession", "job_title", "organization",
         "openness", "conscientiousness", "extraversion", "agreeableness", "neuroticism",
         "risk_tolerance", "decision_style", "core_beliefs",
         "communication_style", "influence_level", "adaptability", "loyalty", "stress_response",
         "salary", "work_environment", "market_exposure",
     ]
+    # Optional list columns – values should be semicolon-separated (e.g. "goal1;goal2")
+    list_columns = [
+        "motivation_drivers", "biases",
+        "current_goals", "current_frustrations", "incentives", "constraints",
+    ]
+    columns = scalar_columns + list_columns
 
     header_fill = PatternFill(start_color="1e3a5f", end_color="1e3a5f", fill_type="solid")
+    optional_fill = PatternFill(start_color="2d5a8e", end_color="2d5a8e", fill_type="solid")
     header_font = Font(bold=True, color="FFFFFF", size=11)
     header_align = Alignment(horizontal="center", vertical="center", wrap_text=True)
 
     for col_idx, col_name in enumerate(columns, start=1):
+        is_optional = col_name in list_columns
         cell = ws.cell(row=1, column=col_idx, value=col_name)
         cell.font = header_font
-        cell.fill = header_fill
+        cell.fill = optional_fill if is_optional else header_fill
         cell.alignment = header_align
-        ws.column_dimensions[cell.column_letter].width = max(len(col_name) + 4, 14)
+        ws.column_dimensions[cell.column_letter].width = max(len(col_name) + 4, 18)
 
     ws.row_dimensions[1].height = 32
 
-    # Example row
+    # Example row – list fields use semicolons as separator
     example = [
         "Jane Smith", 34, "Female", "New York, USA", "Product Management", "Senior PM", "Acme Corp",
         0.7, 0.8, 0.6, 0.7, 0.4,
         0.5, "analytical", "Innovation drives progress",
-        "direct", 0.7, 0.8, 0.6, "Seeks clarity", 
+        "direct", 0.7, 0.8, 0.6, "Seeks clarity",
         "$120,000", "Hybrid remote", "SaaS B2B",
+        # list columns
+        "achievement;impact",   # motivation_drivers
+        "optimism bias",        # biases
+        "Launch v2;Grow team",  # current_goals
+        "slow feedback loops",  # current_frustrations
+        "equity;bonus",         # incentives
+        "budget;headcount",     # constraints
     ]
     for col_idx, val in enumerate(example, start=1):
         ws.cell(row=2, column=col_idx, value=val)
+
+    # Row 3: instructions for list columns
+    note_row = 3
+    for col_idx, col_name in enumerate(columns, start=1):
+        if col_name in list_columns:
+            ws.cell(row=note_row, column=col_idx, value="(separate multiple values with ;)")
+            ws.cell(row=note_row, column=col_idx).font = Font(italic=True, color="888888", size=9)
 
     buf = io.BytesIO()
     wb.save(buf)
@@ -380,6 +403,26 @@ async def bulk_import_agents(
             except Exception:
                 return None
 
+        def _safe_list(col: str) -> list[str] | None:
+            """Parse a semicolon-separated string or JSON array into a list."""
+            v = row.get(col)
+            if v is None or (isinstance(v, float) and str(v) == "nan"):
+                return None
+            raw = str(v).strip()
+            if not raw:
+                return None
+            # Try JSON array first
+            if raw.startswith("["):
+                try:
+                    parsed = json.loads(raw)
+                    if isinstance(parsed, list):
+                        return [str(i).strip() for i in parsed if str(i).strip()]
+                except Exception:
+                    pass
+            # Fall back to semicolon-separated
+            items = [s.strip() for s in raw.split(";") if s.strip()]
+            return items if items else None
+
         personality_traits = schemas.PersonalityTraits(
             openness=_safe_float("openness"),
             conscientiousness=_safe_float("conscientiousness"),
@@ -388,7 +431,9 @@ async def bulk_import_agents(
             neuroticism=_safe_float("neuroticism"),
             risk_tolerance=_safe_float("risk_tolerance"),
             decision_style=_safe("decision_style"),
+            motivation_drivers=_safe_list("motivation_drivers"),
             core_beliefs=_safe("core_beliefs"),
+            biases=_safe_list("biases"),
         )
         behavioral_attributes = schemas.BehavioralAttributes(
             communication_style=_safe("communication_style"),
@@ -397,7 +442,12 @@ async def bulk_import_agents(
             loyalty=_safe_float("loyalty"),
             stress_response=_safe("stress_response"),
         )
-        contextual_state = schemas.ContextualState()
+        contextual_state = schemas.ContextualState(
+            current_goals=_safe_list("current_goals"),
+            current_frustrations=_safe_list("current_frustrations"),
+            incentives=_safe_list("incentives"),
+            constraints=_safe_list("constraints"),
+        )
         external_factors = schemas.ExternalFactors(
             salary=_safe("salary"),
             work_environment=_safe("work_environment"),

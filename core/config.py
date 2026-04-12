@@ -54,3 +54,12 @@ OASIS_EST_OUTPUT_TOKENS_PER_AGENT_ROUND: int = 300
 
 
 EMAIL_SENDER_ADDRESS = "noreply@staticalabs.com"
+
+# ── Pattern-Driven Simulation Evolution ───────────────────────────────────────
+
+# How many simulation rounds must pass before pattern extraction fires.
+# Increase for longer runs; decrease for tighter feedback loops.
+PATTERN_EXTRACTION_INTERVAL: int = 3
+
+# Events with predicted impact below this threshold are discarded.
+PATTERN_EVENT_MIN_IMPACT_SCORE: float = 0.3

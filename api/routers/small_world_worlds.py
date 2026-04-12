@@ -816,6 +816,7 @@ def _generate_chat_response(
     import os
     from google import genai as _genai
     from core.config import MODEL_NAME
+    from core.prompts import small_world_chat_prompt
     from ..billing import UsageSummary
 
     # Load report if available
@@ -850,23 +851,14 @@ def _generate_chat_response(
         for m in reversed(history)
     )
 
-    prompt = f"""You are an expert analyst who studied how real people responded to the scenario "{scenario.name}".
-
-Scenario (treat as ground truth — this event really happened): {scenario.seed_text or 'No seed provided'}
-
-Agent discussion report:
-{report_context or 'No report generated yet'}
-
-Recent agent activity (sample):
-{actions_context or 'No activity data'}
-
-Conversation history:
-{history_text}
-
-User question: {question}
-
-Answer specifically about this scenario's results based on agent activity data. Be concise, insightful, and grounded in the data. Treat the scenario as a real event — do not describe it as hypothetical or simulated.
-"""
+    prompt = small_world_chat_prompt(
+        scenario_name=scenario.name,
+        seed_text=scenario.seed_text or 'No seed provided',
+        report_context=report_context or 'No report generated yet',
+        actions_context=actions_context or 'No activity data',
+        history_text=history_text,
+        question=question,
+    )
 
     client = _genai.Client(api_key=os.environ["GEMINI_API_KEY"])
     response = client.models.generate_content(model=MODEL_NAME, contents=prompt)

@@ -593,15 +593,32 @@ export default function CreateAgentModal({
 							}
 						/>
 						<Field label="Decision Style">
-							<Select
-								value={form.personality_traits.decision_style}
-								onChange={(v) =>
+							<datalist id="decision-style-suggestions">
+								{DECISION_STYLES.map((s) => (
+									<option key={s} value={s} />
+								))}
+							</datalist>
+							<input
+								list="decision-style-suggestions"
+								value={form.personality_traits.decision_style ?? ''}
+								onChange={(e) =>
 									setField(
 										'personality_traits.decision_style',
-										v,
+										e.target.value,
 									)
 								}
-								options={DECISION_STYLES}
+								placeholder="e.g. analytical, emotional, impulsive…"
+								style={{
+									width: '100%',
+									padding: '0.5rem 0.75rem',
+									background: 'var(--surface-container-lowest)',
+									border: '1px solid var(--outline-variant)',
+									borderRadius: '7px',
+									fontSize: '0.83rem',
+									color: 'var(--text-primary)',
+									outline: 'none',
+									boxSizing: 'border-box',
+								}}
 							/>
 						</Field>
 						<Field label="Motivation Drivers">
@@ -663,18 +680,32 @@ export default function CreateAgentModal({
 						onToggle={() => toggleSection('behavioral')}
 					>
 						<Field label="Communication Style">
-							<Select
-								value={
-									form.behavioral_attributes
-										.communication_style
-								}
-								onChange={(v) =>
+							<datalist id="comm-style-suggestions">
+								{COMMUNICATION_STYLES.map((s) => (
+									<option key={s} value={s} />
+								))}
+							</datalist>
+							<input
+								list="comm-style-suggestions"
+								value={form.behavioral_attributes.communication_style ?? ''}
+								onChange={(e) =>
 									setField(
 										'behavioral_attributes.communication_style',
-										v,
+										e.target.value,
 									)
 								}
-								options={COMMUNICATION_STYLES}
+								placeholder="e.g. direct, passive, assertive…"
+								style={{
+									width: '100%',
+									padding: '0.5rem 0.75rem',
+									background: 'var(--surface-container-lowest)',
+									border: '1px solid var(--outline-variant)',
+									borderRadius: '7px',
+									fontSize: '0.83rem',
+									color: 'var(--text-primary)',
+									outline: 'none',
+									boxSizing: 'border-box',
+								}}
 							/>
 						</Field>
 						<Slider

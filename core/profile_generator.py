@@ -8,6 +8,13 @@ from google.genai import types
 from core.graph_memory import LocalGraphMemory
 from core.config import MODEL_NAME
 from core.usage import UsageSummary
+from core.prompts import (
+    agents_from_objective_prompt,
+    extract_topics_from_graph_prompt,
+    synthetic_agents_prompt,
+    infer_role_prompt,
+    generate_one_agent_prompt,
+)
 
 # Entity types that should become social-media simulation agents
 _AGENT_TYPES = {
@@ -137,55 +144,12 @@ class ProfileGenerator:
         else:
             role_note = "Generate the full set of participants for this discussion."
 
-        prompt = f"""You are creating profiles for a diverse group of real social media users who will be discussing the following real-world topic or event.
-
-TOPIC / EVENT:
-"{objective if objective else '(no specific topic — generate a diverse, relevant population)'}"
-
-DOCUMENT CONTEXT (knowledge graph extracted from uploaded materials):
-{doc_context}
-
-TASK:
-{role_note}
-
-POPULATION DESIGN RULES:
-1. The majority (60-70%) must be regular people directly affected by the topic:
-   - Heavy users / power users
-   - Casual users (e.g. once a month)
-   - Long-term loyal users
-   - Budget-conscious users / price-sensitive subscribers
-   - Family plan users / account sharers
-   - Students and young adults
-   - Elderly or less tech-savvy users
-   Include real demographic variety: ages 18-70, multiple countries, different income levels.
-
-2. The minority (30-40%) should be relevant insiders and industry observers:
-   - Company executives / product leads / engineers
-   - Investors / financial analysts
-   - Industry journalists / media commentators
-   - Competing service executives
-   - Regulators / policy researchers (if relevant)
-   Each should have a clear professional stake in the topic.
-
-3. Every agent's PERSONA must reflect their genuine attitude toward this topic or event:
-   - Some should be supportive, some opposed, some uncertain
-   - Their persona should foreshadow their likely opinion
-   - Personas must be authentic, specific, and grounded in their real-world role
-   - IMPORTANT: personas must NOT reference being in a simulation or role-play — they are real people
-
-Generate exactly {count} agent profiles.
-Return ONLY a JSON array of {count} objects, each with these exact keys:
-  "realname"          – unique full name (string)
-  "username"          – unique social-media handle: lowercase letters, digits, underscores only
-  "bio"               – 1-2 sentence social-media bio (string)
-  "persona"           – 2-3 sentence character description including their stance on the topic (string)
-  "age"               – integer between 18-75
-  "gender"            – "male" | "female" | "non-binary"
-  "mbti"              – Myers-Briggs type code, e.g. "INTJ"
-  "country"           – country of residence
-  "profession"        – profession
-  "interested_topics" – list of 2-4 interest topics directly related to the topic
-"""
+        prompt = agents_from_objective_prompt(
+            objective=objective,
+            doc_context=doc_context,
+            count=count,
+            role_note=role_note,
+        )
 
         try:
             response = self.client.models.generate_content(
@@ -254,18 +218,7 @@ Return ONLY a JSON array of {count} objects, each with these exact keys:
         if relation_lines:
             context += "\nRelationships: " + "; ".join(relation_lines)
 
-        prompt = (
-            "Based on this knowledge graph, generate 12 meaningful topic phrases that describe "
-            "the key themes and subject areas that people might be interested in and discuss on social media.\n\n"
-            f"Context:\n{context}\n\n"
-            "Requirements:\n"
-            "- Each topic must be a meaningful phrase of 2-5 words, NOT a single generic word or entity type\n"
-            "- Topics should represent specific interests that would motivate someone to engage with this content\n"
-            "- GOOD examples: 'enterprise cloud migration', 'AI-driven business transformation', "
-            "'strategic consulting partnerships'\n"
-            "- BAD examples: 'organization', 'ibm', 'concept' (too vague or just raw tokens)\n"
-            "- Return ONLY a JSON array of 12 strings"
-        )
+        prompt = extract_topics_from_graph_prompt(context)
 
         try:
             response = self.client.models.generate_content(
@@ -328,24 +281,11 @@ Return ONLY a JSON array of {count} objects, each with these exact keys:
         for i in range(0, count, batch_size):
             batch_count = min(batch_size, count - i)
             
-            prompt = f"""Generate {batch_count} diverse social media user profiles for people discussing a real-world topic.
-
-Base these profiles on the following context topics: {', '.join(topics[:10])}{objective_context}
-
-Return ONLY a JSON array of {batch_count} objects, each with these exact keys:
-  "realname"         – unique full name (string)
-  "username"         – unique social-media handle: lowercase letters, digits, underscores only
-  "bio"              – 1-2 sentence social-media bio (string)
-  "persona"          – 2-3 sentence character/personality description (string)
-  "age"              – integer between 18-75
-  "gender"           – "male" | "female" | "non-binary"
-  "mbti"             – Myers-Briggs type code, e.g. "INTJ"
-  "country"          – country of origin
-  "profession"       – professional field relevant to the topics
-  "interested_topics" – list of 2-4 interest topics from the context
-
-Make each profile unique and diverse. Vary the professions, ages, countries, and perspectives.
-"""
+            prompt = synthetic_agents_prompt(
+                batch_count=batch_count,
+                topics=', '.join(topics[:10]),
+                objective_context=objective_context,
+            )
             
             try:
                 response = self.client.models.generate_content(
@@ -433,17 +373,7 @@ Make each profile unique and diverse. Vary the professions, ages, countries, and
         context = ". ".join(context_parts[:10])  # Limit context to avoid token limits
         
         # Use LLM to infer the professional role
-        prompt = f"""Based on the following information about {name}, infer their most likely professional role or occupation.
-
-Context:
-{context}
-
-Respond with ONLY ONE of these roles (choose the best fit):
-politician, diplomat, ambassador, journalist, reporter, military_officer, spokesperson, analyst, activist, researcher, scientist, engineer, executive, ceo, official, advisor, expert, doctor, teacher, author, artist, athlete, lawyer, judge
-
-If none fit well, respond with: person
-
-Role:"""
+        prompt = infer_role_prompt(name=name, context=context)
         
         try:
             response = self.client.models.generate_content(
@@ -498,20 +428,11 @@ Role:"""
             "The bio and persona must reflect this person's likely stance or involvement with this real-world topic."
             if objective else ""
         )
-        prompt = f"""Generate an OASIS social-media user profile for {name}, a {ent_type}.{objective_context}
-
-Return ONLY a JSON object with exactly these keys:
-  "realname"         – full real name (string)
-  "username"         – social-media handle: lowercase letters, digits, underscores only
-  "bio"              – 1-2 sentence social-media bio (string)
-  "persona"          – 2-3 sentence character/personality description (string)
-  "age"              – integer
-  "gender"           – "male" | "female" | "non-binary"
-  "mbti"             – Myers-Briggs type code, e.g. "INTJ"
-  "country"          – country of origin (string)
-  "profession"       – professional field (string)
-  "interested_topics" – list of 2-3 interest topic strings
-"""
+        prompt = generate_one_agent_prompt(
+            name=name,
+            ent_type=ent_type,
+            objective_context=objective_context,
+        )
         try:
             response = self.client.models.generate_content(
                 model=MODEL_NAME,

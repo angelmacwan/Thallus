@@ -20,6 +20,7 @@ from google.genai import types
 
 from core.config import MODEL_NAME
 from core.usage import UsageSummary
+from core.prompts import extract_search_topics_prompt, search_and_summarize_prompt
 
 
 def _extract_topics(seed_text: str, objective: str) -> tuple[list[str], UsageSummary]:
@@ -32,21 +33,7 @@ def _extract_topics(seed_text: str, objective: str) -> tuple[list[str], UsageSum
     if seed_text:
         combined += f"Seed Document Excerpt:\n{seed_text[:4000]}"
 
-    prompt = (
-        "You are extracting search topics from a simulation brief.\n\n"
-        f"{combined}\n\n"
-        "List 7 to 12 specific, concrete search queries (one per line, no bullets or numbering) "
-        "that would help a researcher build a comprehensive, well-rounded picture of the topic.\n"
-        "Cover a diverse range of angles:\n"
-        "- Recent breaking news and investigative journalism\n"
-        "- Public opinion, community reactions, and grassroots discussion\n"
-        "- Government reports, official statements, and policy documents\n"
-        "- Economic data, statistics, and market analysis\n"
-        "- Expert commentary, academic perspectives, and think-tank analyses\n"
-        "- Controversy, criticism, and opposing viewpoints\n"
-        "Each query should be suitable for a Google web search. "
-        "Return ONLY the search queries, nothing else."
-    )
+    prompt = extract_search_topics_prompt(combined)
 
     response = client.models.generate_content(
         model=MODEL_NAME,
@@ -78,32 +65,7 @@ def _search_and_summarize(topic: str) -> tuple[str, UsageSummary]:
 
     google_search_tool = types.Tool(google_search=types.GoogleSearch())
 
-    prompt = (
-        f"Search the web extensively for information about: **{topic}**\n\n"
-        "Write a comprehensive, long-form Markdown report (1200-2000 words) that covers ALL of the following:\n\n"
-        "## Required sections:\n"
-        "### 1. Breaking News & Recent Developments\n"
-        "Pull from major news outlets (Reuters, AP, BBC, NYT, WSJ, Guardian, local outlets) — include dates and specifics.\n\n"
-        "### 2. Public Sentiment & Community Discussion\n"
-        "Search Reddit, public forums, and community threads for real reactions. Quote or paraphrase actual discussions. "
-        "Include subreddit names or forum sources where found. Look for upvoted/popular threads.\n\n"
-        "### 3. Social Media & Viral Reactions\n"
-        "Search Twitter/X, Threads, and Bluesky for notable posts, trending hashtags, and viral moments related to this topic. "
-        "Include specific quotes or post summaries where available.\n\n"
-        "### 4. Government & Official Sources\n"
-        "Find government publications, official reports, policy documents, regulatory statements, "
-        "government blog posts, and statements from public officials or agencies.\n\n"
-        "### 5. Expert & Academic Perspectives\n"
-        "Include think-tank analyses, academic papers, expert interviews, and professional commentary.\n\n"
-        "### 6. Key Facts, Statistics & Data\n"
-        "Include hard numbers, economic indicators, survey results, polling data, and verifiable metrics.\n\n"
-        "### 7. Criticism, Controversy & Opposing Views\n"
-        "Include dissenting opinions, controversies, or critical perspectives found in the sources.\n\n"
-        "Aim for MAXIMUM coverage — the more perspectives and sources, the better. "
-        "Every section should have multiple data points.\n\n"
-        "Include ALL sources found as a References section at the end with URLs. "
-        "Format everything as clean Markdown."
-    )
+    prompt = search_and_summarize_prompt(topic)
 
     response = client.models.generate_content(
         model=MODEL_NAME,

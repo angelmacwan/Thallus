@@ -13,6 +13,7 @@ import {
 	Send,
 	RotateCcw,
 	Loader2,
+	Download,
 } from 'lucide-react';
 import api from '../api';
 import { useSidebar } from '../SidebarContext';
@@ -62,7 +63,6 @@ export default function SmallWorld() {
 	const [agentsLoading, setAgentsLoading] = useState(false);
 	const [relationships, setRelationships] = useState([]);
 	const [relLoading, setRelLoading] = useState(false);
-	const [agentGraphMode, setAgentGraphMode] = useState(false);
 
 	const [createAgentOpen, setCreateAgentOpen] = useState(false);
 	const [editAgent, setEditAgent] = useState(null);
@@ -191,15 +191,20 @@ export default function SmallWorld() {
 				};
 				r.data.forEach(visit);
 
+				const TERMINAL_STATUSES = new Set([
+					'completed',
+					'failed',
+					'error',
+				]);
 				setLiveStatuses((prev) => {
 					const next = new Map(prev);
-					let anyRunning = false;
+					let anyActive = false;
 					for (const s of flat) {
 						next.set(s.scenario_id, s.status);
-						if (s.status === 'running') anyRunning = true;
+						if (!TERMINAL_STATUSES.has(s.status)) anyActive = true;
 					}
-					// Stop polling once nothing is running
-					if (!anyRunning) {
+					// Stop polling only once all scenarios are in a terminal state
+					if (!anyActive) {
 						clearInterval(liveStatusPollRef.current);
 						liveStatusPollRef.current = null;
 					}
@@ -227,6 +232,11 @@ export default function SmallWorld() {
 					setScenarioLiveStatus(
 						last.type === 'done' ? 'completed' : 'failed',
 					);
+					// Stop polling — scenario has reached a terminal state
+					setScenarioPollRef((prev) => {
+						clearInterval(prev);
+						return null;
+					});
 				}
 			}
 		} catch {}
@@ -252,11 +262,14 @@ export default function SmallWorld() {
 		fetchScenarioEvents(wId, sId).finally(() =>
 			setScenarioEventsLoading(false),
 		);
-		// Poll while running
+		// Only poll if the scenario is still in a non-terminal state
 		if (scenarioPollRef) clearInterval(scenarioPollRef);
-		const pid = setInterval(() => fetchScenarioEvents(wId, sId), 2500);
-		setScenarioPollRef(pid);
-		return () => clearInterval(pid);
+		const terminalStatuses = ['completed', 'failed', 'error'];
+		if (!terminalStatuses.includes(selectedScenario.status)) {
+			const pid = setInterval(() => fetchScenarioEvents(wId, sId), 2500);
+			setScenarioPollRef(pid);
+			return () => clearInterval(pid);
+		}
 	}, [selectedScenario?.scenario_id]);
 
 	useEffect(() => {
@@ -358,6 +371,143 @@ export default function SmallWorld() {
 		setScenarioChatLoading(false);
 	};
 
+	const downloadReportMD = () => {
+		if (!scenarioReport || !selectedScenario) return;
+
+		// Mirror SmallWorldReport's formatReportItem logic
+		const fmtVal = (v) => {
+			if (v === null || v === undefined || v === '') return '';
+			if (typeof v === 'object') return JSON.stringify(v);
+			return String(v);
+		};
+		const fmtItem = (item, primaryKeys, secondaryKeys) => {
+			if (typeof item === 'string' || typeof item === 'number')
+				return String(item);
+			if (!item || typeof item !== 'object') return null;
+			const primary = primaryKeys
+				.map((k) => fmtVal(item[k]))
+				.find(Boolean);
+			const secondary = secondaryKeys
+				.map((k) => fmtVal(item[k]))
+				.find(Boolean);
+			if (primary && secondary) return `**${primary}**: ${secondary}`;
+			return primary || secondary || JSON.stringify(item) || null;
+		};
+
+		let md = `# Scenario Report: ${selectedScenario.name}\n\n`;
+		md += `## Outcome\n${scenarioReport.outcome_summary || 'N/A'}\n\n`;
+		if (
+			scenarioReport.confidence_score !== undefined &&
+			scenarioReport.confidence_score !== null
+		) {
+			md += `*Confidence: ${Math.round(scenarioReport.confidence_score * 100)}%*\n\n`;
+		}
+
+		if (scenarioReport.key_drivers?.length) {
+			md += `## Key Drivers\n`;
+			scenarioReport.key_drivers.forEach((d) => {
+				const factor = d.factor || '';
+				const explanation = d.explanation || '';
+				if (factor && explanation) {
+					md += `- **${factor}**: ${explanation}\n`;
+				} else {
+					md += `- ${factor || explanation}\n`;
+				}
+			});
+			md += `\n`;
+		}
+
+		if (scenarioReport.agent_behaviors?.length) {
+			md += `## Agent Behavior\n`;
+			md += `| Agent | Behavior | Sentiment | Influence |\n`;
+			md += `|---|---|---|---|\n`;
+			scenarioReport.agent_behaviors.forEach((ab) => {
+				const inf =
+					ab.influence_score !== undefined
+						? `${Math.round(ab.influence_score * 100)}%`
+						: '-';
+				const behavior =
+					ab.primary_behavior || ab.behavior_summary || '-';
+				const sentiment =
+					ab.sentiment_shift || ab.role_in_outcome || '-';
+				md += `| ${ab.agent_name || '-'} | ${behavior} | ${sentiment} | ${inf} |\n`;
+			});
+			md += `\n`;
+		}
+
+		if (scenarioReport.bottlenecks_risks?.length) {
+			const lines = scenarioReport.bottlenecks_risks
+				.map((b) =>
+					fmtItem(
+						b,
+						['risk', 'title', 'condition'],
+						['impact_description', 'description'],
+					),
+				)
+				.filter(Boolean);
+			if (lines.length) {
+				md += `## Bottlenecks & Risks\n`;
+				lines.forEach((line) => {
+					md += `- ${line}\n`;
+				});
+				md += `\n`;
+			}
+		}
+
+		if (scenarioReport.unexpected_outcomes?.length) {
+			const lines = scenarioReport.unexpected_outcomes
+				.map((u) =>
+					fmtItem(
+						u,
+						['outcome', 'condition', 'title'],
+						['impact_description', 'description'],
+					),
+				)
+				.filter(Boolean);
+			if (lines.length) {
+				md += `## Unexpected Outcomes\n`;
+				lines.forEach((line) => {
+					md += `- ${line}\n`;
+				});
+				md += `\n`;
+			}
+		}
+
+		if (scenarioReport.counterfactual) {
+			const c = scenarioReport.counterfactual;
+			const title = c.condition || '';
+			const desc = c.impact_description || '';
+			if (title || desc) {
+				md += `## Counterfactual\n`;
+				md += `> ${title ? `**${title}**: ` : ''}${desc}\n\n`;
+			}
+		}
+
+		if (scenarioReport.recommendations?.length) {
+			md += `## Recommendations\n`;
+			scenarioReport.recommendations.forEach((r, i) => {
+				const action = r.action || '';
+				const desc = r.expected_impact || '';
+				if (action && desc) {
+					md += `${i + 1}. **${action}**: ${desc}\n`;
+				} else {
+					md += `${i + 1}. ${action || desc}\n`;
+				}
+			});
+			md += `\n`;
+		}
+
+		const blob = new Blob([md], { type: 'text/markdown' });
+		const url = URL.createObjectURL(blob);
+		const a = document.createElement('a');
+		a.href = url;
+		a.download = `report_${selectedScenario.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.md`;
+		document.body.appendChild(a);
+		a.click();
+		document.body.removeChild(a);
+		URL.revokeObjectURL(url);
+	};
+
 	// ── Register sw nav in sidebar ────────────────────────────
 	useEffect(() => {
 		if (selectedWorld && worldDetailTab === 'scenarios') {
@@ -387,9 +537,16 @@ export default function SmallWorld() {
 
 	// ── When selected world changes, reload data ──────────────
 	useEffect(() => {
+		// Always clear scenario-level state when switching worlds
+		setSelectedScenario(null);
+		setScenarioReport(null);
+		setScenarioEvents([]);
+		setScenarioChatMessages([]);
+		setScenarioLiveStatus(null);
+		if (scenarioPollRef) clearInterval(scenarioPollRef);
+
 		if (selectedWorld) {
 			setWorldDetailTab('scenarios');
-			setAgentGraphMode(false);
 			setSuggestMsg(null);
 			setAgents([]);
 			setRelationships([]);
@@ -409,12 +566,12 @@ export default function SmallWorld() {
 	}, [selectedWorld?.world_id]);
 
 	useEffect(() => {
-		if (agentGraphMode && selectedWorld) {
+		if (worldDetailTab === 'relations' && selectedWorld) {
 			loadAgentGraph(selectedWorld.world_id);
-		} else if (!agentGraphMode && selectedWorld) {
+		} else if (worldDetailTab === 'agents' && selectedWorld) {
 			loadAgents(selectedWorld.world_id);
 		}
-	}, [agentGraphMode]);
+	}, [worldDetailTab, selectedWorld?.world_id]);
 
 	// ── Agent actions ─────────────────────────────────────────
 	const saveAgent = async (payload) => {
@@ -427,7 +584,7 @@ export default function SmallWorld() {
 		} else {
 			await api.post(`/small-world/worlds/${worldId}/agents/`, payload);
 		}
-		if (agentGraphMode) {
+		if (worldDetailTab === 'relations') {
 			loadAgentGraph(worldId);
 		} else {
 			loadAgents(worldId);
@@ -439,7 +596,7 @@ export default function SmallWorld() {
 			return;
 		const worldId = selectedWorld.world_id;
 		await api.delete(`/small-world/worlds/${worldId}/agents/${id}`);
-		if (agentGraphMode) {
+		if (worldDetailTab === 'relations') {
 			loadAgentGraph(worldId);
 		} else {
 			loadAgents(worldId);
@@ -456,7 +613,7 @@ export default function SmallWorld() {
 	const handleBulkImported = () => {
 		setBulkOpen(false);
 		const worldId = selectedWorld.world_id;
-		if (agentGraphMode) {
+		if (worldDetailTab === 'relations') {
 			loadAgentGraph(worldId);
 		} else {
 			loadAgents(worldId);
@@ -873,6 +1030,11 @@ export default function SmallWorld() {
 											label: 'Agents',
 											icon: Users,
 										},
+										{
+											key: 'relations',
+											label: 'Agent Relations',
+											icon: Globe,
+										},
 									].map((item) => {
 										const TabIcon = item.icon;
 										return (
@@ -967,35 +1129,6 @@ export default function SmallWorld() {
 												() => setBulkOpen(true),
 											)}
 										</div>
-										<button
-											onClick={() =>
-												setAgentGraphMode((m) => !m)
-											}
-											style={{
-												marginLeft: 'auto',
-												display: 'flex',
-												alignItems: 'center',
-												gap: '0.35rem',
-												fontSize: '0.82rem',
-												padding: '0.45rem 0.9rem',
-												border: '1px solid var(--outline-variant)',
-												borderRadius: '8px',
-												cursor: 'pointer',
-												fontWeight: 600,
-												background: agentGraphMode
-													? 'var(--secondary-container)'
-													: 'var(--surface-container-high)',
-												color: agentGraphMode
-													? 'var(--on-secondary-container)'
-													: 'var(--text-primary)',
-												transition: 'background 0.15s',
-											}}
-										>
-											<GitBranch size={13} />
-											{agentGraphMode
-												? 'List View'
-												: 'Relationship Graph'}
-										</button>
 									</div>
 
 									{/* Agent content */}
@@ -1003,9 +1136,7 @@ export default function SmallWorld() {
 										style={{
 											flex: 1,
 											minHeight: 0,
-											overflowY: agentGraphMode
-												? 'hidden'
-												: 'auto',
+											overflowY: 'auto',
 										}}
 									>
 										{agentsLoading ? (
@@ -1020,36 +1151,6 @@ export default function SmallWorld() {
 												<Users
 													size={22}
 													style={{ opacity: 0.4 }}
-												/>
-											</div>
-										) : agentGraphMode ? (
-											<div
-												style={{
-													height: '100%',
-													minHeight: 0,
-													display: 'flex',
-													flexDirection: 'column',
-												}}
-											>
-												<AgentRelationshipGraph
-													agents={agents}
-													relationships={
-														relationships
-													}
-													loading={relLoading}
-													onCreateRelationship={
-														createRelationship
-													}
-													onDeleteRelationship={
-														deleteRelationship
-													}
-													onUpdateRelationship={
-														updateRelationship
-													}
-													onAutoSuggest={
-														autoSuggestRelationships
-													}
-													suggestMsg={suggestMsg}
 												/>
 											</div>
 										) : agents.length === 0 ? (
@@ -1133,6 +1234,224 @@ export default function SmallWorld() {
 												))}
 											</div>
 										)}
+									</div>
+								</div>
+							)}
+
+							{/* ── AGENT RELATIONS TAB ── */}
+							{worldDetailTab === 'relations' && (
+								<div
+									style={{
+										display: 'flex',
+										flexDirection: 'column',
+										flex: 1,
+										minHeight: 0,
+										overflow: 'hidden',
+									}}
+								>
+									<div
+										style={{
+											display: 'flex',
+											gap: '1.5rem',
+											flex: 1,
+											minHeight: 0,
+											overflow: 'hidden',
+										}}
+									>
+										{/* Left panel: List view */}
+										<div
+											style={{
+												width: '30%',
+												flexShrink: 0,
+												display: 'flex',
+												flexDirection: 'column',
+												background:
+													'var(--surface-container-lowest)',
+												border: '1px solid var(--outline-variant)',
+												borderRadius: '12px',
+												overflow: 'hidden',
+											}}
+										>
+											<div
+												style={{
+													padding: '0.85rem 1rem',
+													borderBottom:
+														'1px solid var(--outline-variant)',
+													fontWeight: 600,
+													fontSize: '0.9rem',
+												}}
+											>
+												Relationships
+											</div>
+											<div
+												style={{
+													flex: 1,
+													overflowY: 'auto',
+													padding: '1rem',
+													display: 'flex',
+													flexDirection: 'column',
+													gap: '0.65rem',
+												}}
+											>
+												{relLoading ? (
+													<div
+														style={{
+															textAlign: 'center',
+															color: 'var(--text-secondary)',
+															padding: '2rem 0',
+														}}
+													>
+														<Loader2
+															size={20}
+															style={{
+																animation:
+																	'spin 1s linear infinite',
+																margin: '0 auto 0.5rem',
+															}}
+														/>
+														Loading...
+													</div>
+												) : relationships.length ===
+												  0 ? (
+													<div
+														style={{
+															textAlign: 'center',
+															color: 'var(--text-secondary)',
+															padding: '2rem 0',
+															fontSize: '0.85rem',
+														}}
+													>
+														No relationships found.
+													</div>
+												) : (
+													relationships.map((r) => {
+														const src = agents.find(
+															(a) =>
+																a.agent_id ===
+																r.source_agent_id,
+														);
+														const tgt = agents.find(
+															(a) =>
+																a.agent_id ===
+																r.target_agent_id,
+														);
+														return (
+															<div
+																key={r.rel_id}
+																style={{
+																	background:
+																		'var(--surface-container-low)',
+																	padding:
+																		'0.75rem',
+																	borderRadius:
+																		'8px',
+																	border: '1px solid var(--outline-variant)',
+																}}
+															>
+																<div
+																	style={{
+																		fontWeight: 600,
+																		fontSize:
+																			'0.85rem',
+																		marginBottom:
+																			'0.35rem',
+																		color: 'var(--on-surface)',
+																	}}
+																>
+																	{src?.name ||
+																		'Unknown'}{' '}
+																	<span
+																		style={{
+																			color: 'var(--text-secondary)',
+																		}}
+																	>
+																		→
+																	</span>{' '}
+																	{tgt?.name ||
+																		'Unknown'}
+																</div>
+																<div
+																	style={{
+																		display:
+																			'flex',
+																		alignItems:
+																			'center',
+																		gap: '0.5rem',
+																		fontSize:
+																			'0.75rem',
+																	}}
+																>
+																	<span
+																		style={{
+																			background:
+																				'var(--surface-container-high)',
+																			padding:
+																				'0.1rem 0.4rem',
+																			borderRadius:
+																				'4px',
+																			color: 'var(--text-secondary)',
+																			textTransform:
+																				'capitalize',
+																			fontWeight: 500,
+																		}}
+																	>
+																		{r.type}
+																	</span>
+																	<span
+																		style={{
+																			color:
+																				r.sentiment ===
+																				'positive'
+																					? '#16a34a'
+																					: r.sentiment ===
+																						  'negative'
+																						? '#dc2626'
+																						: '#6366f1',
+																			textTransform:
+																				'capitalize',
+																			fontWeight: 600,
+																		}}
+																	>
+																		{
+																			r.sentiment
+																		}
+																	</span>
+																</div>
+															</div>
+														);
+													})
+												)}
+											</div>
+										</div>
+
+										{/* Right panel: Graph view */}
+										<div
+											style={{
+												flex: 1,
+												display: 'flex',
+												flexDirection: 'column',
+												minHeight: 0,
+											}}
+										>
+											<AgentRelationshipGraph
+												agents={agents}
+												relationships={relationships}
+												loading={relLoading}
+												onCreateRelationship={
+													createRelationship
+												}
+												onDeleteRelationship={
+													deleteRelationship
+												}
+												onUpdateRelationship={
+													updateRelationship
+												}
+												onAutoSuggest={
+													autoSuggestRelationships
+												}
+												suggestMsg={suggestMsg}
+											/>
+										</div>
 									</div>
 								</div>
 							)}
@@ -1255,24 +1574,37 @@ export default function SmallWorld() {
 															</div>
 														</div>
 														<button
-															onClick={() =>
-																setSelectedScenario(
-																	null,
-																)
+															onClick={
+																downloadReportMD
+															}
+															className="btn"
+															disabled={
+																!scenarioReport
 															}
 															style={{
-																background:
-																	'none',
-																border: 'none',
-																cursor: 'pointer',
-																color: 'var(--text-secondary)',
+																padding:
+																	'0.35rem 0.6rem',
+																display: 'flex',
+																alignItems:
+																	'center',
+																gap: '0.4rem',
 																fontSize:
 																	'0.75rem',
-																padding:
-																	'0.25rem',
+																background:
+																	'var(--surface-container-high)',
+																color: 'var(--text-primary)',
+																border: '1px solid var(--outline-variant)',
+																opacity:
+																	scenarioReport
+																		? 1
+																		: 0.4,
 															}}
+															title="Download as Markdown"
 														>
-															✕
+															<Download
+																size={14}
+															/>
+															Download MD
 														</button>
 													</div>
 												</div>

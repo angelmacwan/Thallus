@@ -19,138 +19,7 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { Wand2, LayoutGrid } from 'lucide-react';
-
-/**
- * Fruchterman-Reingold force-directed layout.
- * Returns a map of { [nodeId]: { x, y } }.
- */
-function forceLayout(nodeIds, edgePairs, iterations = 400) {
-	const n = nodeIds.length;
-	if (n === 0) return {};
-
-	const NODE_W = 150; // approximate rendered node width
-	const NODE_H = 60; // approximate rendered node height
-	const PAD_X = NODE_W + 30;
-	const PAD_Y = NODE_H + 30;
-
-	// Scale canvas to node count
-	const W = Math.max(700, n * 90);
-	const H = Math.max(500, n * 70);
-
-	// k = ideal spring length — must be at least as large as node footprint
-	const k = Math.max(Math.sqrt((W * H) / n) * 0.9, PAD_X * 1.5);
-
-	// Init on a circle
-	const pos = {};
-	nodeIds.forEach((id, i) => {
-		const angle = (2 * Math.PI * i) / n;
-		const r = Math.min(W, H) * 0.38;
-		pos[id] = {
-			x: W / 2 + r * Math.cos(angle),
-			y: H / 2 + r * Math.sin(angle),
-		};
-	});
-
-	const disp = {};
-
-	for (let iter = 0; iter < iterations; iter++) {
-		const temp = k * 2 * Math.pow(1 - iter / iterations, 1.5);
-
-		nodeIds.forEach((id) => {
-			disp[id] = { x: 0, y: 0 };
-		});
-
-		// Repulsion between every pair
-		for (let i = 0; i < n; i++) {
-			for (let j = i + 1; j < n; j++) {
-				const u = nodeIds[i],
-					v = nodeIds[j];
-				let dx = pos[u].x - pos[v].x;
-				let dy = pos[u].y - pos[v].y;
-				const rawDist = Math.sqrt(dx * dx + dy * dy);
-
-				// If nodes are at (nearly) the same point, nudge them apart randomly
-				if (rawDist < 1) {
-					dx = (Math.random() - 0.5) * 2;
-					dy = (Math.random() - 0.5) * 2;
-				}
-
-				const dist = Math.max(rawDist, 1);
-				// Apply a much larger force when inside the exclusion zone
-				const inZone = rawDist < PAD_X;
-				const repulse = inZone
-					? (k * k * 4) / dist // 4× stronger inside the zone
-					: (k * k) / dist;
-				const fx = (dx / dist) * repulse;
-				const fy = (dy / dist) * repulse;
-				disp[u].x += fx;
-				disp[u].y += fy;
-				disp[v].x -= fx;
-				disp[v].y -= fy;
-			}
-		}
-
-		// Attraction along edges — only when farther than k
-		edgePairs.forEach(([u, v]) => {
-			if (!pos[u] || !pos[v]) return;
-			const dx = pos[u].x - pos[v].x;
-			const dy = pos[u].y - pos[v].y;
-			const dist = Math.max(Math.sqrt(dx * dx + dy * dy), 0.1);
-			if (dist <= k) return;
-			const force = ((dist - k) * (dist - k)) / (k * 2);
-			const fx = (dx / dist) * force;
-			const fy = (dy / dist) * force;
-			disp[u].x -= fx;
-			disp[u].y -= fy;
-			disp[v].x += fx;
-			disp[v].y += fy;
-		});
-
-		// Apply with temperature clamping
-		nodeIds.forEach((id) => {
-			const d = disp[id];
-			const dlen = Math.max(Math.sqrt(d.x * d.x + d.y * d.y), 0.1);
-			const clamp = Math.min(dlen, temp);
-			pos[id].x += (d.x / dlen) * clamp;
-			pos[id].y += (d.y / dlen) * clamp;
-			pos[id].x = Math.max(100, Math.min(W - 100, pos[id].x));
-			pos[id].y = Math.max(80, Math.min(H - 80, pos[id].y));
-		});
-	}
-
-	// ── Post-simulation overlap resolution ──────────────────────────────────
-	// Run multiple passes pushing any still-overlapping nodes apart directly.
-	for (let pass = 0; pass < 50; pass++) {
-		let moved = false;
-		for (let i = 0; i < n; i++) {
-			for (let j = i + 1; j < n; j++) {
-				const u = nodeIds[i],
-					v = nodeIds[j];
-				let dx = pos[u].x - pos[v].x;
-				let dy = pos[u].y - pos[v].y;
-				// Axis-aligned overlap check (fits rectangular node cards better)
-				const overlapX = PAD_X - Math.abs(dx);
-				const overlapY = PAD_Y - Math.abs(dy);
-				if (overlapX > 0 && overlapY > 0) {
-					// Push along the axis of least overlap
-					if (overlapX < overlapY) {
-						const push = (overlapX / 2 + 1) * Math.sign(dx || 1);
-						pos[u].x += push;
-						pos[v].x -= push;
-					} else {
-						const push = (overlapY / 2 + 1) * Math.sign(dy || 1);
-						pos[u].y += push;
-						pos[v].y -= push;
-					}
-					moved = true;
-				}
-			}
-		}
-		if (!moved) break;
-	}
-
-	return pos;
-}
+import { dagreLayout } from '../../utils/layoutUtils';
 
 const SENTIMENT_COLORS = {
 	positive: '#16a34a',
@@ -220,7 +89,7 @@ const nodeTypes = { agentNode: AgentNode };
 
 /**
  * Lives inside <ReactFlow> so it has access to useReactFlow().
- * Handles both auto-fit and force-layout triggering.
+ * Handles both auto-fit and Dagre-based layout triggering.
  */
 function GraphController({
 	edgeCount,
@@ -242,21 +111,30 @@ function GraphController({
 		return () => clearTimeout(t);
 	}, [edgeCount, fitView, layoutTrigger]);
 
-	// Run force layout when trigger increments
+	// Run Dagre layout when trigger increments
 	useEffect(() => {
 		if (layoutTrigger === 0) return;
-		const nodeIds = agents.map((a) => a.agent_id);
-		const edgePairs = relationships.map((r) => [
-			r.source_agent_id,
-			r.target_agent_id,
-		]);
-		const positions = forceLayout(nodeIds, edgePairs);
+
+		// Prepare nodes and edges for Dagre
+		const nodes = agents.map((a) => ({ id: a.agent_id }));
+		const edges = relationships.map((r) => ({
+			source: r.source_agent_id,
+			target: r.target_agent_id,
+		}));
+
+		// Get Dagre positions
+		const positions = dagreLayout(nodes, edges, {
+			direction: 'LR',
+			rankSep: 130,
+			nodeSep: 90,
+		});
+
 		setNodes((prev) =>
 			prev.map((n) =>
 				positions[n.id] ? { ...n, position: positions[n.id] } : n,
 			),
 		);
-		// Persist the new positions from force layout
+		// Persist the new positions
 		savePositions(positions);
 		const t = setTimeout(
 			() => fitView({ padding: 0.18, duration: 450 }),
@@ -373,12 +251,12 @@ export default function AgentRelationshipGraph({
 				id: r.rel_id,
 				source: r.source_agent_id,
 				target: r.target_agent_id,
-				type: 'smoothstep',
+				type: 'bezier',
 				label: r.type,
 				animated: true,
 				style: {
 					stroke: SENTIMENT_COLORS[r.sentiment] || '#888',
-					strokeWidth: Math.max(1, (r.strength || 0.5) * 3),
+					strokeWidth: Math.max(1.5, (r.strength || 0.5) * 3),
 				},
 				labelStyle: {
 					color: 'var(--text-primary)',
@@ -393,7 +271,9 @@ export default function AgentRelationshipGraph({
 				labelBgPadding: [8, 4],
 				labelBgBorderRadius: 6,
 				markerEnd: {
-					type: MarkerType.ArrowClosed,
+					type: MarkerType.Arrow, // open arrowhead — looks cleaner on bezier
+					width: 20,
+					height: 20,
 					color: SENTIMENT_COLORS[r.sentiment] || '#888',
 				},
 				data: { relData: r },

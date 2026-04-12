@@ -17,9 +17,11 @@ import tempfile
 from dotenv import load_dotenv
 load_dotenv()
 
-from core.config import CAMEL_MODEL_TYPE
+from core.config import CAMEL_MODEL_TYPE, PATTERN_EXTRACTION_INTERVAL, PATTERN_EVENT_MIN_IMPACT_SCORE
 from core.graph_memory import LocalGraphMemory
 from core.usage import UsageSummary
+from core.prompts import seed_posts_prompt
+from core.pattern_engine import PatternEngine
 
 
 class SimulationRunner:
@@ -149,6 +151,22 @@ class SimulationRunner:
             self._emit("action", f"Seeded platform with {len(seed_contents)} initial post(s)")
 
         # ── LLM rounds ────────────────────────────────────────────────
+        from core.config import MODEL_NAME
+        import os as _os
+        _genai_client = None
+        try:
+            from google import genai as _genai
+            _genai_client = _genai.Client(api_key=_os.getenv("GEMINI_API_KEY"))
+        except Exception:
+            pass
+
+        pe = PatternEngine(
+            genai_client=_genai_client,
+            model_name=MODEL_NAME,
+            usage=self._usage,
+            emit_event=self._emit,
+        )
+
         for r in range(rounds):
             print(f"\n--- OASIS Round {r + 1}/{rounds} ---")
             self._emit("round", f"Round {r + 1}/{rounds} — agents deciding actions…")
@@ -159,6 +177,22 @@ class SimulationRunner:
             await env.step(llm_actions)
             print(f"Round {r + 1} complete.")
             self._emit("round", f"Round {r + 1}/{rounds} complete")
+
+            # ── Pattern extraction & event injection ──────────────────
+            if _genai_client and (r + 1) % PATTERN_EXTRACTION_INTERVAL == 0:
+                self._emit("stage", f"Analysing emerging patterns after round {r + 1}…")
+                patterns = pe.extract_patterns(self.db_path, r + 1)
+                if patterns:
+                    self._emit("stage", f"Detected {len(patterns)} pattern(s) — generating world event…")
+                    event = pe.generate_event_from_patterns(patterns)
+                    score = pe.score_event_impact(event, patterns)
+                    pe.record(r + 1, patterns, event, score)
+                    if score >= PATTERN_EVENT_MIN_IMPACT_SCORE:
+                        await pe.inject_event(event, env, env.agent_graph.get_agent(0))
+                        self._emit("action", f"[WORLD EVENT] {event['title']}: {event['description']}")
+                        print(f"PatternEngine: injected event '{event['title']}' (impact={score:.2f})")
+                    else:
+                        print(f"PatternEngine: event '{event['title']}' skipped (impact={score:.2f} < threshold)")
 
         await env.close()
 
@@ -178,6 +212,10 @@ class SimulationRunner:
             input_tokens=n_agents * rounds * OASIS_EST_INPUT_TOKENS_PER_AGENT_ROUND,
             output_tokens=n_agents * rounds * OASIS_EST_OUTPUT_TOKENS_PER_AGENT_ROUND,
         )
+
+        # ── Pattern events log ────────────────────────────────────────
+        outputs_dir = os.path.dirname(self.log_path) or "."
+        pe.flush_log(outputs_dir)
 
         # ── Post-run export ───────────────────────────────────────────
         self._emit("stage", "Exporting simulation data…")
@@ -249,19 +287,7 @@ class SimulationRunner:
             "All posts MUST relate directly to this topic.\n"
             if self.objective else ""
         )
-        prompt = (
-            "Write 4 natural, engaging social media posts reacting to a real-world event or topic. "
-            "Based on the following context, write posts that spark authentic discussion about what is happening. "
-            "These will be the first posts people see and react to.\n\n"
-            f"{objective_line}"
-            f"Context:\n{context}\n\n"
-            "Requirements:\n"
-            "- Each post should be 1-3 sentences, written naturally as if by a real social media user reacting to real news\n"
-            "- Do NOT use label prefixes like 'Notable ORGANIZATION:' or 'Key CONCEPT:'\n"
-            "- Every post must directly address the topic as though it really happened\n"
-            "- Vary the angle (analytical, curious, opinionated, etc.)\n"
-            "- Return ONLY a JSON array of 4 strings, nothing else"
-        )
+        prompt = seed_posts_prompt(objective_line=objective_line, context=context)
 
         try:
             client = _genai.Client(api_key=os.getenv("GEMINI_API_KEY"))

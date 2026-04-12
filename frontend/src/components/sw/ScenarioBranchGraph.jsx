@@ -18,6 +18,7 @@ import {
 	Clock,
 	Loader2,
 } from 'lucide-react';
+import { dagreTreeLayout } from '../../utils/layoutUtils';
 
 const STATUS_COLOR = {
 	idle: '#6366f1',
@@ -236,12 +237,6 @@ function ScenarioNode({ data }) {
 
 const nodeTypes = { scenarioNode: ScenarioNode, createNode: CreateNode };
 
-const NODE_W = 200;
-const NODE_H = 90;
-const H_GAP = 20; // horizontal gap between sibling nodes (px)
-const V_GAP = 110; // vertical gap between depth levels
-const ROOT_GAP = 40; // extra gap between separate root trees
-
 function normalizeScenarioTree(scenarios) {
 	if (!Array.isArray(scenarios) || scenarios.length === 0) return [];
 
@@ -292,88 +287,20 @@ function normalizeScenarioTree(scenarios) {
 function layoutTree(scenarios) {
 	if (!Array.isArray(scenarios) || scenarios.length === 0) return {};
 
-	const byId = new Map();
-	for (const s of scenarios) {
-		if (s?.scenario_id) byId.set(s.scenario_id, s);
-	}
+	// Prepare nodes and edges for Dagre
+	const nodes = scenarios.map((s) => ({ id: s.scenario_id }));
+	const edges = scenarios
+		.filter((s) => s.parent_scenario_id)
+		.map((s) => ({
+			source: s.parent_scenario_id,
+			target: s.scenario_id,
+		}));
 
-	// Build adjacency
-	const children = {};
-	const roots = [];
-
-	for (const s of scenarios) {
-		if (!s?.scenario_id) continue;
-		if (!children[s.scenario_id]) children[s.scenario_id] = [];
-	}
-	for (const s of scenarios) {
-		if (!s?.scenario_id) continue;
-		const hasValidParent =
-			s.parent_scenario_id && byId.has(s.parent_scenario_id);
-		if (!hasValidParent) {
-			roots.push(s.scenario_id);
-		} else {
-			if (!children[s.parent_scenario_id])
-				children[s.parent_scenario_id] = [];
-			children[s.parent_scenario_id].push(s.scenario_id);
-		}
-	}
-
-	for (const nodeId of Object.keys(children)) {
-		children[nodeId].sort((aId, bId) => {
-			const a = byId.get(aId);
-			const b = byId.get(bId);
-			const aTime = a?.created_at ? Date.parse(a.created_at) : 0;
-			const bTime = b?.created_at ? Date.parse(b.created_at) : 0;
-			if (aTime !== bTime) return aTime - bTime;
-			return (a?.name || '').localeCompare(b?.name || '');
-		});
-	}
-
-	// Post-order: compute the minimum width each subtree needs
-	const subtreeWidth = {};
-	const widthVisited = new Set();
-	const computeWidth = (id) => {
-		if (widthVisited.has(id)) {
-			return subtreeWidth[id] || NODE_W;
-		}
-		widthVisited.add(id);
-		const kids = children[id] || [];
-		if (kids.length === 0) {
-			subtreeWidth[id] = NODE_W;
-			return NODE_W;
-		}
-		const total =
-			kids.reduce((sum, kid) => sum + computeWidth(kid), 0) +
-			H_GAP * (kids.length - 1);
-		subtreeWidth[id] = Math.max(NODE_W, total);
-		return subtreeWidth[id];
-	};
-	roots.forEach((r) => computeWidth(r));
-
-	// Pre-order: assign (x, y) by centering each node over its subtree
-	const positions = {};
-	const posVisited = new Set();
-	const assignPos = (id, left, depth) => {
-		if (posVisited.has(id)) return;
-		posVisited.add(id);
-		const width = subtreeWidth[id];
-		positions[id] = {
-			x: left + (width - NODE_W) / 2,
-			y: depth * (NODE_H + V_GAP),
-		};
-		const kids = children[id] || [];
-		let childLeft = left;
-		for (const kid of kids) {
-			assignPos(kid, childLeft, depth + 1);
-			childLeft += subtreeWidth[kid] + H_GAP;
-		}
-	};
-
-	let rootLeft = 0;
-	for (const r of roots) {
-		assignPos(r, rootLeft, 0);
-		rootLeft += subtreeWidth[r] + ROOT_GAP;
-	}
+	// Use Dagre tree layout
+	const positions = dagreTreeLayout(nodes, edges, {
+		rankSep: 140,
+		nodeSep: 90,
+	});
 
 	return positions;
 }
@@ -503,12 +430,12 @@ export default function ScenarioBranchGraph({
 
 		// Position create node centred above roots
 		let createX = 0;
-		const createY = normalizedScenarios.length > 0 ? -(NODE_H + V_GAP) : 0;
+		const createY = normalizedScenarios.length > 0 ? -140 : 0;
 		if (rootIds.length > 0) {
 			const rootXs = rootIds.map((r) => positions[r]?.x ?? 0);
 			const minX = Math.min(...rootXs);
-			const maxX = Math.max(...rootXs) + NODE_W;
-			createX = (minX + maxX) / 2 - NODE_W / 2;
+			const maxX = Math.max(...rootXs) + 200;
+			createX = (minX + maxX) / 2 - 100;
 		}
 
 		const createNode = {
