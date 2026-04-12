@@ -677,6 +677,8 @@ def auto_suggest_relationships(
     try:
         suggestions, usage = suggest_relationships(agent_summaries)
     except Exception as exc:
+        import traceback
+        print(f"[auto-suggest-relationships] ERROR: {exc}\n{traceback.format_exc()}", flush=True)
         raise HTTPException(status_code=500, detail=f"AI suggestion failed: {exc}")
 
     try:
