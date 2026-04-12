@@ -21,6 +21,8 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from core.usage import UsageSummary
+from core.pattern_engine import PatternEngine
+from core.config import PATTERN_EXTRACTION_INTERVAL, PATTERN_EVENT_MIN_IMPACT_SCORE
 
 
 class SmallWorldRunner:
@@ -289,6 +291,21 @@ class SmallWorldRunner:
                 self._emit("action", "Scenario seed post published")
 
             # LLM rounds
+            from core.config import MODEL_NAME
+            _genai_client = None
+            try:
+                from google import genai as _genai
+                _genai_client = _genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+            except Exception:
+                pass
+
+            pe = PatternEngine(
+                genai_client=_genai_client,
+                model_name=MODEL_NAME,
+                usage=self._usage,
+                emit_event=self._emit,
+            )
+
             for r in range(self.rounds):
                 self._emit("round", f"Round {r + 1}/{self.rounds} — agents deliberating…")
                 llm_actions = {
@@ -298,7 +315,26 @@ class SmallWorldRunner:
                 await env.step(llm_actions)
                 self._emit("round", f"Round {r + 1}/{self.rounds} complete")
 
+                # ── Pattern extraction & event injection ──────────────────────
+                if _genai_client and (r + 1) % PATTERN_EXTRACTION_INTERVAL == 0:
+                    self._emit("stage", f"Analysing emerging patterns after round {r + 1}…")
+                    patterns = pe.extract_patterns(db_path, r + 1)
+                    if patterns:
+                        self._emit("stage", f"Detected {len(patterns)} pattern(s) — generating world event…")
+                        event = pe.generate_event_from_patterns(patterns)
+                        score = pe.score_event_impact(event, patterns)
+                        pe.record(r + 1, patterns, event, score)
+                        if score >= PATTERN_EVENT_MIN_IMPACT_SCORE:
+                            await pe.inject_event(event, env, env.agent_graph.get_agent(0))
+                            self._emit("action", f"[WORLD EVENT] {event['title']}: {event['description']}")
+                            print(f"PatternEngine: injected event '{event['title']}' (impact={score:.2f})")
+                        else:
+                            print(f"PatternEngine: event '{event['title']}' skipped (impact={score:.2f} < threshold)")
+
             await env.close()
+
+            # ── Pattern events log ────────────────────────────────────────────
+            pe.flush_log(self.output_dir)
 
             # Accumulate estimated token usage (OASIS doesn't expose per-call counts)
             n_agents = len(profiles)

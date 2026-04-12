@@ -819,3 +819,93 @@ def scenario_chat_context_prompt(
         f"SCENARIO CONTEXT: {scenario_name} — {scenario_description}\n\n"
         f"USER QUESTION: {query}"
     )
+
+
+# ── Pattern-Driven Evolution ──────────────────────────────────────────────────
+
+def extract_patterns_prompt(
+    posts: list[dict],
+    comments: list[dict],
+    round_num: int,
+) -> str:
+    post_lines = "\n".join(
+        f"- [{p.get('agent_id', p.get('user_id', 'agent'))}]: {str(p.get('content', p.get('text', '')))[:200]}"
+        for p in posts[-40:]
+    )
+    comment_lines = "\n".join(
+        f"- [{c.get('agent_id', c.get('user_id', 'agent'))}]: {str(c.get('content', c.get('text', '')))[:150]}"
+        for c in comments[-40:]
+    )
+    return f"""You are a social dynamics analyst observing a simulation after round {round_num}.
+
+Analyse the following agent activity and identify emerging patterns.
+
+RECENT POSTS:
+{post_lines or "(none yet)"}
+
+RECENT COMMENTS:
+{comment_lines or "(none yet)"}
+
+Instructions:
+- Identify 3 to 5 EMERGING PATTERNS in agent behaviour, attitudes, and group dynamics.
+- Focus on tensions, power shifts, in-group/out-group formation, trust changes, and behavioural drift.
+- Do NOT write generic summaries — name specific dynamics that are actually visible in the activity above.
+- Each pattern should be one concise sentence (15–30 words).
+
+Return ONLY valid JSON:
+{{
+  "patterns": [
+    "<pattern 1>",
+    "<pattern 2>",
+    "<pattern 3>"
+  ]
+}}"""
+
+
+def generate_event_prompt(patterns: list[str]) -> str:
+    pattern_lines = "\n".join(f"- {p}" for p in patterns)
+    return f"""You are a world-event designer for an emergent social simulation.
+
+The following behavioural patterns have emerged among the agents:
+
+{pattern_lines}
+
+Design ONE subtle world event that:
+1. Amplifies or responds to the tensions already present — do NOT introduce an entirely new system or topic.
+2. Feels like a natural, realistic development — not a dramatic movie twist.
+3. Is minimal and specific — a small institutional shift, a rumour, a policy tweak, or a social pressure.
+4. Will affect agent behaviour differently depending on their position/goals.
+
+Return ONLY valid JSON:
+{{
+  "title": "<short event title, max 6 words>",
+  "description": "<1–2 sentence event description that agents will read as a news post>",
+  "expected_effects": [
+    "<effect 1>",
+    "<effect 2>"
+  ]
+}}"""
+
+
+def score_event_impact_prompt(event: dict, patterns: list[str]) -> str:
+    pattern_lines = "\n".join(f"- {p}" for p in patterns)
+    return f"""You are evaluating whether a world event is worth injecting into a simulation.
+
+DETECTED PATTERNS:
+{pattern_lines}
+
+PROPOSED EVENT:
+Title: {event.get("title", "")}
+Description: {event.get("description", "")}
+Expected effects: {", ".join(event.get("expected_effects", []))}
+
+Rate this event on a scale from 0.0 to 1.0:
+- 1.0 = highly relevant, will meaningfully shift agent dynamics
+- 0.5 = moderately relevant, will affect some agents
+- 0.0 = irrelevant, redundant, or too generic
+
+Return ONLY valid JSON:
+{{
+  "score": <float 0.0–1.0>,
+  "reason": "<one sentence explanation>"
+}}"""
