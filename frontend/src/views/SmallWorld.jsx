@@ -502,6 +502,14 @@ export default function SmallWorld() {
 
 	// ── When selected world changes, reload data ──────────────
 	useEffect(() => {
+		// Always clear scenario-level state when switching worlds
+		setSelectedScenario(null);
+		setScenarioReport(null);
+		setScenarioEvents([]);
+		setScenarioChatMessages([]);
+		setScenarioLiveStatus(null);
+		if (scenarioPollRef) clearInterval(scenarioPollRef);
+
 		if (selectedWorld) {
 			setWorldDetailTab('scenarios');
 			setSuggestMsg(null);
