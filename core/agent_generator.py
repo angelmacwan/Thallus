@@ -13,6 +13,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from core.usage import UsageSummary
+from core.prompts import agent_profile_prompt, suggest_relationships_prompt
 
 
 def generate_agent_profile(sparse: dict[str, Any]) -> tuple[dict[str, Any], UsageSummary]:
@@ -34,62 +35,7 @@ def generate_agent_profile(sparse: dict[str, Any]) -> tuple[dict[str, Any], Usag
     )
     description = sparse.get("description", "")
 
-    prompt = f"""You are an expert organizational psychologist and agent profile designer.
-
-A user wants to create a simulation agent with the following known details:
-{field_lines}
-
-Natural language description from the user:
-"{description}"
-
-Generate a COMPLETE agent profile. Return ONLY a valid JSON object with exactly these fields:
-
-{{
-  "name": "<string>",
-  "age": <integer or null>,
-  "gender": "<string or null>",
-  "location": "<string>",
-  "profession": "<string>",
-  "job_title": "<string>",
-  "organization": "<string>",
-  "personality_traits": {{
-    "openness": <float 0-1>,
-    "conscientiousness": <float 0-1>,
-    "extraversion": <float 0-1>,
-    "agreeableness": <float 0-1>,
-    "neuroticism": <float 0-1>,
-    "risk_tolerance": <float 0-1>,
-    "decision_style": "<analytical|emotional|impulsive>",
-    "motivation_drivers": ["<string>", ...],
-    "core_beliefs": "<string>",
-    "biases": ["<string>", ...]
-  }},
-  "behavioral_attributes": {{
-    "communication_style": "<direct|passive|aggressive>",
-    "influence_level": <float 0-1>,
-    "adaptability": <float 0-1>,
-    "loyalty": <float 0-1>,
-    "stress_response": "<string>"
-  }},
-  "contextual_state": {{
-    "current_goals": ["<string>", ...],
-    "current_frustrations": ["<string>", ...],
-    "incentives": ["<string>", ...],
-    "constraints": ["<string>", ...]
-  }},
-  "external_factors": {{
-    "salary": "<string or null>",
-    "work_environment": "<string>",
-    "market_exposure": "<string or null>"
-  }}
-}}
-
-Rules:
-- Keep all existing known values unchanged.
-- Infer realistic, internally consistent values for missing fields based on the description.
-- Big Five scores (openness, conscientiousness, extraversion, agreeableness, neuroticism) must be floats between 0.0 and 1.0.
-- Return ONLY the JSON object, no markdown, no explanation.
-"""
+    prompt = agent_profile_prompt(field_lines, description)
 
     response = client.models.generate_content(
         model=MODEL_NAME,
@@ -135,32 +81,9 @@ def suggest_relationships(agents: list[dict[str, Any]]) -> tuple[list[dict[str, 
         f"- agent_id={a['agent_id']} name={a['name']} role={a.get('job_title') or a.get('profession', 'unknown')} org={a.get('organization', 'unknown')}"
         for a in agents
     )
+    max_relationships = min(len(agents) * 2, 20)
 
-    prompt = f"""You are an expert in organizational dynamics and social network analysis.
-
-Given the following agents in a simulation world:
-{agent_summaries}
-
-Suggest realistic relationships between them. Return ONLY a JSON array where each item has:
-{{
-  "source_agent_id": "<agent_id string>",
-  "target_agent_id": "<agent_id string>",
-  "type": "<free text describing the relationship (e.g., father, CEO, mentor, stakeholder, customer, peer, co-founder, rival, investor, friend, employee)>",
-  "strength": <float 0-1>,
-  "sentiment": "<positive|neutral|negative>",
-  "influence_direction": "<source_to_target|target_to_source|both>"
-}}
-
-Rules:
-- The "type" field must be a natural relation, specific label (not generic like "related").
-- Relationships can be personal, professional, social, economic, or anything realistic.
-- Prefer precise roles (e.g., "CEO", "daughter", "co-founder", "direct manager", "landlord", "primary investor").
-- Only suggest relationships that make sense given each agent's role and organization.
-- Do not create self-relationships.
-- Be selective — not everyone needs to be connected to everyone.
-- Return between 1 and {min(len(agents) * 2, 20)} relationships.
-- Return ONLY the JSON array.
-"""
+    prompt = suggest_relationships_prompt(agent_summaries, max_relationships)
 
     response = client.models.generate_content(
         model=MODEL_NAME,

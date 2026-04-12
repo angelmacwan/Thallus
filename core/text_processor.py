@@ -8,6 +8,7 @@ from core.graph_memory import LocalGraphMemory
 import json
 from core.config import MODEL_NAME
 from core.usage import UsageSummary
+from core.prompts import extract_entities_relations_prompt
 
 _SUPPORTED_EXTENSIONS = {'.txt', '.md', '.json', '.csv', '.html', '.xml', '.rst'}
 _MAX_TEXT_LENGTH = 50000  # Limit text size to avoid API issues
@@ -264,12 +265,7 @@ class TextProcessor:
             if last_period > _MAX_TEXT_LENGTH * 0.9:  # Within last 10%
                 text = text[:last_period + 1]
 
-        prompt = f"""Extract entities (people, organizations, locations, concepts) and relations from the text. 
-Return strictly a JSON object with 'entities' (list of dicts with 'name', 'type') and 'relations' (list of dicts with 'source', 'target', 'type').
-Keep entity names concise. Maximum 50 entities and 50 relations.
-
-Text: {text}
-        """
+        prompt = extract_entities_relations_prompt(text)
         
         try:
             response = self.client.models.generate_content(

@@ -20,6 +20,7 @@ load_dotenv()
 from core.config import CAMEL_MODEL_TYPE
 from core.graph_memory import LocalGraphMemory
 from core.usage import UsageSummary
+from core.prompts import seed_posts_prompt
 
 
 class SimulationRunner:
@@ -249,19 +250,7 @@ class SimulationRunner:
             "All posts MUST relate directly to this topic.\n"
             if self.objective else ""
         )
-        prompt = (
-            "Write 4 natural, engaging social media posts reacting to a real-world event or topic. "
-            "Based on the following context, write posts that spark authentic discussion about what is happening. "
-            "These will be the first posts people see and react to.\n\n"
-            f"{objective_line}"
-            f"Context:\n{context}\n\n"
-            "Requirements:\n"
-            "- Each post should be 1-3 sentences, written naturally as if by a real social media user reacting to real news\n"
-            "- Do NOT use label prefixes like 'Notable ORGANIZATION:' or 'Key CONCEPT:'\n"
-            "- Every post must directly address the topic as though it really happened\n"
-            "- Vary the angle (analytical, curious, opinionated, etc.)\n"
-            "- Return ONLY a JSON array of 4 strings, nothing else"
-        )
+        prompt = seed_posts_prompt(objective_line=objective_line, context=context)
 
         try:
             client = _genai.Client(api_key=os.getenv("GEMINI_API_KEY"))

@@ -23,6 +23,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from core.usage import UsageSummary
+from core.prompts import small_world_report_prompt
 
 
 def generate_report(
@@ -75,49 +76,13 @@ def generate_report(
         agent_summary_lines.append(f"- {name} ({role})")
     agent_summary = "\n".join(agent_summary_lines)
 
-    prompt = f"""You are an enterprise decision intelligence analyst. Analyze the following agent discussion data and produce a structured JSON report.
-
-WORLD CONTEXT: {world_description}
-
-SCENARIO: {scenario_name}
-SCENARIO DESCRIPTION (treat as ground truth — this event really happened): {seed_text}
-
-AGENTS IN SIMULATION:
-{agent_summary}
-
-SIMULATION ACTIVITY SUMMARY:
-{activity_summary}
-
-Generate a comprehensive enterprise-grade analysis with ONLY this JSON structure (no markdown, no explanation):
-{{
-  "outcome_summary": "<2-3 sentence summary of what happened and the key outcome>",
-  "confidence_score": <float 0.0-1.0 reflecting how consistent/conclusive the simulation was>,
-  "key_drivers": [
-    {{"rank": 1, "factor": "<factor name>", "explanation": "<why this drove the outcome>"}},
-    {{"rank": 2, "factor": "<factor name>", "explanation": "<why this drove the outcome>"}},
-    {{"rank": 3, "factor": "<factor name>", "explanation": "<why this drove the outcome>"}}
-  ],
-  "agent_behaviors": [
-    {{"agent_name": "<name>", "role_in_outcome": "<protagonist|antagonist|neutral|amplifier>", "behavior_summary": "<what this agent specifically did>", "sentiment_shift": "<became more positive|negative|neutral|stayed the same>"}}
-  ],
-  "bottlenecks_risks": ["<risk or bottleneck identified>", ...],
-  "unexpected_outcomes": ["<surprising finding>", ...],
-  "counterfactual": {{
-    "condition": "<what would need to be different>",
-    "impact_description": "<how the outcome would change>"
-  }},
-  "recommendations": [
-    {{"rank": 1, "action": "<specific action>", "expected_impact": "<predicted outcome>"}}
-  ]
-}}
-
-Rules:
-- All floats must be valid JSON numbers.
-- Include agents from the simulation in agent_behaviors.
-- Make recommendations actionable and specific.
-- Confidence score above 0.7 only if agents showed consistent behavior.
-- Return ONLY the JSON object.
-"""
+    prompt = small_world_report_prompt(
+        world_description=world_description,
+        scenario_name=scenario_name,
+        seed_text=seed_text,
+        agent_summary=agent_summary,
+        activity_summary=activity_summary,
+    )
 
     response = client.models.generate_content(
         model=MODEL_NAME,

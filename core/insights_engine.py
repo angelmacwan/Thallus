@@ -25,6 +25,12 @@ except ImportError:
     GENAI_AVAILABLE = False
 
 from core.usage import UsageSummary
+from core.prompts import (
+    generate_insights_prompt,
+    initial_agent_votes_prompt,
+    debate_round_prompt,
+    compile_results_prompt,
+)
 
 
 class InsightsEngine:
@@ -210,47 +216,14 @@ class InsightsEngine:
             for post in a.get("sample_posts", [])[:2]
         )
 
-        prompt = f"""You are an expert analyst reviewing how a group of real people responded to a recent event or topic.
-
-USER QUERY: "{query}"
-
-DISCUSSION OVERVIEW:
-- Total participants: {aggregate.get('total_agents', 0)}
-- Total posts made: {aggregate.get('total_posts', 0)}
-- Total interactions: {aggregate.get('total_interactions', 0)}
-
-PARTICIPANT PROFILES:
-{profiles_text}
-
-SAMPLE POSTS FROM THE DISCUSSION:
-{top_posts_text}
-
-TASK:
-Extract the following structured intelligence from the discussion data above, directly addressing the user's query:
-
-1. OUTCOME DISTRIBUTION — What specific outcomes are the participants predicting? \
-Estimate the approximate % predicting each outcome (e.g., churn increase, revenue growth, \
-public backlash, long-term success, regulatory response, etc.).
-
-2. TOP RISKS — The 3 most significant risks or negative outcomes surfacing across the participant population.
-
-3. TOP OPPORTUNITIES — The 3 most significant positive outcomes or opportunities identified.
-
-4. KEY DISAGREEMENTS — The biggest point of disagreement between participant clusters \
-(i.e., where participants are most split). Name the opposing camps.
-
-5. BEHAVIORAL PATTERNS — Notable patterns in how participants engaged with the topic \
-(e.g., influence cascades, polarization, consensus formation, thought leaders).
-
-Return a JSON array of 4-6 insight objects. Each object must have:
-- "id": "i_0", "i_1", etc.
-- "category": one of "outcome_distribution" | "risk" | "opportunity" | "disagreement" | "behavioral_pattern"
-- "text": the insight statement (1-2 sentences, evidence-grounded and specific)
-- "answer_text": a direct answer to the query from this insight's perspective (1-2 sentences)
-- "soft_metrics_noted": array of relevant soft metrics touched on \
-(e.g., ["sentiment_shifts", "influence_spread", "consensus_formation", "polarization"])
-
-Return ONLY the JSON array, no other text."""
+        prompt = generate_insights_prompt(
+            query=query,
+            total_agents=aggregate.get('total_agents', 0),
+            total_posts=aggregate.get('total_posts', 0),
+            total_interactions=aggregate.get('total_interactions', 0),
+            profiles_text=profiles_text,
+            top_posts_text=top_posts_text,
+        )
 
         result = self._call_llm(prompt, temperature=0.3)
         if result:
@@ -293,39 +266,7 @@ Return ONLY the JSON array, no other text."""
             indent=2,
         )
 
-        prompt = f"""You are roleplaying as each of the following people, based on their actual profiles and posting history.
-
-USER QUERY: "{query}"
-
-The people below each have a unique personality, background, and posting history. \
-Generate each person's authentic initial response to the query based on who they are.
-
-PARTICIPANTS:
-{agents_json}
-
-TASK:
-For each person, generate their honest initial position in response to the user's query. \
-The position should feel authentic to their character — shaped by their persona, MBTI, \
-interests, and actual posts. Treat the scenario as real: do NOT frame responses as hypothetical or simulated.
-
-When formulating positions, consider how each person might view:
-- The emotional or psychological dimensions of the query (sentiment around the topic)
-- How their ideas or values might spread or resonate with peers
-- Whether they see the issue as triggering cascading consequences
-- The stability or volatility of their stance on this—how firm vs uncertain they are
-- Points of potential consensus or disagreement with others
-
-Return a JSON array — one entry per person — each with:
-- "agent_id": the person's id string (e.g. "0", "1", ...)
-- "agent_name": the person's name
-- "position": the person's stance ("support" | "oppose" | "neutral") followed by 1-2 sentences of authentic character voice
-- "prediction": a specific, concrete outcome this person predicts (1 sentence, e.g. \
-  "Churn will increase ~15% in the first 3 months among casual users.")
-- "reasoning": why they hold this position, grounded in their profile or posts (1-2 sentences)
-- "confidence": 'high' | 'medium' | 'low' — how confident this person is in their prediction
-- "conviction_level": 'strong' | 'moderate' | 'weak' — how firm their stance is
-
-Return ONLY the JSON array. No other text."""
+        prompt = initial_agent_votes_prompt(query=query, agents_json=agents_json)
 
         result = self._call_llm(prompt, temperature=0.7)
         if result:
@@ -378,39 +319,12 @@ Return ONLY the JSON array. No other text."""
             for p in current_positions
         )
 
-        prompt = f"""You are facilitating round {round_num} of {total_rounds} of a structured debate among real people about a real event or topic.
-
-USER QUERY: "{query}"
-
-CURRENT POSITIONS (end of round {round_num - 1}):
-{positions_text}
-
-Each person has now read all other participants' positions and reasoning. Generate each person's \
-updated response. Participants may:
-- Strengthen their original position with new arguments
-- Shift their stance if persuaded by another agent (sentiment/emotional shifts)
-- Find nuance or partial agreement (consensus formation)
-- Challenge a specific other agent by name (thought leadership and influence dynamics)
-- Show increased or decreased conviction based on how others respond (stability vs volatility)
-
-Pay attention to SOFT METRICS as agents update:
-- How is consensus/divergence forming across the group?
-- Are any agents cascading off others' ideas? Who is influencing whom?
-- Is sentiment in discussion becoming more polarized or unified?
-- Who is emerging as thought leaders driving the narrative?
-- How stable vs volatile are agents' positions—are they shifting or holding firm?
-
-Return a JSON array — one entry per agent — each with:
-- "agent_id": same id as above
-- "agent_name": same name as above
-- "position": updated stance ("support" | "oppose" | "neutral") plus 1-2 sentences of updated reasoning
-- "prediction": updated specific outcome prediction (may refine based on others' arguments)
-- "reasoning": updated reasoning, possibly referencing other agents by name (1-2 sentences)
-- "confidence": 'high' | 'medium' | 'low' — updated confidence level
-- "conviction_change": 'stronger' | 'same' | 'weaker' — how did conviction evolve this round?
-- "influenced_by": optional array of agent names whose arguments influenced this update
-
-Return ONLY the JSON array. No other text."""
+        prompt = debate_round_prompt(
+            query=query,
+            positions_text=positions_text,
+            round_num=round_num,
+            total_rounds=total_rounds,
+        )
 
         result = self._call_llm(prompt, temperature=0.6)
         if result:
@@ -457,48 +371,7 @@ Return ONLY the JSON array. No other text."""
             indent=2,
         )
 
-        prompt = f"""You are synthesizing the final results of a structured debate about a real-world topic.
-
-USER QUERY: "{query}"
-
-FINAL AGENT POSITIONS (after all debate rounds):
-{positions_json}
-
-TASK:
-Synthesize these positions into a coherent result. Group agents by similarity of position, \
-and analyze the SOFT METRICS that shaped the outcome:
-
-**Key metrics to assess:**
-- **Consensus vs Polarization**: Did agents converge or split into opposing camps? How distinct are the factions?
-- **Thought Leaders**: Which agents drove the narrative? Whose predictions were most influential?
-- **Sentiment Trajectory**: How did emotional tone evolve? More heated, unified, or nuanced by the end?
-- **Prediction Confidence**: Were agents generally confident or uncertain? Did confidence shift during debate?
-- **Outcome Distribution**: What % broadly predict each outcome (churn, revenue, backlash, success)?
-
-Return a single JSON object with:
-- "overall_verdict": a balanced, synthesized answer to the user's query (2-4 sentences) \
-  representing the collective intelligence that emerged from the debate — must reference \
-  specific outcomes (not vague sentiment summaries)
-- "short_term_outlook": concrete prediction for 0-3 months — what happens immediately? \
-  (1-2 sentences covering likely user reactions, churn, sentiment)
-- "long_term_outlook": concrete prediction for 3-12+ months — equilibrium outcome? \
-  (1-2 sentences covering revenue trajectory, market position, sustained sentiment)
-- "key_metrics": {{
-    "churn": "increase" | "decrease" | "neutral",
-    "revenue": "increase" | "decrease" | "neutral",
-    "sentiment": "positive" | "negative" | "mixed"
-  }}
-- "score": {{ "agree": float, "disagree": float, "other": float }} — fractions of agents \
-  that broadly support vs oppose the decision being analyzed (must sum to 1.0)
-- "soft_metrics_summary": 2-3 sentences on key patterns: consensus/polarization level, \
-  thought leaders that emerged, sentiment arc, and how stable final positions were
-- "answer_groups": array of 2-4 distinct clusters of agents with similar positions:
-  - "group_id": "g_0", "g_1", etc.
-  - "label": short label for this group's shared stance (3-8 words)
-  - "summary": what agents in this group believe and predict (1-2 sentences)
-  - "agent_ids": array of agent_id strings in this group (cover ALL agents across all groups)
-
-Return ONLY the JSON object. No other text."""
+        prompt = compile_results_prompt(query=query, positions_json=positions_json)
 
         result = self._call_llm(prompt, temperature=0.2)
         if result:

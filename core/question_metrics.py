@@ -22,6 +22,7 @@ except ImportError:
     GENAI_AVAILABLE = False
 
 from core.usage import UsageSummary
+from core.prompts import generate_questions_prompt, answer_questions_prompt
 
 
 class QuestionMetrics:
@@ -203,24 +204,7 @@ class QuestionMetrics:
 
     def _generate_questions(self, objective: str, agent_count: int) -> list[str]:
         """Generate 5-8 investigation questions from the objective (1 LLM call)."""
-        prompt = f"""You are designing an investigation plan to analyze how real people responded to an event or topic.
-
-Topic / Event: "{objective}"
-Number of participants: {agent_count}
-
-Generate exactly 6 specific, measurable investigation questions that a researcher would \
-want answered to evaluate how people reacted to this topic or event. \
-Each question must be answerable with YES / NO / MAYBE based on observable participant behaviors \
-(what they posted, how they interacted, what topics they discussed).
-
-Focus question types evenly across:
-- Behavioral outcomes (What did participants actually do?)
-- Sentiment / opinion outcomes (How did participants feel or express emotion?)
-- Social dynamics (How did participants interact with each other?)
-- Emergent patterns (Did unexpected behaviors appear?)
-
-Return ONLY a JSON array of 6 question strings. No extra keys, no wrapper object.
-Example format: ["Question 1?", "Question 2?", "Question 3?"]"""
+        prompt = generate_questions_prompt(objective=objective, agent_count=agent_count)
 
         result = self._call_llm(prompt, temperature=0.3)
         if result:
@@ -255,82 +239,17 @@ Example format: ["Question 1?", "Question 2?", "Question 3?"]"""
         aggregate = behavior_summary.get("aggregate", {})
         action_log_sample = behavior_summary.get("action_log_sample", [])
 
-        prompt = f"""You are a rigorous analyst. Answer the following investigation \
-questions based SOLELY on the evidence provided below. Do NOT invent, hallucinate, or assume \
-any participant behaviors that are not shown in the data.
-
-═══════════════════════════════════════════
-TOPIC / EVENT (treat as real ground truth)
-═══════════════════════════════════════════
-"{objective}"
-
-═══════════════════════════════════════════
-AGGREGATE STATISTICS
-═══════════════════════════════════════════
-- Total participants: {aggregate.get('total_agents', 0)}
-- Total actions logged: {aggregate.get('total_actions', 0)}
-- Total posts made: {aggregate.get('total_posts', 0)}
-- Total social interactions (likes/shares/replies): {aggregate.get('total_interactions', 0)}
-
-═══════════════════════════════════════════
-AGENT PROFILES & BEHAVIOR SUMMARIES
-═══════════════════════════════════════════
-{json.dumps(agent_summaries, indent=2)}
-
-═══════════════════════════════════════════
-ACTION LOG SAMPLE (up to 150 most recent actions)
-═══════════════════════════════════════════
-{json.dumps(action_log_sample, indent=2)}
-
-═══════════════════════════════════════════
-INVESTIGATION QUESTIONS
-═══════════════════════════════════════════
-{json.dumps([{"id": f"q_{i}", "question": q} for i, q in enumerate(questions)], indent=2)}
-
-═══════════════════════════════════════════
-INSTRUCTIONS
-═══════════════════════════════════════════
-For EACH question above, provide:
-1. "answer": "YES", "NO", or "MAYBE"
-   - YES = strong evidence this happened
-   - NO = strong evidence this did not happen
-   - MAYBE = mixed or insufficient evidence
-2. "confidence": float 0.0–1.0 (be calibrated; MAYBE answers should be 0.3–0.6)
-3. "reasoning": 2–3 sentence explanation citing specific agent names and behaviors
-4. "evidence": array of 2–4 specific citations from the data
-   Each evidence item must include:
-   - "agent_id": the numeric agent_id string
-   - "agent_name": the agent's display name
-   - "action_description": what the agent specifically said or did (quote content when possible)
-   - "relevance_to_answer": why this action supports the answer
-   - "weight": float 0.0–1.0 (how much this item contributes to the answer)
-5. "caveats": any important limitations (sample size, data gaps, etc.)
-
-IMPORTANT RULES:
-- If data is too sparse to answer, use MAYBE with confidence ≤ 0.4
-- Never cite evidence that is not in the action log sample above
-- Evidence weights across all items in one question should ideally sum to ≈ 1.0
-
-Return a JSON array of exactly {len(questions)} answer objects. No extra wrapper.
-[
-  {{
-    "question_id": "q_0",
-    "question": "<copy the question text>",
-    "answer": "YES",
-    "confidence": 0.82,
-    "reasoning": "...",
-    "evidence": [
-      {{
-        "agent_id": "3",
-        "agent_name": "Jane Smith",
-        "action_description": "Posted: 'This salary cut is unacceptable...'",
-        "relevance_to_answer": "Directly expresses morale impact",
-        "weight": 0.45
-      }}
-    ],
-    "caveats": "..."
-  }}
-]"""
+        prompt = answer_questions_prompt(
+            objective=objective,
+            total_agents=aggregate.get('total_agents', 0),
+            total_actions=aggregate.get('total_actions', 0),
+            total_posts=aggregate.get('total_posts', 0),
+            total_interactions=aggregate.get('total_interactions', 0),
+            agent_summaries_json=json.dumps(agent_summaries, indent=2),
+            action_log_sample_json=json.dumps(action_log_sample, indent=2),
+            questions_json=json.dumps([{"id": f"q_{i}", "question": q} for i, q in enumerate(questions)], indent=2),
+            questions_count=len(questions),
+        )
 
         result = self._call_llm(prompt, temperature=0.1)
         if result:

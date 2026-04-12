@@ -12,6 +12,7 @@ from google.genai import types
 from core.config import MODEL_NAME
 from core.graph_memory import LocalGraphMemory
 from core.usage import UsageSummary
+from core.prompts import generate_ontology_prompt
 
 
 class OntologyGenerator:
@@ -80,47 +81,7 @@ class OntologyGenerator:
             ensure_ascii=False,
         )
 
-        prompt = f"""You are an expert ontology engineer specialising in OWL/RDF knowledge graphs.
-
-Analyse the following graph extracted from source documents and produce a formal,
-reusable ontology that faithfully captures the domain semantics.
-
-Graph data:
-{graph_summary}
-
-Return ONLY a valid JSON object with exactly these top-level keys:
-
-"classes"            – list of class objects:
-    {{ "name": str (CamelCase IRI fragment),
-       "label": str (human-readable),
-       "description": str,
-       "superclass": str | null }}
-
-"object_properties"  – list of object-property objects:
-    {{ "name": str (camelCase IRI fragment),
-       "label": str,
-       "domain": str (class name),
-       "range": str (class name),
-       "description": str }}
-
-"data_properties"    – list of data-property objects:
-    {{ "name": str (camelCase IRI fragment),
-       "label": str,
-       "domain": str (class name),
-       "type": str (xsd type, e.g. "xsd:string"),
-       "description": str }}
-
-"individuals"        – list of named individuals:
-    {{ "name": str, "class": str, "properties": {{ prop: value }} }}
-
-"axioms"             – list of logical axiom descriptions (plain English)
-
-Guidelines:
-- Generalise where possible: prefer abstract superclasses over flat lists.
-- Capture IS-A, PART-OF, and domain-specific semantic relations as object properties.
-- Every entity from the graph should map to an individual of an appropriate class.
-- Keep class and property names concise, unique, and meaningful.
-"""
+        prompt = generate_ontology_prompt(graph_summary)
 
         try:
             response = self.client.models.generate_content(

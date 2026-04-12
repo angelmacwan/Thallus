@@ -7,6 +7,7 @@ from google.genai import types
 from core.graph_memory import LocalGraphMemory
 from core.config import MODEL_NAME
 from core.usage import UsageSummary
+from core.prompts import report_agent_chat_prompt, structured_report_prompt
 
 class ReportAgent:
     def __init__(self, graph: LocalGraphMemory, log_path: str = "data/actions.jsonl"):
@@ -40,26 +41,12 @@ class ReportAgent:
         logs_str = self._load_logs()
         graph_str = self._graph_summary()
 
-        extra_ctx_block = f"\n\n{extra_context.strip()}" if extra_context.strip() else ""
-
-        prompt = f"""You are an analyst assistant. Answer the user's question directly and concisely based on the discussion data below. Treat all events and scenarios described as real.
-
-User question: "{query}"
-
-## Knowledge Graph
-{graph_str}
-
-## Activity Logs
-{logs_str}{extra_ctx_block}
-
-Rules:
-- Be direct. Answer the question first, then add supporting detail only if needed.
-- Keep responses short — 1 to 4 short paragraphs maximum.
-- Do NOT use heavy section headers or turn every answer into a formal report.
-- Use bullet points only when listing multiple distinct items.
-- If asked about a specific agent or scenario, focus there; otherwise synthesise across everything.
-- Avoid filler phrases like "Certainly!" or "Based on the data provided".
-"""
+        prompt = report_agent_chat_prompt(
+            query=query,
+            graph_str=graph_str,
+            logs_str=logs_str,
+            extra_context=extra_context,
+        )
 
         try:
             response = self.client.models.generate_content(
@@ -136,55 +123,15 @@ Rules:
                 )
             insights_str = "\n\n".join(sections)
 
-        prompt = f"""You are a senior analyst tasked with writing an enterprise-ready analysis report.
-The discussion recorded real people interacting on a social-media platform in response to a real-world event or topic.
-Treat all scenarios and events as ground truth — do not frame them as hypothetical or simulated.
-
-## Investigation Objective
-{objective_str}
-
-## Context
-{context_str}
-
-## Report Focus
-{description}
-
-## Knowledge Graph (entities & relations extracted from source documents)
-{graph_str}
-
-## Activity Logs (participant behaviour)
-{logs_str}
-
-## User-Generated Insights & Questions
-{insights_str}
-
-## Prior Chat Analysis
-{chat_str}
-
----
-
-Write a **comprehensive, enterprise-grade Markdown report** that:
-
-1. Opens with a concise **Executive Summary** (3-5 sentences, no jargon).
-2. Contains clearly numbered sections with descriptive headings.
-3. Includes a **Key Findings** section with bullet points.
-4. Includes an **Agent Dynamics** section analysing individual and group behaviour.
-5. Includes a dedicated **Soft Metrics Analysis** section covering:
-   - **Sentiment Evolution**: How did emotional tone shift across the simulation?
-   - **Influence Cascades**: Which agents' ideas propagated? How did influence flow?
-   - **Consensus vs Polarization**: Did agents converge or diverge? How unified/polarized was the group?
-   - **Thought Leadership**: Who emerged as narrative drivers? Whose ideas had most impact?
-   - **Position Stability**: How stable were agent positions? Did conviction strengthen/weaken?
-6. Includes a **Network & Relationship Analysis** section with at least one Mermaid diagram
-   (e.g. `graph TD` or `graph LR`) illustrating important entity relationships or information flows.
-7. Includes a **Narrative & Discourse Analysis** section.
-8. Includes a **Risk & Opportunity Assessment** table (use Markdown table syntax).
-9. Ends with **Conclusions & Recommendations** with actionable bullet points that reflect soft metrics insights.
-10. Uses formal, professional language suitable for sharing with senior stakeholders.
-11. Contains no placeholder text — every section must be fully written.
-
-Return ONLY the Markdown report, starting with a `#` level title.
-"""
+        prompt = structured_report_prompt(
+            objective_str=objective_str,
+            context_str=context_str,
+            description=description,
+            graph_str=graph_str,
+            logs_str=logs_str,
+            insights_str=insights_str,
+            chat_str=chat_str,
+        )
 
         try:
             response = self.client.models.generate_content(
