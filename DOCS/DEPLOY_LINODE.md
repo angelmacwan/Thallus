@@ -284,6 +284,7 @@ systemctl restart thallus-backend
 
 # frontend
 cd frontend
+npm install
 npm ci
 VITE_API_URL=https://thallus.staticalabs.com/api npm run build
 systemctl restart nginx
