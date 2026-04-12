@@ -264,7 +264,17 @@ def get_chat_tags(
                     "type": "agent",
                 })
 
-    return {"tags": scenario_tags + agent_tags}
+    # Deduplicate by (tag, type) so the frontend autocomplete doesn't show
+    # redundant entries when multiple records share the same name.
+    seen: set[tuple[str, str]] = set()
+    deduped_tags: list[dict] = []
+    for item in scenario_tags + agent_tags:
+        key = (item["tag"], item["type"])
+        if key not in seen:
+            seen.add(key)
+            deduped_tags.append(item)
+
+    return {"tags": deduped_tags}
 
 
 @router.post("/chat/{session_uuid}", response_model=schemas.ChatMessageResponse)
@@ -313,12 +323,19 @@ def chat_with_report_agent(
         with open(agents_path, encoding="utf-8") as fh:
             agents = _json.load(fh)
 
-    scenario_map = {_normalize(s.name): s for s in all_scenarios}
-    agent_map = {
-        _normalize(a.get("username") or a.get("realname", "")): a
-        for a in agents
-        if a.get("username") or a.get("realname")
-    }
+    # Use lists as values so that multiple scenarios/agents that share the same
+    # normalised name are ALL preserved rather than the last one silently
+    # overwriting the earlier ones.
+    from collections import defaultdict as _defaultdict
+    scenario_map: dict[str, list] = _defaultdict(list)
+    for _s in all_scenarios:
+        scenario_map[_normalize(_s.name)].append(_s)
+
+    agent_map: dict[str, list] = _defaultdict(list)
+    for _a in agents:
+        _akey = _a.get("username") or _a.get("realname", "")
+        if _akey:
+            agent_map[_normalize(_akey)].append(_a)
 
     # ID → display name lookup used to resolve agent_ids in insight answer_groups
     agent_id_to_name: dict[str, str] = {
@@ -359,20 +376,22 @@ def chat_with_report_agent(
     extra_parts: list[str] = []
 
     # Hashtag-focused context first
+    # scenario_map and agent_map are defaultdict(list), so each key may hold
+    # multiple records when duplicate names exist — iterate all of them.
     focus_lines: list[str] = []
     for tag in hashtags:
         if tag in scenario_map:
-            s = scenario_map[tag]
-            focus_lines.append(
-                f"- **#{tag}** refers to scenario **'{s.name}'**: {s.description}"
-            )
+            for s in scenario_map[tag]:
+                focus_lines.append(
+                    f"- **#{tag}** refers to scenario **'{s.name}'** (id: {s.scenario_id}): {s.description}"
+                )
         elif tag in agent_map:
-            a = agent_map[tag]
-            name = a.get("username") or a.get("realname")
-            bio = a.get("persona") or a.get("bio") or ""
-            focus_lines.append(
-                f"- **#{tag}** refers to agent **{name}** — {bio[:250]}"
-            )
+            for a in agent_map[tag]:
+                name = a.get("username") or a.get("realname")
+                bio = a.get("persona") or a.get("bio") or ""
+                focus_lines.append(
+                    f"- **#{tag}** refers to agent **{name}** — {bio[:250]}"
+                )
     if focus_lines:
         extra_parts.append(
             "## Hashtag Focus\n"
