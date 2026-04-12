@@ -191,15 +191,20 @@ export default function SmallWorld() {
 				};
 				r.data.forEach(visit);
 
+				const TERMINAL_STATUSES = new Set([
+					'completed',
+					'failed',
+					'error',
+				]);
 				setLiveStatuses((prev) => {
 					const next = new Map(prev);
-					let anyRunning = false;
+					let anyActive = false;
 					for (const s of flat) {
 						next.set(s.scenario_id, s.status);
-						if (s.status === 'running') anyRunning = true;
+						if (!TERMINAL_STATUSES.has(s.status)) anyActive = true;
 					}
-					// Stop polling once nothing is running
-					if (!anyRunning) {
+					// Stop polling only once all scenarios are in a terminal state
+					if (!anyActive) {
 						clearInterval(liveStatusPollRef.current);
 						liveStatusPollRef.current = null;
 					}
@@ -369,6 +374,26 @@ export default function SmallWorld() {
 	const downloadReportMD = () => {
 		if (!scenarioReport || !selectedScenario) return;
 
+		// Mirror SmallWorldReport's formatReportItem logic
+		const fmtVal = (v) => {
+			if (v === null || v === undefined || v === '') return '';
+			if (typeof v === 'object') return JSON.stringify(v);
+			return String(v);
+		};
+		const fmtItem = (item, primaryKeys, secondaryKeys) => {
+			if (typeof item === 'string' || typeof item === 'number')
+				return String(item);
+			if (!item || typeof item !== 'object') return null;
+			const primary = primaryKeys
+				.map((k) => fmtVal(item[k]))
+				.find(Boolean);
+			const secondary = secondaryKeys
+				.map((k) => fmtVal(item[k]))
+				.find(Boolean);
+			if (primary && secondary) return `**${primary}**: ${secondary}`;
+			return primary || secondary || JSON.stringify(item) || null;
+		};
+
 		let md = `# Scenario Report: ${selectedScenario.name}\n\n`;
 		md += `## Outcome\n${scenarioReport.outcome_summary || 'N/A'}\n\n`;
 		if (
@@ -411,31 +436,41 @@ export default function SmallWorld() {
 		}
 
 		if (scenarioReport.bottlenecks_risks?.length) {
-			md += `## Bottlenecks & Risks\n`;
-			scenarioReport.bottlenecks_risks.forEach((b) => {
-				const title = b.risk || b.title || b.condition || '';
-				const desc = b.impact_description || b.description || '';
-				if (title && desc) {
-					md += `- **${title}**: ${desc}\n`;
-				} else {
-					md += `- ${title || desc}\n`;
-				}
-			});
-			md += `\n`;
+			const lines = scenarioReport.bottlenecks_risks
+				.map((b) =>
+					fmtItem(
+						b,
+						['risk', 'title', 'condition'],
+						['impact_description', 'description'],
+					),
+				)
+				.filter(Boolean);
+			if (lines.length) {
+				md += `## Bottlenecks & Risks\n`;
+				lines.forEach((line) => {
+					md += `- ${line}\n`;
+				});
+				md += `\n`;
+			}
 		}
 
 		if (scenarioReport.unexpected_outcomes?.length) {
-			md += `## Unexpected Outcomes\n`;
-			scenarioReport.unexpected_outcomes.forEach((u) => {
-				const title = u.outcome || u.condition || u.title || '';
-				const desc = u.impact_description || u.description || '';
-				if (title && desc) {
-					md += `- **${title}**: ${desc}\n`;
-				} else {
-					md += `- ${title || desc}\n`;
-				}
-			});
-			md += `\n`;
+			const lines = scenarioReport.unexpected_outcomes
+				.map((u) =>
+					fmtItem(
+						u,
+						['outcome', 'condition', 'title'],
+						['impact_description', 'description'],
+					),
+				)
+				.filter(Boolean);
+			if (lines.length) {
+				md += `## Unexpected Outcomes\n`;
+				lines.forEach((line) => {
+					md += `- ${line}\n`;
+				});
+				md += `\n`;
+			}
 		}
 
 		if (scenarioReport.counterfactual) {
