@@ -13,6 +13,7 @@ import {
 	Send,
 	RotateCcw,
 	Loader2,
+	Download,
 } from 'lucide-react';
 import api from '../api';
 import { useSidebar } from '../SidebarContext';
@@ -363,6 +364,113 @@ export default function SmallWorld() {
 			setScenarioChatMessages((prev) => [...prev, res.data]);
 		} catch {}
 		setScenarioChatLoading(false);
+	};
+
+	const downloadReportMD = () => {
+		if (!scenarioReport || !selectedScenario) return;
+
+		let md = `# Scenario Report: ${selectedScenario.name}\n\n`;
+		md += `## Outcome\n${scenarioReport.outcome_summary || 'N/A'}\n\n`;
+		if (
+			scenarioReport.confidence_score !== undefined &&
+			scenarioReport.confidence_score !== null
+		) {
+			md += `*Confidence: ${Math.round(scenarioReport.confidence_score * 100)}%*\n\n`;
+		}
+
+		if (scenarioReport.key_drivers?.length) {
+			md += `## Key Drivers\n`;
+			scenarioReport.key_drivers.forEach((d) => {
+				const factor = d.factor || '';
+				const explanation = d.explanation || '';
+				if (factor && explanation) {
+					md += `- **${factor}**: ${explanation}\n`;
+				} else {
+					md += `- ${factor || explanation}\n`;
+				}
+			});
+			md += `\n`;
+		}
+
+		if (scenarioReport.agent_behaviors?.length) {
+			md += `## Agent Behavior\n`;
+			md += `| Agent | Behavior | Sentiment | Influence |\n`;
+			md += `|---|---|---|---|\n`;
+			scenarioReport.agent_behaviors.forEach((ab) => {
+				const inf =
+					ab.influence_score !== undefined
+						? `${Math.round(ab.influence_score * 100)}%`
+						: '-';
+				const behavior =
+					ab.primary_behavior || ab.behavior_summary || '-';
+				const sentiment =
+					ab.sentiment_shift || ab.role_in_outcome || '-';
+				md += `| ${ab.agent_name || '-'} | ${behavior} | ${sentiment} | ${inf} |\n`;
+			});
+			md += `\n`;
+		}
+
+		if (scenarioReport.bottlenecks_risks?.length) {
+			md += `## Bottlenecks & Risks\n`;
+			scenarioReport.bottlenecks_risks.forEach((b) => {
+				const title = b.risk || b.title || b.condition || '';
+				const desc = b.impact_description || b.description || '';
+				if (title && desc) {
+					md += `- **${title}**: ${desc}\n`;
+				} else {
+					md += `- ${title || desc}\n`;
+				}
+			});
+			md += `\n`;
+		}
+
+		if (scenarioReport.unexpected_outcomes?.length) {
+			md += `## Unexpected Outcomes\n`;
+			scenarioReport.unexpected_outcomes.forEach((u) => {
+				const title = u.outcome || u.condition || u.title || '';
+				const desc = u.impact_description || u.description || '';
+				if (title && desc) {
+					md += `- **${title}**: ${desc}\n`;
+				} else {
+					md += `- ${title || desc}\n`;
+				}
+			});
+			md += `\n`;
+		}
+
+		if (scenarioReport.counterfactual) {
+			const c = scenarioReport.counterfactual;
+			const title = c.condition || '';
+			const desc = c.impact_description || '';
+			if (title || desc) {
+				md += `## Counterfactual\n`;
+				md += `> ${title ? `**${title}**: ` : ''}${desc}\n\n`;
+			}
+		}
+
+		if (scenarioReport.recommendations?.length) {
+			md += `## Recommendations\n`;
+			scenarioReport.recommendations.forEach((r, i) => {
+				const action = r.action || '';
+				const desc = r.expected_impact || '';
+				if (action && desc) {
+					md += `${i + 1}. **${action}**: ${desc}\n`;
+				} else {
+					md += `${i + 1}. ${action || desc}\n`;
+				}
+			});
+			md += `\n`;
+		}
+
+		const blob = new Blob([md], { type: 'text/markdown' });
+		const url = URL.createObjectURL(blob);
+		const a = document.createElement('a');
+		a.href = url;
+		a.download = `report_${selectedScenario.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.md`;
+		document.body.appendChild(a);
+		a.click();
+		document.body.removeChild(a);
+		URL.revokeObjectURL(url);
 	};
 
 	// ── Register sw nav in sidebar ────────────────────────────
@@ -1423,24 +1531,37 @@ export default function SmallWorld() {
 															</div>
 														</div>
 														<button
-															onClick={() =>
-																setSelectedScenario(
-																	null,
-																)
+															onClick={
+																downloadReportMD
+															}
+															className="btn"
+															disabled={
+																!scenarioReport
 															}
 															style={{
-																background:
-																	'none',
-																border: 'none',
-																cursor: 'pointer',
-																color: 'var(--text-secondary)',
+																padding:
+																	'0.35rem 0.6rem',
+																display: 'flex',
+																alignItems:
+																	'center',
+																gap: '0.4rem',
 																fontSize:
 																	'0.75rem',
-																padding:
-																	'0.25rem',
+																background:
+																	'var(--surface-container-high)',
+																color: 'var(--text-primary)',
+																border: '1px solid var(--outline-variant)',
+																opacity:
+																	scenarioReport
+																		? 1
+																		: 0.4,
 															}}
+															title="Download as Markdown"
 														>
-															✕
+															<Download
+																size={14}
+															/>
+															Download MD
 														</button>
 													</div>
 												</div>
