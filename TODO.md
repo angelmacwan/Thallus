@@ -1,0 +1,17 @@
+- [ ] New simulation method
+    - instead of creating agents only from seed, we have pre set worlds with a huge ontography and large number of agents
+    - we generate agents from seed on top of this
+    - we see how the worlds react
+    - when creating a new simulation we have hude MD files in backend that defines the agents like city folks, village folks, tech workers, blue coller people, kids, adults, and many many more.
+    - this MD files in backend should act as only reference docs and never seed docs. This reference docs only create agents that populare the world
+    - we get rid of the slider for force adding agents from UI as well as backend
+    - this is replaced with checkboxes for init population
+    - eg: metro city, tier 1 city, tier 2 city, small city, kids, adults, and many many more
+    - the user can select one, multiple or all of this population
+    - figure out a way to populate our world with this agents first and run 1-2 warmup rounds
+    - then add new agents from the actual SEED that the user uploads
+    - then the run users seed on the sim and see how the populations react
+    - each population should have a large number of people in it
+    - Overall i need to improve the quality of the simulations
+    - right now i can just upload files to chatgpt or claude and ask it how the public will respond and it almost always woorks. You need to find a way that sets this product (thallus) apart
+    - agents in the sim should act more like actual people, the sim quality matter a lot
