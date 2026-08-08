@@ -7,7 +7,7 @@ import {
 	ShieldCheck,
 	Sparkles,
 } from 'lucide-react';
-import api, { authApi } from '../api';
+import { authApi } from '../api';
 
 const authHighlights = [
 	'Run document-backed simulations with distinct agent perspectives.',
@@ -15,19 +15,12 @@ const authHighlights = [
 	'Use structured outputs built for strategy, research, and analysis.',
 ];
 
-// Possible steps:
-//   "login"           — sign-in form
-//   "register-email"  — email + password, request code
-//   "register-otp"    — enter 6-digit code, create account
-//   "forgot-email"    — enter email to receive reset code
-//   "forgot-otp"      — enter code + new password
+// Steps: "email" → "otp"
 
 export default function Auth() {
-	const [step, setStep] = useState('login');
+	const [step, setStep] = useState('email');
 	const [email, setEmail] = useState('');
-	const [password, setPassword] = useState('');
 	const [otp, setOtp] = useState('');
-	const [newPassword, setNewPassword] = useState('');
 	const [statusMessage, setStatusMessage] = useState('');
 	const [statusTone, setStatusTone] = useState('idle');
 	const [isSubmitting, setIsSubmitting] = useState(false);
@@ -56,14 +49,6 @@ export default function Auth() {
 		}, 1000);
 	}
 
-	function goToStep(newStep) {
-		setStep(newStep);
-		setStatusMessage('');
-		setStatusTone('idle');
-		setOtp('');
-		setNewPassword('');
-	}
-
 	function setError(msg) {
 		setStatusTone('error');
 		setStatusMessage(msg);
@@ -74,77 +59,91 @@ export default function Auth() {
 		setStatusMessage(msg);
 	}
 
-	// ── Login ────────────────────────────────────────────────────────────────
-	async function handleLogin(e) {
+	// ── Step 1: send OTP ──────────────────────────────────────────────────────
+	async function handleSendOtp(e) {
 		e.preventDefault();
 		setStatusMessage('');
 		setStatusTone('idle');
 		setIsSubmitting(true);
 		try {
-			const formData = new URLSearchParams();
-			formData.append('username', email.trim().toLowerCase());
-			formData.append('password', password);
-			const res = await api.post('/auth/login', formData, {
-				headers: {
-					'Content-Type': 'application/x-www-form-urlencoded',
-				},
-			});
-			localStorage.setItem('token', res.data.access_token);
-			navigate('/');
-		} catch (err) {
-			const detail =
-				err.response?.data?.detail ||
-				'An error occurred. Please try again.';
-			setError(detail);
-		} finally {
-			setIsSubmitting(false);
-		}
-	}
-
-	// ── Send signup OTP ──────────────────────────────────────────────────────
-	async function handleSendSignupOtp(e) {
-		e.preventDefault();
-		setStatusMessage('');
-		setStatusTone('idle');
-		setIsSubmitting(true);
-		try {
-			await authApi.sendSignupOtp(email.trim().toLowerCase());
+			await authApi.sendLoginOtp(email.trim().toLowerCase());
 			startCountdown();
-			goToStep('register-otp');
+			setStep('otp');
 			setSuccess('Code sent — check your inbox.');
 		} catch (err) {
 			const status = err.response?.status;
-			const detail =
-				err.response?.data?.detail || 'Failed to send code. Try again.';
+			const detail = err.response?.data?.detail;
+
 			if (status === 403) {
 				setStatusTone('warning');
-				setStatusMessage(detail);
-			} else if (status === 409) {
-				setError(
-					'An account with this email already exists. Sign in instead.',
+				setStatusMessage(
+					detail ||
+						'Thallus is currently invite-only. Join the waitlist to request access.',
 				);
 			} else if (status === 429) {
-				setError(detail);
+				setError(
+					detail ||
+						'Too many requests. Please wait before trying again.',
+				);
+			} else if (err.code === 'ERR_NETWORK' || !err.response) {
+				setError(
+					'Unable to reach the server. Please check backend connection.',
+				);
 			} else {
-				setError(detail);
+				setError(detail || 'Failed to send code. Please try again.');
 			}
 		} finally {
 			setIsSubmitting(false);
 		}
 	}
 
-	// ── Resend OTP (signup or reset) ─────────────────────────────────────────
+	// ── Step 2: verify OTP ────────────────────────────────────────────────────
+	async function handleVerifyOtp(e) {
+		e.preventDefault();
+		setStatusMessage('');
+		setStatusTone('idle');
+		setIsSubmitting(true);
+		try {
+			const res = await authApi.verifyLoginOtp(
+				email.trim().toLowerCase(),
+				otp.trim(),
+			);
+			localStorage.setItem('token', res.data.access_token);
+			navigate('/');
+		} catch (err) {
+			const status = err.response?.status;
+			const detail = err.response?.data?.detail;
+
+			if (status === 401) {
+				setError(
+					detail ||
+						'Invalid or expired code. Please check and try again.',
+				);
+			} else if (status === 403) {
+				setError(
+					detail ||
+						'This account has been deactivated. Contact support.',
+				);
+			} else if (err.code === 'ERR_NETWORK' || !err.response) {
+				setError(
+					'Unable to reach the server. Please check backend connection.',
+				);
+			} else {
+				setError(detail || 'Verification failed. Please try again.');
+			}
+		} finally {
+			setIsSubmitting(false);
+		}
+	}
+
+	// ── Resend OTP ────────────────────────────────────────────────────────────
 	async function handleResendOtp() {
 		if (resendCountdown > 0) return;
 		setStatusMessage('');
 		setStatusTone('idle');
 		setIsSubmitting(true);
 		try {
-			if (step === 'register-otp') {
-				await authApi.sendSignupOtp(email.trim().toLowerCase());
-			} else {
-				await authApi.sendResetOtp(email.trim().toLowerCase());
-			}
+			await authApi.sendLoginOtp(email.trim().toLowerCase());
 			startCountdown();
 			setSuccess('A new code has been sent.');
 		} catch (err) {
@@ -156,119 +155,32 @@ export default function Auth() {
 		}
 	}
 
-	// ── Create account ───────────────────────────────────────────────────────
-	async function handleRegister(e) {
-		e.preventDefault();
+	function goBack() {
+		setStep('email');
+		setOtp('');
 		setStatusMessage('');
 		setStatusTone('idle');
-		setIsSubmitting(true);
-		try {
-			await authApi.register(
-				email.trim().toLowerCase(),
-				password,
-				otp.trim(),
-			);
-			goToStep('login');
-			setSuccess('Account created. Sign in to continue.');
-		} catch (err) {
-			const status = err.response?.status;
-			const detail =
-				err.response?.data?.detail ||
-				'An error occurred. Please try again.';
-			if (status === 403) {
-				setStatusTone('warning');
-				setStatusMessage(detail);
-			} else {
-				setError(detail);
-			}
-		} finally {
-			setIsSubmitting(false);
-		}
+		if (countdownRef.current) clearInterval(countdownRef.current);
+		setResendCountdown(0);
 	}
 
-	// ── Send password reset OTP ──────────────────────────────────────────────
-	async function handleSendResetOtp(e) {
-		e.preventDefault();
-		setStatusMessage('');
-		setStatusTone('idle');
-		setIsSubmitting(true);
-		try {
-			await authApi.sendResetOtp(email.trim().toLowerCase());
-			startCountdown();
-			goToStep('forgot-otp');
-			setSuccess('If that email is registered, a code has been sent.');
-		} catch (err) {
-			const detail =
-				err.response?.data?.detail || 'Failed to send code. Try again.';
-			setError(detail);
-		} finally {
-			setIsSubmitting(false);
-		}
-	}
+	const panelTitle =
+		step === 'email'
+			? 'Return to your simulation command center.'
+			: 'Check your inbox.';
 
-	// ── Reset password ───────────────────────────────────────────────────────
-	async function handleResetPassword(e) {
-		e.preventDefault();
-		setStatusMessage('');
-		setStatusTone('idle');
-		setIsSubmitting(true);
-		try {
-			await authApi.resetPassword(
-				email.trim().toLowerCase(),
-				otp.trim(),
-				newPassword,
-			);
-			goToStep('login');
-			setSuccess('Password updated. Sign in with your new password.');
-		} catch (err) {
-			const detail =
-				err.response?.data?.detail ||
-				'An error occurred. Please try again.';
-			setError(detail);
-		} finally {
-			setIsSubmitting(false);
-		}
-	}
-
-	// ── Derived labels ────────────────────────────────────────────────────────
-	const isRegisterFlow = step === 'register-email' || step === 'register-otp';
-	const isForgotFlow = step === 'forgot-email' || step === 'forgot-otp';
-
-	const panelTitle = {
-		login: 'Return to your simulation command center.',
-		'register-email': 'Create a workspace for multi-agent reasoning.',
-		'register-otp': 'Create a workspace for multi-agent reasoning.',
-		'forgot-email': 'Reset your password.',
-		'forgot-otp': 'Reset your password.',
-	}[step];
-
-	const formHeader = {
-		login: {
-			kicker: 'Welcome back',
-			heading: 'Sign in to continue',
-			sub: 'Access your simulations, reports, and saved sessions.',
-		},
-		'register-email': {
-			kicker: 'Get started',
-			heading: 'Create your account',
-			sub: 'Set up an account to start building scenario and document workflows.',
-		},
-		'register-otp': {
-			kicker: 'Verify your email',
-			heading: 'Enter the code',
-			sub: `We sent a 6-digit code to ${email}. Enter it below to finish creating your account.`,
-		},
-		'forgot-email': {
-			kicker: 'Password reset',
-			heading: 'Forgot your password?',
-			sub: 'Enter your account email and we will send a reset code.',
-		},
-		'forgot-otp': {
-			kicker: 'Password reset',
-			heading: 'Enter the reset code',
-			sub: `We sent a 6-digit code to ${email}. Enter it below and choose a new password.`,
-		},
-	}[step];
+	const formHeader =
+		step === 'email'
+			? {
+					kicker: 'Welcome',
+					heading: 'Sign in to continue',
+					sub: `Enter your email and we'll send you a one-time sign-in code.`,
+				}
+			: {
+					kicker: 'Verify your email',
+					heading: 'Enter the code',
+					sub: `We sent a 6-digit code to ${email}. Enter it below to sign in.`,
+				};
 
 	return (
 		<div className="auth-page fade-in">
@@ -286,23 +198,6 @@ export default function Auth() {
 				<div className="auth-layout">
 					{/* ── Left story panel ─────────────────────────────── */}
 					<section className="auth-panel auth-story-panel">
-						<div className="landing-brandmark auth-brandmark">
-							<div className="landing-brandmark-icon">
-								<Settings size={20} />
-							</div>
-							<div>
-								<p className="landing-brandmark-name">
-									Thallus
-								</p>
-								<p className="landing-brandmark-subtitle">
-									Decision Intelligence
-								</p>
-							</div>
-						</div>
-
-						<p className="landing-kicker auth-kicker">
-							Strategic AI workspace
-						</p>
 						<h1 className="auth-title">{panelTitle}</h1>
 						<p className="auth-description">
 							Thallus is built for teams working through ambiguity
@@ -348,26 +243,6 @@ export default function Auth() {
 
 					{/* ── Right form panel ─────────────────────────────── */}
 					<section className="auth-panel auth-form-panel">
-						{/* Mode switch tabs — only for login / register-email */}
-						{(step === 'login' || step === 'register-email') && (
-							<div className="auth-mode-switch">
-								<button
-									type="button"
-									className={`auth-mode-button ${step === 'login' ? 'active' : ''}`}
-									onClick={() => goToStep('login')}
-								>
-									Sign in
-								</button>
-								<button
-									type="button"
-									className={`auth-mode-button ${step === 'register-email' ? 'active' : ''}`}
-									onClick={() => goToStep('register-email')}
-								>
-									Create account
-								</button>
-							</div>
-						)}
-
 						<div className="auth-form-header">
 							<p className="landing-panel-label">
 								{formHeader.kicker}
@@ -408,10 +283,10 @@ export default function Auth() {
 							</div>
 						)}
 
-						{/* ── Login form ──────────────────────────────── */}
-						{step === 'login' && (
+						{/* ── Step 1: enter email ───────────────────────── */}
+						{step === 'email' && (
 							<form
-								onSubmit={handleLogin}
+								onSubmit={handleSendOtp}
 								className="auth-form"
 							>
 								<div className="form-group auth-form-group">
@@ -419,7 +294,7 @@ export default function Auth() {
 										className="form-label"
 										htmlFor="auth-email"
 									>
-										Email
+										Email address
 									</label>
 									<input
 										id="auth-email"
@@ -434,97 +309,6 @@ export default function Auth() {
 										required
 									/>
 								</div>
-								<div className="form-group auth-form-group">
-									<label
-										className="form-label"
-										htmlFor="auth-password"
-									>
-										Password
-									</label>
-									<div className="auth-password-wrap">
-										<input
-											id="auth-password"
-											type="password"
-											className="input-field auth-input auth-input-password"
-											value={password}
-											onChange={(e) =>
-												setPassword(e.target.value)
-											}
-											placeholder="Enter your password"
-											autoComplete="current-password"
-											required
-										/>
-									</div>
-								</div>
-								<button
-									type="button"
-									className="auth-forgot-link"
-									onClick={() => {
-										setEmail('');
-										goToStep('forgot-email');
-									}}
-								>
-									Forgot password?
-								</button>
-								<button
-									type="submit"
-									className="btn auth-submit"
-									disabled={isSubmitting}
-								>
-									{isSubmitting ? 'Signing in…' : 'Sign in'}
-								</button>
-							</form>
-						)}
-
-						{/* ── Register step 1: email + password ──────── */}
-						{step === 'register-email' && (
-							<form
-								onSubmit={handleSendSignupOtp}
-								className="auth-form"
-							>
-								<div className="form-group auth-form-group">
-									<label
-										className="form-label"
-										htmlFor="reg-email"
-									>
-										Email
-									</label>
-									<input
-										id="reg-email"
-										type="email"
-										className="input-field auth-input"
-										value={email}
-										onChange={(e) =>
-											setEmail(e.target.value)
-										}
-										placeholder="you@email.com"
-										autoComplete="email"
-										required
-									/>
-								</div>
-								<div className="form-group auth-form-group">
-									<label
-										className="form-label"
-										htmlFor="reg-password"
-									>
-										Password
-									</label>
-									<div className="auth-password-wrap">
-										<input
-											id="reg-password"
-											type="password"
-											className="input-field auth-input auth-input-password"
-											value={password}
-											onChange={(e) =>
-												setPassword(e.target.value)
-											}
-											placeholder="Create a secure password"
-											autoComplete="new-password"
-											minLength={8}
-											required
-										/>
-									</div>
-								</div>
 								<button
 									type="submit"
 									className="btn auth-submit"
@@ -532,26 +316,26 @@ export default function Auth() {
 								>
 									{isSubmitting
 										? 'Sending code…'
-										: 'Send verification code'}
+										: 'Send sign-in code'}
 								</button>
 							</form>
 						)}
 
-						{/* ── Register step 2: enter OTP ─────────────── */}
-						{step === 'register-otp' && (
+						{/* ── Step 2: enter OTP ────────────────────────── */}
+						{step === 'otp' && (
 							<form
-								onSubmit={handleRegister}
+								onSubmit={handleVerifyOtp}
 								className="auth-form"
 							>
 								<div className="form-group auth-form-group">
 									<label
 										className="form-label"
-										htmlFor="reg-otp"
+										htmlFor="auth-otp"
 									>
-										Verification code
+										Sign-in code
 									</label>
 									<input
-										id="reg-otp"
+										id="auth-otp"
 										type="text"
 										inputMode="numeric"
 										className="input-field auth-input auth-otp-input"
@@ -566,6 +350,7 @@ export default function Auth() {
 										placeholder="000000"
 										maxLength={6}
 										autoComplete="one-time-code"
+										autoFocus
 										required
 									/>
 								</div>
@@ -574,9 +359,7 @@ export default function Auth() {
 									className="btn auth-submit"
 									disabled={isSubmitting || otp.length < 6}
 								>
-									{isSubmitting
-										? 'Creating account…'
-										: 'Create account'}
+									{isSubmitting ? 'Verifying…' : 'Sign in'}
 								</button>
 								<div className="auth-resend-row">
 									<button
@@ -595,175 +378,12 @@ export default function Auth() {
 									<button
 										type="button"
 										className="auth-inline-toggle"
-										onClick={() =>
-											goToStep('register-email')
-										}
+										onClick={goBack}
 									>
 										Change email
 									</button>
 								</div>
 							</form>
-						)}
-
-						{/* ── Forgot password step 1: enter email ─────── */}
-						{step === 'forgot-email' && (
-							<form
-								onSubmit={handleSendResetOtp}
-								className="auth-form"
-							>
-								<div className="form-group auth-form-group">
-									<label
-										className="form-label"
-										htmlFor="forgot-email"
-									>
-										Account email
-									</label>
-									<input
-										id="forgot-email"
-										type="email"
-										className="input-field auth-input"
-										value={email}
-										onChange={(e) =>
-											setEmail(e.target.value)
-										}
-										placeholder="you@email.com"
-										autoComplete="email"
-										required
-									/>
-								</div>
-								<button
-									type="submit"
-									className="btn auth-submit"
-									disabled={isSubmitting}
-								>
-									{isSubmitting
-										? 'Sending code…'
-										: 'Send reset code'}
-								</button>
-								<p className="auth-footnote">
-									Remembered it?
-									<button
-										type="button"
-										className="auth-inline-toggle"
-										onClick={() => goToStep('login')}
-									>
-										Back to sign in
-									</button>
-								</p>
-							</form>
-						)}
-
-						{/* ── Forgot password step 2: OTP + new pass ──── */}
-						{step === 'forgot-otp' && (
-							<form
-								onSubmit={handleResetPassword}
-								className="auth-form"
-							>
-								<div className="form-group auth-form-group">
-									<label
-										className="form-label"
-										htmlFor="reset-otp"
-									>
-										Reset code
-									</label>
-									<input
-										id="reset-otp"
-										type="text"
-										inputMode="numeric"
-										className="input-field auth-input auth-otp-input"
-										value={otp}
-										onChange={(e) =>
-											setOtp(
-												e.target.value
-													.replace(/\D/g, '')
-													.slice(0, 6),
-											)
-										}
-										placeholder="000000"
-										maxLength={6}
-										autoComplete="one-time-code"
-										required
-									/>
-								</div>
-								<div className="form-group auth-form-group">
-									<label
-										className="form-label"
-										htmlFor="reset-new-password"
-									>
-										New password
-									</label>
-									<div className="auth-password-wrap">
-										<input
-											id="reset-new-password"
-											type="password"
-											className="input-field auth-input auth-input-password"
-											value={newPassword}
-											onChange={(e) =>
-												setNewPassword(e.target.value)
-											}
-											placeholder="Create a new password"
-											autoComplete="new-password"
-											minLength={8}
-											required
-										/>
-									</div>
-								</div>
-								<button
-									type="submit"
-									className="btn auth-submit"
-									disabled={isSubmitting || otp.length < 6}
-								>
-									{isSubmitting
-										? 'Updating password…'
-										: 'Reset password'}
-								</button>
-								<div className="auth-resend-row">
-									<button
-										type="button"
-										className="auth-inline-toggle"
-										onClick={handleResendOtp}
-										disabled={
-											resendCountdown > 0 || isSubmitting
-										}
-									>
-										{resendCountdown > 0
-											? `Resend in ${resendCountdown}s`
-											: 'Resend code'}
-									</button>
-									<span className="auth-resend-sep">·</span>
-									<button
-										type="button"
-										className="auth-inline-toggle"
-										onClick={() => goToStep('forgot-email')}
-									>
-										Change email
-									</button>
-								</div>
-							</form>
-						)}
-
-						{/* ── Footer footnote ─────────────────────────── */}
-						{(step === 'login' || step === 'register-email') && (
-							<p className="auth-footnote">
-								{step === 'login'
-									? "Don't have an account?"
-									: 'Already set up?'}
-								<button
-									type="button"
-									className="auth-inline-toggle"
-									onClick={() =>
-										goToStep(
-											step === 'login'
-												? 'register-email'
-												: 'login',
-										)
-									}
-								>
-									{step === 'login'
-										? 'Create one'
-										: 'Sign in instead'}
-								</button>
-							</p>
 						)}
 					</section>
 				</div>

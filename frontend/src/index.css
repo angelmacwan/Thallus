@@ -1274,7 +1274,7 @@ button {
   display: grid;
   grid-template-columns: minmax(0, 1.05fr) minmax(360px, 0.95fr);
   gap: 1.5rem;
-  align-items: stretch;
+  align-items: start;
 }
 
 .auth-panel {
@@ -1302,7 +1302,7 @@ button {
 .auth-title {
   max-width: 11ch;
   font-family: 'Manrope', sans-serif;
-  font-size: clamp(2.8rem, 6vw, 5.2rem);
+  font-size: clamp(2rem, 4vw, 5rem);
   line-height: 0.95;
   letter-spacing: -0.07em;
   color: var(--primary);

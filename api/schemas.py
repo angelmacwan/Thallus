@@ -10,24 +10,12 @@ class WaitlistCreate(BaseModel):
 class UserBase(BaseModel):
     email: EmailStr
 
-class UserCreate(UserBase):
-    password: str
-
-class VerifySignupRequest(BaseModel):
-    email: EmailStr
-    password: str
-    otp: str
-
-class SendOTPRequest(BaseModel):
+class SendLoginOTPRequest(BaseModel):
     email: EmailStr
 
-class SendResetOTPRequest(BaseModel):
-    email: EmailStr
-
-class ResetPasswordRequest(BaseModel):
+class VerifyLoginOTPRequest(BaseModel):
     email: EmailStr
     otp: str
-    new_password: str
 
 class UserResponse(UserBase):
     id: int

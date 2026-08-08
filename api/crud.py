@@ -10,12 +10,15 @@ _OTP_MAX_ATTEMPTS = 5
 def get_user_by_email(db: Session, email: str):
     return db.query(models.User).filter(models.User.email == email).first()
 
-def create_user(db: Session, user: schemas.UserCreate):
-    hashed_password = get_password_hash(user.password)
+def create_user_passwordless(db: Session, email: str):
+    """Create a new user without a password (OTP-only auth). A random,
+    unusable hash is stored so the column constraint is satisfied."""
+    import secrets as _s
     from core.config import FREE_CREDITS_ON_SIGNUP_USD
+    random_hash = get_password_hash(_s.token_hex(32))
     db_user = models.User(
-        email=user.email,
-        hashed_password=hashed_password,
+        email=email,
+        hashed_password=random_hash,
         credits=FREE_CREDITS_ON_SIGNUP_USD,
     )
     db.add(db_user)

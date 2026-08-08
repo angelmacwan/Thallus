@@ -1,18 +1,18 @@
 from datetime import timedelta, datetime, timezone
-from fastapi import APIRouter, Depends, HTTPException, Request, status
-from fastapi.security import OAuth2PasswordRequestForm
+from fastapi import APIRouter, HTTPException, Request, status
 from sqlalchemy.orm import Session
+from fastapi import Depends
 from .. import crud, schemas, auth, models
-from ..deps import get_db, get_current_user
+from ..deps import get_db
 from core.config import SERVER, FREE_CREDITS_ON_SIGNUP_USD, CREDITS_PER_USD, ADMIN_EMAILS
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 # ── Rate limit constants ──────────────────────────────────────────────────────
-_WAITLIST_RATE_LIMIT = 3          # max submissions per IP per window
-_WAITLIST_WINDOW_MINUTES = 60     # rolling window in minutes
-_OTP_RESEND_COOLDOWN_SECONDS = 60 # minimum seconds between OTP sends
-_OTP_MAX_ATTEMPTS = 5             # max wrong guesses before code is locked
+_WAITLIST_RATE_LIMIT = 3           # max submissions per IP per window
+_WAITLIST_WINDOW_MINUTES = 60      # rolling window in minutes
+_OTP_RESEND_COOLDOWN_SECONDS = 60  # minimum seconds between OTP sends
+_OTP_MAX_ATTEMPTS = 5              # max wrong guesses before code is locked
 
 
 # ── Waitlist ──────────────────────────────────────────────────────────────────
@@ -52,31 +52,30 @@ def join_waitlist(payload: schemas.WaitlistCreate, request: Request, db: Session
     return {"message": "You are on the list. We will be in touch."}
 
 
-# ── OTP: send signup verification code ───────────────────────────────────────
+# ── Send login OTP ────────────────────────────────────────────────────────────
+# Works for both existing users (sign-in) and new users (auto-registration).
 
-@router.post("/send-signup-otp", status_code=200)
-def send_signup_otp(payload: schemas.SendOTPRequest, db: Session = Depends(get_db)):
+@router.post("/send-login-otp", status_code=200)
+def send_login_otp(payload: schemas.SendLoginOTPRequest, db: Session = Depends(get_db)):
     email = payload.email.strip().lower()
 
-    # Reject if not on the allowlist (when SERVER == "DEV")
-    # Admin emails are always allowed regardless of allowlist
-    if SERVER == "DEV" and email not in ADMIN_EMAILS and not crud.is_email_allowed(db, email):
-        crud.log_unauthorized_register(db, email=email)
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=(
-                "Thallus is currently invite-only. "
-                "Your email address is not on the access list. "
-                "You can request access by joining the waitlist on our homepage."
-            ),
-        )
+    user = crud.get_user_by_email(db, email=email)
 
-    # Reject if email is already registered
-    if crud.get_user_by_email(db, email=email):
-        raise HTTPException(status_code=409, detail="An account with this email already exists.")
+    # For brand-new users, enforce the DEV allowlist gate
+    if not user:
+        if SERVER == "DEV" and email not in ADMIN_EMAILS and not crud.is_email_allowed(db, email):
+            crud.log_unauthorized_register(db, email=email)
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=(
+                    "Thallus is currently invite-only. "
+                    "Your email address is not on the access list. "
+                    "You can request access by joining the waitlist on our homepage."
+                ),
+            )
 
-    # Enforce 60-second resend cooldown
-    last = crud.get_last_otp(db, email=email, purpose="signup")
+    # Enforce resend cooldown
+    last = crud.get_last_otp(db, email=email, purpose="login")
     if last:
         elapsed = (datetime.utcnow() - last.created_at).total_seconds()
         if elapsed < _OTP_RESEND_COOLDOWN_SECONDS:
@@ -86,133 +85,56 @@ def send_signup_otp(payload: schemas.SendOTPRequest, db: Session = Depends(get_d
                 detail=f"Please wait {wait} seconds before requesting another code.",
             )
 
-    otp = crud.create_otp(db, email=email, purpose="signup")
+    otp = crud.create_otp(db, email=email, purpose="login")
 
     from ..email import send_otp_email
-    send_otp_email(to=email, code=otp.code, purpose="signup")
+    send_otp_email(to=email, code=otp.code, purpose="login")
 
-    return {"message": "Verification code sent. Check your email."}
+    return {"message": "Login code sent. Check your email."}
 
 
-# ── Register (requires valid OTP) ─────────────────────────────────────────────
+# ── Verify login OTP ──────────────────────────────────────────────────────────
 
-@router.post("/register", response_model=schemas.UserResponse)
-def register(payload: schemas.VerifySignupRequest, db: Session = Depends(get_db)):
+@router.post("/verify-login-otp")
+def verify_login_otp(payload: schemas.VerifyLoginOTPRequest, db: Session = Depends(get_db)):
     email = payload.email.strip().lower()
 
-    # Verify OTP first
-    verified = crud.verify_otp(db, email=email, code=payload.otp.strip(), purpose="signup")
+    verified = crud.verify_otp(db, email=email, code=payload.otp.strip(), purpose="login")
     if not verified:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid or expired verification code.",
-        )
-
-    # DEV-mode gate — admin emails always bypass this check
-    if SERVER == "DEV" and email not in ADMIN_EMAILS and not crud.is_email_allowed(db, email):
-        crud.log_unauthorized_register(db, email=email)
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=(
-                "Thallus is currently invite-only. "
-                "Your email address is not on the access list. "
-                "You can request access by joining the waitlist on our homepage."
-            ),
-        )
-
-    if crud.get_user_by_email(db, email=email):
-        raise HTTPException(status_code=400, detail="Email already registered.")
-
-    # Build a UserCreate-compatible object with the normalised email
-    user_create = schemas.UserCreate(email=email, password=payload.password)
-    new_user = crud.create_user(db=db, user=user_create)
-
-    # Log welcome-credits transaction
-    from ..models import CreditTransaction
-    tx = CreditTransaction(
-        user_id=new_user.id,
-        amount_usd=FREE_CREDITS_ON_SIGNUP_USD,
-        description=f"Welcome credits ({FREE_CREDITS_ON_SIGNUP_USD * CREDITS_PER_USD:.0f} credits)",
-    )
-    db.add(tx)
-    db.commit()
-    crud.log_action(db, new_user.id, "register")
-    return new_user
-
-
-# ── OTP: send password-reset code ─────────────────────────────────────────────
-
-@router.post("/send-reset-otp", status_code=200)
-def send_reset_otp(payload: schemas.SendResetOTPRequest, db: Session = Depends(get_db)):
-    email = payload.email.strip().lower()
-
-    # Always return the same message to prevent user-enumeration
-    user = crud.get_user_by_email(db, email=email)
-    if not user:
-        return {"message": "If that email is registered, a reset code has been sent."}
-
-    # Enforce 60-second resend cooldown
-    last = crud.get_last_otp(db, email=email, purpose="password_reset")
-    if last:
-        elapsed = (datetime.utcnow() - last.created_at).total_seconds()
-        if elapsed < _OTP_RESEND_COOLDOWN_SECONDS:
-            wait = int(_OTP_RESEND_COOLDOWN_SECONDS - elapsed)
-            raise HTTPException(
-                status_code=429,
-                detail=f"Please wait {wait} seconds before requesting another code.",
-            )
-
-    otp = crud.create_otp(db, email=email, purpose="password_reset")
-
-    from ..email import send_otp_email
-    send_otp_email(to=email, code=otp.code, purpose="password_reset")
-
-    return {"message": "If that email is registered, a reset code has been sent."}
-
-
-# ── Reset password ────────────────────────────────────────────────────────────
-
-@router.post("/reset-password", status_code=200)
-def reset_password(payload: schemas.ResetPasswordRequest, db: Session = Depends(get_db)):
-    email = payload.email.strip().lower()
-
-    user = crud.get_user_by_email(db, email=email)
-    if not user:
-        raise HTTPException(status_code=404, detail="No account found with that email.")
-
-    verified = crud.verify_otp(db, email=email, code=payload.otp.strip(), purpose="password_reset")
-    if not verified:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid or expired reset code.",
-        )
-
-    user.hashed_password = auth.get_password_hash(payload.new_password)
-    db.commit()
-    crud.log_action(db, user.id, "password_reset")
-    return {"message": "Password updated successfully. You can now sign in."}
-
-
-# ── Login ─────────────────────────────────────────────────────────────────────
-
-@router.post("/login")
-def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
-    user = crud.get_user_by_email(db, email=form_data.username)
-    if not user or not auth.verify_password(form_data.password, user.hashed_password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect email or password",
-            headers={"WWW-Authenticate": "Bearer"},
+            detail="Invalid or expired code. Please try again.",
         )
+
+    # Auto-create account on first login
+    user = crud.get_user_by_email(db, email=email)
+    if not user:
+        user = crud.create_user_passwordless(db, email=email)
+        # Log welcome-credits transaction
+        from ..models import CreditTransaction
+        tx = CreditTransaction(
+            user_id=user.id,
+            amount_usd=FREE_CREDITS_ON_SIGNUP_USD,
+            description=f"Welcome credits ({FREE_CREDITS_ON_SIGNUP_USD * CREDITS_PER_USD:.0f} credits)",
+        )
+        db.add(tx)
+        db.commit()
+        crud.log_action(db, user.id, "register")
+
     if not user.is_active:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="This account has been deactivated. Contact support if you believe this is an error.",
         )
-    access_token_expires = timedelta(minutes=auth.ACCESS_TOKEN_EXPIRE_MINUTES)
+
     access_token = auth.create_access_token(
-        data={"sub": user.email}, expires_delta=access_token_expires
+        data={"sub": user.email},
+        expires_delta=timedelta(minutes=auth.ACCESS_TOKEN_EXPIRE_MINUTES),
     )
     crud.log_action(db, user.id, "login")
-    return {"access_token": access_token, "token_type": "bearer", "user_id": user.id, "email": user.email}
-
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "user_id": user.id,
+        "email": user.email,
+    }

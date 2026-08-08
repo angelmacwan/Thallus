@@ -17,11 +17,14 @@ def _get_client() -> None:
 def send_otp_email(
     to: str,
     code: str,
-    purpose: Literal["signup", "password_reset"],
+    purpose: Literal["login", "signup", "password_reset"],
 ) -> None:
     _get_client()
 
-    if purpose == "signup":
+    if purpose == "login":
+        subject = "Your Thallus sign-in code"
+        action_phrase = "sign in to your account"
+    elif purpose == "signup":
         subject = "Your Thallus verification code"
         action_phrase = "complete your registration"
     else:
@@ -120,7 +123,7 @@ def send_allowlist_welcome_email(to: str) -> None:
                   <td align="center"
                       style="background:linear-gradient(135deg,#4f46e5 0%,#7c3aed 100%);
                              border-radius:10px;padding:0;">
-                    <a href="https://thallus.staticalabs.com/register"
+                    <a href="https://thallus.staticalabs.com/auth"
                        style="display:inline-block;padding:14px 36px;font-size:15px;font-weight:700;
                               color:#ffffff;text-decoration:none;letter-spacing:0.02em;">
                       Create your account &rarr;

@@ -15,9 +15,15 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => response,
   (error) => {
+    // Don't intercept auth requests (let the calling form handle errors)
+    if (error.config?.url?.includes('/auth/')) {
+      return Promise.reject(error);
+    }
     if (error.response?.status === 401) {
       localStorage.removeItem('token');
-      window.location.href = '/login';
+      if (window.location.pathname !== '/login' && window.location.pathname !== '/auth') {
+        window.location.href = '/login';
+      }
     }
     return Promise.reject(error);
   }
@@ -32,12 +38,8 @@ export const waitlist = {
 
 // ── Auth ──────────────────────────────────────────────────────────────
 export const authApi = {
-  sendSignupOtp: (email) => api.post('/auth/send-signup-otp', { email }),
-  register: (email, password, otp) =>
-    api.post('/auth/register', { email, password, otp }),
-  sendResetOtp: (email) => api.post('/auth/send-reset-otp', { email }),
-  resetPassword: (email, otp, newPassword) =>
-    api.post('/auth/reset-password', { email, otp, new_password: newPassword }),
+  sendLoginOtp: (email) => api.post('/auth/send-login-otp', { email }),
+  verifyLoginOtp: (email, otp) => api.post('/auth/verify-login-otp', { email, otp }),
 };
 
 // ── Small World API ─────────────────────────────────────────────────
