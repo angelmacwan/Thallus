@@ -47,9 +47,10 @@ class ProfileGenerator:
         ]
     """
 
-    def __init__(self, graph: LocalGraphMemory):
+    def __init__(self, graph: LocalGraphMemory, api_key: str | None = None):
         self.graph = graph
-        self.client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+        self.api_key = api_key or os.getenv("GEMINI_API_KEY")
+        self.client = genai.Client(api_key=self.api_key)
         self._usage = UsageSummary()
 
     def generate_profiles(self, output_path: str = "data/agents.json", target_count: int = None, objective: str = "") -> list:

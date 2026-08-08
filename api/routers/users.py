@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from .. import models, schemas, crud
-from ..deps import get_db, get_current_user
+from ..deps import get_db, get_current_user, mask_api_key
 from core.config import FREE_CREDITS_ON_SIGNUP_USD, CREDITS_PER_USD
 
 router = APIRouter(prefix="/api/user", tags=["user"])
@@ -13,26 +13,55 @@ def get_me(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
-    credits_usd = current_user.credits if current_user.credits is not None else 0.0
+    has_key = bool(current_user.gemini_api_key and current_user.gemini_api_key.strip())
     return schemas.CreditsResponse(
         email=current_user.email,
-        credits_usd=round(credits_usd, 6),
-        display_credits=round(credits_usd * CREDITS_PER_USD),
-        initial_credits=round(FREE_CREDITS_ON_SIGNUP_USD * CREDITS_PER_USD),
+        credits_usd=0.0,
+        display_credits=0,
+        initial_credits=0,
+        has_gemini_api_key=has_key,
+        masked_gemini_api_key=mask_api_key(current_user.gemini_api_key) if has_key else None,
     )
 
 
-@router.post("/redeem-code", response_model=schemas.PromoCodeRedeemResponse)
-def redeem_code(
-    body: schemas.PromoCodeRedeemRequest,
+@router.put("/api-key", response_model=schemas.ApiKeyUpdateResponse)
+def update_api_key(
+    body: schemas.ApiKeyUpdateRequest,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
-    success, message, credits_added = crud.redeem_promo_code(db, current_user, body.code)
-    if not success:
-        raise HTTPException(status_code=400, detail=message)
-    return schemas.PromoCodeRedeemResponse(
+    key = body.get_key()
+    if not key:
+        raise HTTPException(status_code=400, detail="API key cannot be empty.")
+    
+    current_user.gemini_api_key = key
+    db.commit()
+    db.refresh(current_user)
+
+    crud.log_action(db, current_user.id, "update_gemini_api_key", "Updated Gemini API key")
+
+    return schemas.ApiKeyUpdateResponse(
         success=True,
-        message=message,
-        credits_added=credits_added,
+        message="Gemini API Key updated successfully.",
+        has_gemini_api_key=True,
+        masked_gemini_api_key=mask_api_key(key),
+    )
+
+
+@router.delete("/api-key", response_model=schemas.ApiKeyUpdateResponse)
+def delete_api_key(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    current_user.gemini_api_key = None
+    db.commit()
+    db.refresh(current_user)
+
+    crud.log_action(db, current_user.id, "delete_gemini_api_key", "Removed Gemini API key")
+
+    return schemas.ApiKeyUpdateResponse(
+        success=True,
+        message="Gemini API Key removed.",
+        has_gemini_api_key=False,
+        masked_gemini_api_key=None,
     )

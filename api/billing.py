@@ -43,45 +43,10 @@ def deduct_credits(
     description: str,
     session_db_id: Optional[int] = None,
 ) -> float:
-    """
-    Deduct calculated cost from user.credits and record a CreditTransaction.
-    Returns the amount deducted (in USD). Clamps to available balance.
-    """
-    from .models import User, CreditTransaction
-
-    user = db.query(User).filter(User.id == user_id).first()
-    if not user:
-        return 0.0
-
-    cost = calculate_cost_usd(usage)
-    # Never go below zero
-    actual_deduction = min(cost, max(user.credits, 0.0))
-    user.credits = max(0.0, user.credits - cost)
-
-    tx = CreditTransaction(
-        user_id=user_id,
-        amount_usd=-actual_deduction,
-        description=description,
-        session_id=session_db_id,
-    )
-    db.add(tx)
-    db.commit()
-    return actual_deduction
+    """No-op in BYOK framework."""
+    return 0.0
 
 
 def grant_signup_credits(db: DBSession, user_id: int) -> None:
-    """Credit a new user with FREE_CREDITS_ON_SIGNUP_USD and log the transaction."""
-    from .models import User, CreditTransaction
-    from core.config import FREE_CREDITS_ON_SIGNUP_USD
-
-    user = db.query(User).filter(User.id == user_id).first()
-    if not user:
-        return
-    user.credits = FREE_CREDITS_ON_SIGNUP_USD
-    tx = CreditTransaction(
-        user_id=user_id,
-        amount_usd=FREE_CREDITS_ON_SIGNUP_USD,
-        description="Welcome credits",
-    )
-    db.add(tx)
-    db.commit()
+    """No-op in BYOK framework."""
+    pass

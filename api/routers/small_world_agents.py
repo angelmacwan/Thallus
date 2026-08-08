@@ -15,7 +15,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from .. import models, schemas
-from ..deps import get_current_user, get_db, require_credits
+from ..deps import get_current_user, get_db, require_credits, get_user_gemini_api_key
 
 router = APIRouter(prefix="/api/small-world", tags=["small-world-agents"])
 
@@ -324,6 +324,8 @@ def generate_agent(
     from core.agent_generator import generate_agent_profile
     from ..billing import deduct_credits
 
+    user_api_key = get_user_gemini_api_key(current_user)
+
     sparse = {
         "name": body.name,
         "profession": body.profession,
@@ -333,7 +335,7 @@ def generate_agent(
         "description": body.description,
     }
     try:
-        profile, usage = generate_agent_profile(sparse)
+        profile, usage = generate_agent_profile(sparse, api_key=user_api_key)
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"AI generation failed: {exc}")
 
@@ -654,6 +656,8 @@ def auto_suggest_relationships(
     from core.agent_generator import suggest_relationships
     from ..billing import deduct_credits
 
+    user_api_key = get_user_gemini_api_key(current_user)
+
     world = _get_world_or_404(world_id, current_user.id, db)
     agents_db = db.query(models.SmallWorldAgent).filter(
         models.SmallWorldAgent.agent_id.in_(body.agent_ids),
@@ -675,7 +679,7 @@ def auto_suggest_relationships(
     ]
 
     try:
-        suggestions, usage = suggest_relationships(agent_summaries)
+        suggestions, usage = suggest_relationships(agent_summaries, api_key=user_api_key)
     except Exception as exc:
         import traceback
         print(f"[auto-suggest-relationships] ERROR: {exc}\n{traceback.format_exc()}", flush=True)

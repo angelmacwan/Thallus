@@ -324,6 +324,23 @@ class CreditsResponse(BaseModel):
     credits_usd: float
     display_credits: int   # credits_usd * CREDITS_PER_USD
     initial_credits: int   # FREE_CREDITS_ON_SIGNUP_USD * CREDITS_PER_USD
+    has_gemini_api_key: bool = False
+    masked_gemini_api_key: Optional[str] = None
+
+
+class ApiKeyUpdateRequest(BaseModel):
+    gemini_api_key: Optional[str] = None
+    api_key: Optional[str] = None
+
+    def get_key(self) -> str:
+        return (self.gemini_api_key or self.api_key or "").strip()
+
+
+class ApiKeyUpdateResponse(BaseModel):
+    success: bool
+    message: str
+    has_gemini_api_key: bool
+    masked_gemini_api_key: Optional[str] = None
 
 
 class PromoCodeRedeemRequest(BaseModel):

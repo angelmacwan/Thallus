@@ -830,7 +830,7 @@ export default function Admin() {
 			<Section
 				icon={Users}
 				title="Users"
-				subtitle="Account status, email identity, and credit allocation"
+				subtitle="Account status and email identity"
 				count={users.length}
 			>
 				<AdminTable
@@ -850,13 +850,8 @@ export default function Admin() {
 								</Badge>
 							),
 						},
-						{
-							key: 'credits',
-							label: 'Credits (USD)',
-							render: (v) => formatCurrency(v),
-						},
 					]}
-					editableFields={['email', 'is_active', 'credits']}
+					editableFields={['email', 'is_active']}
 					onSave={async (id, vals) => {
 						await adminApi.users.update(id, vals);
 						await loadAll();
@@ -978,100 +973,6 @@ export default function Admin() {
 						{
 							key: 'timestamp',
 							label: 'Timestamp',
-							render: (v) => formatDateTime(v),
-						},
-					]}
-					editableFields={[]}
-				/>
-			</Section>
-
-			{/* Promo Codes */}
-			<Section
-				icon={Tag}
-				title="Promo Codes"
-				subtitle="Credit campaigns, allocation limits, and redemption design"
-				count={promoCodes.length}
-			>
-				<AdminTable
-					rows={promoCodes}
-					columns={[
-						{ key: 'id', label: 'ID' },
-						{ key: 'code', label: 'Code' },
-						{
-							key: 'val',
-							label: 'Credits',
-							type: 'number',
-							render: (v) => formatNumber(v),
-						},
-						{ key: 'users', label: 'Max Uses', type: 'number' },
-						{
-							key: 'created_at',
-							label: 'Created',
-							render: (v) => formatDateTime(v),
-						},
-					]}
-					editableFields={['val', 'users']}
-					onSave={async (id, vals) => {
-						await adminApi.promoCodes.update(id, vals);
-						await loadAll();
-					}}
-					onDelete={async (id) => {
-						await adminApi.promoCodes.delete(id);
-						await loadAll();
-					}}
-					addRow={{
-						label: 'Create Code',
-						fields: [
-							{
-								key: 'code',
-								label: 'Code (e.g. LAUNCH50)',
-								type: 'text',
-								width: 180,
-							},
-							{
-								key: 'val',
-								label: 'Credits',
-								type: 'number',
-								default: 500,
-								width: 90,
-							},
-							{
-								key: 'users',
-								label: 'Max Uses',
-								type: 'number',
-								default: 100,
-								width: 90,
-							},
-						],
-						onAdd: async (vals) => {
-							await adminApi.promoCodes.create({
-								code: vals.code,
-								val: Number(vals.val),
-								users: Number(vals.users),
-							});
-							await loadAll();
-						},
-					}}
-				/>
-			</Section>
-
-			{/* Promo Code Usages */}
-			<Section
-				icon={Coins}
-				title="Promo Code Usages"
-				subtitle="Redemption history across accounts and campaigns"
-				count={promoCodeUsages.length}
-			>
-				<AdminTable
-					rows={promoCodeUsages}
-					columns={[
-						{ key: 'id', label: 'ID' },
-						{ key: 'user_id', label: 'User ID' },
-						{ key: 'email', label: 'Email' },
-						{ key: 'code', label: 'Code' },
-						{
-							key: 'redeemed_at',
-							label: 'Redeemed At',
 							render: (v) => formatDateTime(v),
 						},
 					]}

@@ -52,9 +52,10 @@ _CONCEPT_STOPWORDS = {
 }
 
 class TextProcessor:
-    def __init__(self, graph: LocalGraphMemory):
+    def __init__(self, graph: LocalGraphMemory, api_key: str | None = None):
         self.graph = graph
-        self.client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+        self.api_key = (api_key or "").strip() or (os.getenv("GEMINI_API_KEY") or "").strip()
+        self.client = genai.Client(api_key=self.api_key)
         self._usage = UsageSummary()
     
     def _normalize_entity_name(self, name: str) -> str:

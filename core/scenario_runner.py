@@ -33,6 +33,7 @@ class ScenarioRunner:
         user_label: str = "You",
         emit_event=None,
         objective: str = "",
+        api_key: str | None = None,
     ):
         self.agents_path = agents_path
         self.db_path = db_path
@@ -42,6 +43,7 @@ class ScenarioRunner:
         self.objective = objective.strip()
         self._emit = emit_event if callable(emit_event) else (lambda t, m: None)
         self._usage = UsageSummary()
+        self.api_key = api_key
 
     # ──────────────────────────────────────────────────────────────────────────
     # Public
@@ -191,11 +193,13 @@ class ScenarioRunner:
         from core.config import MODEL_NAME
         import os as _os
         _genai_client = None
-        try:
-            from google import genai as _genai
-            _genai_client = _genai.Client(api_key=_os.getenv("GEMINI_API_KEY"))
-        except Exception:
-            pass
+        key = self.api_key or _os.getenv("GEMINI_API_KEY")
+        if key:
+            try:
+                from google import genai as _genai
+                _genai_client = _genai.Client(api_key=key)
+            except Exception:
+                pass
 
         pe = PatternEngine(
             genai_client=_genai_client,
@@ -255,7 +259,8 @@ class ScenarioRunner:
         from camel.models import ModelFactory
         from camel.types import ModelPlatformType
 
-        if os.getenv("GEMINI_API_KEY"):
+        key = self.api_key or os.getenv("GEMINI_API_KEY")
+        if key:
             from camel.types import ModelType as MT
             try:
                 model_type = MT(CAMEL_MODEL_TYPE)
@@ -264,10 +269,11 @@ class ScenarioRunner:
             return ModelFactory.create(
                 model_platform=ModelPlatformType.GEMINI,
                 model_type=model_type,
+                api_key=key,
             )
 
         raise EnvironmentError(
-            "No LLM API key found. Set GEMINI_API_KEY in your .env file."
+            "Gemini API key is missing. Please set your Gemini API key in Settings."
         )
 
     def _export_db_to_log(self):

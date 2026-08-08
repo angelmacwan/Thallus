@@ -48,6 +48,7 @@ class SmallWorldRunner:
         parent_output_dir – output dir of parent scenario for branching (optional)
         rounds           – number of OASIS LLM rounds
         relationships    – list of user-defined AgentRelationship dicts (source_name, target_name, type, sentiment, …)
+        api_key          – optional API key for LLM services
         """
         self.agents = agents
         self.world_description = world_description
@@ -59,6 +60,7 @@ class SmallWorldRunner:
         self.relationships = relationships or []
         self._emit = emit_event if callable(emit_event) else (lambda t, m: None)
         self._usage = UsageSummary()
+        self.api_key = api_key
 
         os.makedirs(output_dir, exist_ok=True)
 
@@ -292,10 +294,10 @@ class SmallWorldRunner:
 
             # LLM rounds
             from core.config import MODEL_NAME
-            _genai_client = None
             try:
                 from google import genai as _genai
-                _genai_client = _genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+                key = (getattr(self, "api_key", None) or "").strip() or (os.getenv("GEMINI_API_KEY") or "").strip()
+                _genai_client = _genai.Client(api_key=key) if key else None
             except Exception:
                 pass
 
@@ -362,7 +364,8 @@ class SmallWorldRunner:
         from camel.models import ModelFactory
         from camel.types import ModelPlatformType, ModelType as MT
 
-        if os.getenv("GEMINI_API_KEY"):
+        key = self.api_key or os.getenv("GEMINI_API_KEY")
+        if key:
             try:
                 model_type = MT(model_type_str)
             except ValueError:
@@ -370,8 +373,9 @@ class SmallWorldRunner:
             return ModelFactory.create(
                 model_platform=ModelPlatformType.GEMINI,
                 model_type=model_type,
+                api_key=key,
             )
-        raise EnvironmentError("No LLM API key found. Set GEMINI_API_KEY.")
+        raise EnvironmentError("Gemini API key is missing. Please set your Gemini API key in Settings.")
 
     def _export_db_to_log(self, db_path: str, log_path: str) -> None:
         """Export OASIS simulation.db activity to JSONL."""

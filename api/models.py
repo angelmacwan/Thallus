@@ -13,6 +13,7 @@ class User(Base):
     hashed_password = Column(String)
     is_active = Column(Boolean, default=True)
     credits = Column(Float, default=1.0)  # stored in USD; display = credits * CREDITS_PER_USD
+    gemini_api_key = Column(String, nullable=True)
 
     sessions = relationship("Session", back_populates="owner")
     logs = relationship("ActionLog", back_populates="user")

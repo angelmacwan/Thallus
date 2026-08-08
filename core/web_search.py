@@ -23,9 +23,9 @@ from core.usage import UsageSummary
 from core.prompts import extract_search_topics_prompt, search_and_summarize_prompt
 
 
-def _extract_topics(seed_text: str, objective: str) -> tuple[list[str], UsageSummary]:
+def _extract_topics(seed_text: str, objective: str, api_key: str | None = None) -> tuple[list[str], UsageSummary]:
     """Use Gemini to extract 7-12 concrete, searchable topics from the seed + objective."""
-    client = genai.Client()
+    client = genai.Client(api_key=api_key or os.getenv("GEMINI_API_KEY"))
 
     combined = ""
     if objective:
@@ -59,9 +59,9 @@ def _slugify(text: str) -> str:
     return slug[:60]
 
 
-def _search_and_summarize(topic: str) -> tuple[str, UsageSummary]:
+def _search_and_summarize(topic: str, api_key: str | None = None) -> tuple[str, UsageSummary]:
     """Call Gemini with Google Search grounding and return a (Markdown summary, UsageSummary) tuple."""
-    client = genai.Client()
+    client = genai.Client(api_key=api_key or os.getenv("GEMINI_API_KEY"))
 
     google_search_tool = types.Tool(google_search=types.GoogleSearch())
 
@@ -145,7 +145,7 @@ def run_web_search_grounding(
     # ── 2. Extract topics ──────────────────────────────────────────────────
     _emit("Extracting search topics from seed documents…")
     try:
-        topics, extract_usage = _extract_topics(seed_text, objective)
+        topics, extract_usage = _extract_topics(seed_text, objective, api_key=api_key)
         usage += extract_usage
     except Exception as exc:
         _emit(f"Topic extraction failed: {exc}")
@@ -173,7 +173,7 @@ def run_web_search_grounding(
 
         _emit(f"Searching: {topic}")
         try:
-            summary, search_usage = _search_and_summarize(topic)
+            summary, search_usage = _search_and_summarize(topic, api_key=api_key)
             usage += search_usage
             header = f"# Web Research: {topic}\n\n*Retrieved automatically via Google Search grounding.*\n\n---\n\n"
             out_file.write_text(header + summary, encoding="utf-8")

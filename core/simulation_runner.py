@@ -33,6 +33,7 @@ class SimulationRunner:
         log_path: str,
         emit_event=None,
         objective: str = "",
+        api_key: str | None = None,
     ):
         self.graph = graph
         self.agents_path = agents_path
@@ -41,6 +42,7 @@ class SimulationRunner:
         self.objective = objective.strip()
         self._emit = emit_event if callable(emit_event) else (lambda t, m: None)
         self._usage = UsageSummary()
+        self.api_key = api_key
         # Will be set in run() — points to agents file OASIS should actually read
         self._effective_agents_path = agents_path
 
@@ -154,11 +156,13 @@ class SimulationRunner:
         from core.config import MODEL_NAME
         import os as _os
         _genai_client = None
-        try:
-            from google import genai as _genai
-            _genai_client = _genai.Client(api_key=_os.getenv("GEMINI_API_KEY"))
-        except Exception:
-            pass
+        key = self.api_key or _os.getenv("GEMINI_API_KEY")
+        if key:
+            try:
+                from google import genai as _genai
+                _genai_client = _genai.Client(api_key=key)
+            except Exception:
+                pass
 
         pe = PatternEngine(
             genai_client=_genai_client,
@@ -245,7 +249,8 @@ class SimulationRunner:
         from camel.models import ModelFactory
         from camel.types import ModelPlatformType
 
-        if os.getenv("GEMINI_API_KEY"):
+        key = self.api_key or os.getenv("GEMINI_API_KEY")
+        if key:
             # Resolve model type – fall back gracefully if the string is not
             # a recognised enum value in the installed camel-ai version.
             from camel.types import ModelType as MT
@@ -257,10 +262,11 @@ class SimulationRunner:
             return ModelFactory.create(
                 model_platform=ModelPlatformType.GEMINI,
                 model_type=model_type,
+                api_key=key,
             )
 
         raise EnvironmentError(
-            "No LLM API key found. Set GEMINI_API_KEY in your .env file."
+            "Gemini API key is missing. Please set your Gemini API key in Settings."
         )
 
     def _build_seed_posts(self) -> list[str]:
@@ -290,7 +296,8 @@ class SimulationRunner:
         prompt = seed_posts_prompt(objective_line=objective_line, context=context)
 
         try:
-            client = _genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+            key = self.api_key or os.getenv("GEMINI_API_KEY")
+            client = _genai.Client(api_key=key)
             response = client.models.generate_content(
                 model=MODEL_NAME,
                 contents=prompt,

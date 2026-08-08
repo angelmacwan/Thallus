@@ -34,12 +34,13 @@ from core.prompts import (
 
 
 class InsightsEngine:
-    def __init__(self, outputs_path: str, result_file: str = None):
+    def __init__(self, outputs_path: str, result_file: str | None = None, api_key: str | None = None):
         self.outputs_path = outputs_path
-        self._usage = UsageSummary()
         self.actions_file = os.path.join(outputs_path, "actions.jsonl")
         self.agents_file = os.path.join(outputs_path, "agents.json")
         self.result_file = result_file or os.path.join(outputs_path, "insights.json")
+        self.api_key = api_key
+        self._usage = UsageSummary()
 
     # ── Persist helpers ───────────────────────────────────────────────────────
 
@@ -100,7 +101,7 @@ class InsightsEngine:
     def _call_llm(self, prompt: str, temperature: float = 0.3) -> Optional[str]:
         if not GENAI_AVAILABLE:
             return None
-        api_key = os.getenv("GEMINI_API_KEY")
+        api_key = self.api_key or os.getenv("GEMINI_API_KEY")
         if not api_key:
             return None
         try:

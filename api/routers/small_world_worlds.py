@@ -20,7 +20,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from .. import models, schemas
-from ..deps import get_current_user, get_db, require_credits
+from ..deps import get_current_user, get_db, require_credits, get_user_gemini_api_key
 
 router = APIRouter(prefix="/api/small-world", tags=["small-world-worlds"])
 
@@ -506,6 +506,9 @@ def resimulate_scenario(
         s.report_path = None
         s.status = "created"
 
+    # Require user to have configured Gemini API Key
+    user_api_key = get_user_gemini_api_key(current_user)
+
     # Mark root as running and create its SSE queue immediately
     scenario.status = "running"
     output_dir = os.path.join(base, "worlds", world.world_id, "scenarios", scenario.scenario_id, "output")
@@ -526,6 +529,7 @@ def resimulate_scenario(
         user_email=current_user.email,
         user_id=current_user.id,
         root_q=root_q,
+        user_api_key=user_api_key,
     )
 
     return {
@@ -544,6 +548,7 @@ def _resimulate_cascade_background(
     user_email: str,
     user_id: int,
     root_q: _queue.Queue,
+    user_api_key: str | None = None,
 ) -> None:
     from ..database import SessionLocal
 
@@ -593,6 +598,7 @@ def _resimulate_cascade_background(
                 parent_output_dir=parent_output_dir,
                 q=q,
                 user_id=user_id,
+                user_api_key=user_api_key,
             )
         except Exception as exc:
             print(f"[resimulate_cascade] error on scenario {scenario_db_id}: {exc}")
@@ -612,6 +618,7 @@ def _run_scenario_background(
     parent_output_dir: str | None,
     q: _queue.Queue,
     user_id: int | None = None,
+    user_api_key: str | None = None,
 ) -> None:
     from ..database import SessionLocal
     from ..billing import UsageSummary, deduct_credits
@@ -620,6 +627,15 @@ def _run_scenario_background(
     usage = UsageSummary()
     try:
         scenario = db.query(models.WorldScenario).get(scenario_db_id)
+
+        if not user_api_key and (user_id or (scenario and scenario.world and scenario.world.user_id)):
+            uid = user_id or (scenario.world.user_id if scenario and scenario.world else None)
+            if uid:
+                u = db.query(models.User).get(uid)
+                if u and u.gemini_api_key:
+                    user_api_key = u.gemini_api_key.strip()
+        if not user_api_key:
+            user_api_key = os.getenv("GEMINI_API_KEY")
 
         def emit(etype: str, msg: str) -> None:
             event = models.WorldSimEvent(
@@ -643,6 +659,7 @@ def _run_scenario_background(
             emit_event=emit,
             parent_output_dir=parent_output_dir,
             rounds=2,
+            api_key=user_api_key,
         )
         runner.run()
         usage = runner._usage
@@ -665,6 +682,7 @@ def _run_scenario_background(
                 scenario_name=scenario_name,
                 seed_text=seed_text,
                 agent_profiles=agent_profiles,
+                api_key=user_api_key,
             )
             usage += report_usage
             report_path = os.path.join(output_dir, "report.json")
@@ -772,6 +790,8 @@ def post_chat_message(
     if scenario.status != "completed":
         raise HTTPException(status_code=400, detail="Chat is only available after simulation completes")
 
+    user_api_key = get_user_gemini_api_key(current_user)
+
     # Store user message
     user_msg = models.WorldScenarioChat(
         scenario_id=scenario.id,
@@ -782,7 +802,7 @@ def post_chat_message(
     db.flush()
 
     # Generate AI response
-    ai_text, ai_usage = _generate_chat_response(scenario, body.text, db)
+    ai_text, ai_usage = _generate_chat_response(scenario, body.text, db, api_key=user_api_key)
 
     ai_msg = models.WorldScenarioChat(
         scenario_id=scenario.id,
@@ -811,6 +831,7 @@ def _generate_chat_response(
     scenario: models.WorldScenario,
     question: str,
     db: Session,
+    api_key: str | None = None,
 ) -> tuple[str, "UsageSummary"]:
     """Use Gemini to answer a question about a completed scenario. Returns (text, UsageSummary)."""
     import os
@@ -860,7 +881,7 @@ def _generate_chat_response(
         question=question,
     )
 
-    client = _genai.Client(api_key=os.environ["GEMINI_API_KEY"])
+    client = _genai.Client(api_key=api_key or os.getenv("GEMINI_API_KEY"))
     response = client.models.generate_content(model=MODEL_NAME, contents=prompt)
 
     usage = UsageSummary()

@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from typing import List
 
 from .. import crud, schemas, models
-from ..deps import get_db, get_current_user, require_credits
+from ..deps import get_db, get_current_user, require_credits, get_user_gemini_api_key
 
 router = APIRouter(prefix="/api/simulation", tags=["simulation"])
 
@@ -40,7 +40,7 @@ def _get_current_user_query(
     return user
 
 
-def run_simulation_task(session_id: int, session_uuid: str, inputs_path: str, outputs_path: str, rounds: int, agent_count: int, emit, enable_web_search: bool = False, objective: str = "", user_id: int = None, focus_topics: list = None):
+def run_simulation_task(session_id: int, session_uuid: str, inputs_path: str, outputs_path: str, rounds: int, agent_count: int, emit, enable_web_search: bool = False, objective: str = "", user_id: int = None, focus_topics: list = None, user_api_key: str = None):
     # Runs in background task thread
     from ..database import SessionLocal
     from ..billing import UsageSummary, deduct_credits
@@ -52,6 +52,13 @@ def run_simulation_task(session_id: int, session_uuid: str, inputs_path: str, ou
 
     db_session.status = "running"
     db.commit()
+
+    if not user_api_key:
+        user = db.query(models.User).filter(models.User.id == (user_id or db_session.user_id)).first()
+        if user and user.gemini_api_key:
+            user_api_key = user.gemini_api_key.strip()
+    if not user_api_key:
+        user_api_key = os.getenv("GEMINI_API_KEY")
 
     usage = UsageSummary()
 
@@ -68,7 +75,7 @@ def run_simulation_task(session_id: int, session_uuid: str, inputs_path: str, ou
         if enable_web_search:
             try:
                 from core.web_search import run_web_search_grounding
-                _, ws_usage = run_web_search_grounding(inputs_path, objective=objective, emit=emit, focus_topics=focus_topics or [])
+                _, ws_usage = run_web_search_grounding(inputs_path, objective=objective, emit=emit, focus_topics=focus_topics or [], api_key=user_api_key)
                 usage += ws_usage
             except Exception as ws_exc:
                 emit("stage", f"Web search grounding skipped: {ws_exc}")
@@ -76,20 +83,20 @@ def run_simulation_task(session_id: int, session_uuid: str, inputs_path: str, ou
         emit("stage", "Processing input documents…")
         graph = LocalGraphMemory(storage_path=os.path.join(outputs_path, "graph.json"))
 
-        tp = TextProcessor(graph)
+        tp = TextProcessor(graph, api_key=user_api_key)
         tp.ingest_folder(inputs_path)
         usage += tp._usage
         emit("stage", "Text ingestion complete")
 
         emit("stage", "Generating ontology…")
-        og = OntologyGenerator(graph)
+        og = OntologyGenerator(graph, api_key=user_api_key)
         og.generate(output_path=os.path.join(outputs_path, "ontology.json"))
         usage += og._usage
         emit("stage", "Ontology generated")
 
         emit("stage", "Generating agent profiles…")
         agents_path = os.path.join(outputs_path, "agents.json")
-        pg = ProfileGenerator(graph)
+        pg = ProfileGenerator(graph, api_key=user_api_key)
         profiles = pg.generate_profiles(output_path=agents_path, target_count=agent_count, objective=objective)
         usage += pg._usage
         n_agents = len(profiles) if isinstance(profiles, list) else "?"
@@ -104,6 +111,7 @@ def run_simulation_task(session_id: int, session_uuid: str, inputs_path: str, ou
             log_path=log_path,
             emit_event=emit,
             objective=objective,
+            api_key=user_api_key,
         )
         sr.run(rounds)
         usage += sr._usage
@@ -172,6 +180,9 @@ async def upload_and_simulate(
         with open(objective_path, "w", encoding="utf-8") as f:
             f.write(objective.strip())
 
+    # Check that user has a Gemini API key configured
+    user_api_key = get_user_gemini_api_key(current_user)
+
     # Parse and persist focus topics
     focus_topics_list: list = []
     if focus_topics:
@@ -219,6 +230,7 @@ async def upload_and_simulate(
         objective or "",
         current_user.id,
         focus_topics_list,
+        user_api_key,
     )
 
     return db_session
@@ -472,9 +484,8 @@ def chat_with_report_agent(
                 "## Main Simulation Insights\n" + "\n".join(main_insight_parts)
             )
 
-    extra_context = "\n\n".join(extra_parts)
-
-    ra = ReportAgent(graph, log_path=log_path)
+    user_api_key = get_user_gemini_api_key(current_user)
+    ra = ReportAgent(graph, log_path=log_path, api_key=user_api_key)
 
     # Save user message
     user_msg = models.ChatMessage(session_id=db_session.id, is_user=True, text=query)

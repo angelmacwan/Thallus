@@ -1,20 +1,20 @@
 import React, { useEffect, useState } from 'react';
-import { X, Coins, User, Tag } from 'lucide-react';
+import { X, Key, Check, Trash2 } from 'lucide-react';
 import api from '../api';
 
 export default function SettingsModal({ open, onClose }) {
 	const [userData, setUserData] = useState(null);
 	const [version, setVersion] = useState(null);
 	const [loading, setLoading] = useState(false);
-	const [promoCode, setPromoCode] = useState('');
-	const [promoLoading, setPromoLoading] = useState(false);
-	const [promoMsg, setPromoMsg] = useState(null); // { type: 'success'|'error', text: string }
+	const [apiKeyInput, setApiKeyInput] = useState('');
+	const [apiKeyLoading, setApiKeyLoading] = useState(false);
+	const [apiKeyMsg, setApiKeyMsg] = useState(null);
 
 	useEffect(() => {
 		if (!open) return;
 		setLoading(true);
-		setPromoMsg(null);
-		setPromoCode('');
+		setApiKeyInput('');
+		setApiKeyMsg(null);
 		Promise.all([
 			api
 				.get('/user/me')
@@ -27,34 +27,44 @@ export default function SettingsModal({ open, onClose }) {
 		]).finally(() => setLoading(false));
 	}, [open]);
 
-	function handleRedeemCode() {
-		if (!promoCode.trim()) return;
-		setPromoLoading(true);
-		setPromoMsg(null);
-		api.post('/user/redeem-code', { code: promoCode.trim() })
+	function handleSaveApiKey() {
+		if (!apiKeyInput.trim()) return;
+		setApiKeyLoading(true);
+		setApiKeyMsg(null);
+		api.put('/user/api-key', { gemini_api_key: apiKeyInput.trim() })
 			.then((res) => {
-				setPromoMsg({ type: 'success', text: res.data.message });
-				setPromoCode('');
-				// Refresh credits display
+				setApiKeyMsg({ type: 'success', text: res.data.message });
+				setApiKeyInput('');
 				return api.get('/user/me');
 			})
 			.then((res) => res && setUserData(res.data))
 			.catch((err) => {
 				const detail =
-					err.response?.data?.detail || 'Failed to redeem code.';
-				setPromoMsg({ type: 'error', text: detail });
+					err.response?.data?.detail || 'Failed to update API key.';
+				setApiKeyMsg({ type: 'error', text: detail });
 			})
-			.finally(() => setPromoLoading(false));
+			.finally(() => setApiKeyLoading(false));
+	}
+
+	function handleDeleteApiKey() {
+		setApiKeyLoading(true);
+		setApiKeyMsg(null);
+		api.delete('/user/api-key')
+			.then((res) => {
+				setApiKeyMsg({ type: 'success', text: res.data.message });
+				setApiKeyInput('');
+				return api.get('/user/me');
+			})
+			.then((res) => res && setUserData(res.data))
+			.catch((err) => {
+				const detail =
+					err.response?.data?.detail || 'Failed to remove API key.';
+				setApiKeyMsg({ type: 'error', text: detail });
+			})
+			.finally(() => setApiKeyLoading(false));
 	}
 
 	if (!open) return null;
-
-	const credits = userData?.display_credits ?? 0;
-	const maxCredits = userData?.initial_credits ?? 100;
-	const pct =
-		maxCredits > 0 ? Math.min(100, (credits / maxCredits) * 100) : 0;
-
-	const barColor = pct > 50 ? '#16a34a' : pct > 20 ? '#d97706' : '#dc2626';
 
 	return (
 		<div
@@ -155,118 +165,91 @@ export default function SettingsModal({ open, onClose }) {
 							</span>
 						</div>
 
-						{/* Credits row */}
+						{/* Gemini API Key section */}
 						<div
 							style={{
-								display: 'flex',
-								justifyContent: 'space-between',
-								alignItems: 'center',
 								padding: '1rem 1rem',
 								borderBottom:
 									'1px solid var(--outline-variant)',
 							}}
 						>
-							<span style={{ fontSize: '0.95rem' }}>Credits</span>
 							<div
 								style={{
 									display: 'flex',
+									justifyContent: 'space-between',
 									alignItems: 'center',
-									gap: '0.5rem',
+									marginBottom: '0.5rem',
 								}}
 							>
-								<Coins
-									size={16}
-									color={barColor}
-									style={{ flexShrink: 0 }}
-								/>
-								<span
-									style={{
-										fontSize: '0.95rem',
-										fontWeight: 600,
-										color: barColor,
-									}}
-								>
-									{credits.toLocaleString()}
-								</span>
-							</div>
-						</div>
-
-						{/* Promo code row */}
-						<div
-							style={{
-								display: 'flex',
-								justifyContent: 'space-between',
-								alignItems: 'center',
-								gap: '1rem',
-								padding: '1rem 1rem',
-								borderBottom:
-									'1px solid var(--outline-variant)',
-							}}
-						>
-							<span
-								style={{ fontSize: '0.95rem', flexShrink: 0 }}
-							>
-								Promo Code
-							</span>
-							<div
-								style={{
-									display: 'flex',
-									gap: '0.5rem',
-									minWidth: 0,
-									flex: 1,
-									justifyContent: 'flex-end',
-								}}
-							>
-								<div
-									style={{
-										position: 'relative',
-										display: 'flex',
-										flex: 1,
-										maxWidth: '180px',
-									}}
-								>
-									<Tag
-										size={14}
-										color="var(--text-secondary)"
-										style={{
-											position: 'absolute',
-											left: '0.65rem',
-											top: '50%',
-											transform: 'translateY(-50%)',
-											pointerEvents: 'none',
-										}}
-									/>
-									<input
-										type="text"
-										value={promoCode}
-										onChange={(e) =>
-											setPromoCode(e.target.value)
-										}
-										onKeyDown={(e) =>
-											e.key === 'Enter' &&
-											handleRedeemCode()
-										}
-										placeholder="Code…"
-										disabled={promoLoading}
-										style={{
-											width: '100%',
-											paddingLeft: '2rem',
-											paddingRight: '0.5rem',
-											paddingTop: '0.4rem',
-											paddingBottom: '0.4rem',
-											borderRadius: '6px',
-											border: '1px solid var(--outline-variant)',
-											background: 'var(--surface)',
-											color: 'var(--text-primary)',
-											fontSize: '0.75rem',
-											outline: 'none',
-											boxSizing: 'border-box',
-										}}
-									/>
+								<div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+									<Key size={16} color="var(--primary)" />
+									<span style={{ fontSize: '0.95rem', fontWeight: 600 }}>Gemini API Key</span>
 								</div>
+								{userData?.has_gemini_api_key ? (
+									<span
+										style={{
+											fontSize: '0.75rem',
+											color: '#16a34a',
+											background: 'rgba(22,163,74,0.1)',
+											padding: '0.2rem 0.5rem',
+											borderRadius: '12px',
+											display: 'inline-flex',
+											alignItems: 'center',
+											gap: '0.25rem',
+											fontWeight: 500,
+										}}
+									>
+										<Check size={12} /> Key Configured ({userData.masked_gemini_api_key})
+									</span>
+								) : (
+									<span
+										style={{
+											fontSize: '0.75rem',
+											color: '#dc2626',
+											background: 'rgba(220,38,38,0.08)',
+											padding: '0.2rem 0.5rem',
+											borderRadius: '12px',
+											fontWeight: 500,
+										}}
+									>
+										Key Required
+									</span>
+								)}
+							</div>
+							<p
+								style={{
+									margin: '0 0 0.75rem 0',
+									fontSize: '0.75rem',
+									color: 'var(--text-secondary)',
+									lineHeight: 1.4,
+								}}
+							>
+								Bring your own Google Gemini API key to run simulations, scenarios, and report generation.
+							</p>
+
+							<div style={{ display: 'flex', gap: '0.5rem' }}>
+								<input
+									type="password"
+									value={apiKeyInput}
+									onChange={(e) => setApiKeyInput(e.target.value)}
+									onKeyDown={(e) => e.key === 'Enter' && handleSaveApiKey()}
+									placeholder={userData?.has_gemini_api_key ? 'Enter new key to update…' : 'AIzaSy…'}
+									disabled={apiKeyLoading}
+									style={{
+										flex: 1,
+										padding: '0.4rem 0.65rem',
+										borderRadius: '6px',
+										border: '1px solid var(--outline-variant)',
+										background: 'var(--surface)',
+										color: 'var(--text-primary)',
+										fontSize: '0.75rem',
+										outline: 'none',
+										boxSizing: 'border-box',
+									}}
+								/>
 								<button
-									onClick={handleRedeemCode}
-									disabled={promoLoading || !promoCode.trim()}
+									onClick={handleSaveApiKey}
+									disabled={apiKeyLoading || !apiKeyInput.trim()}
 									style={{
 										padding: '0.4rem 0.8rem',
 										borderRadius: '6px',
@@ -275,42 +258,57 @@ export default function SettingsModal({ open, onClose }) {
 										color: 'var(--on-primary)',
 										fontSize: '0.75rem',
 										fontWeight: 600,
-										cursor:
-											promoLoading || !promoCode.trim()
-												? 'not-allowed'
-												: 'pointer',
-										opacity:
-											promoLoading || !promoCode.trim()
-												? 0.55
-												: 1,
+										cursor: apiKeyLoading || !apiKeyInput.trim() ? 'not-allowed' : 'pointer',
+										opacity: apiKeyLoading || !apiKeyInput.trim() ? 0.55 : 1,
 										whiteSpace: 'nowrap',
 										flexShrink: 0,
 									}}
 								>
-									{promoLoading ? '…' : 'Redeem'}
+									{apiKeyLoading ? '…' : userData?.has_gemini_api_key ? 'Update' : 'Save'}
 								</button>
+								{userData?.has_gemini_api_key && (
+									<button
+										onClick={handleDeleteApiKey}
+										disabled={apiKeyLoading}
+										title="Remove API Key"
+										style={{
+											padding: '0.4rem 0.6rem',
+											borderRadius: '6px',
+											border: '1px solid var(--outline-variant)',
+											background: 'transparent',
+											color: '#dc2626',
+											fontSize: '0.75rem',
+											cursor: apiKeyLoading ? 'not-allowed' : 'pointer',
+											display: 'flex',
+											alignItems: 'center',
+											justifyContent: 'center',
+											flexShrink: 0,
+										}}
+									>
+										<Trash2 size={14} />
+									</button>
+								)}
 							</div>
 						</div>
 
-						{promoMsg && (
+						{apiKeyMsg && (
 							<div
 								style={{
 									padding: '0.75rem 1rem',
-									borderBottom:
-										'1px solid var(--outline-variant)',
+									borderBottom: '1px solid var(--outline-variant)',
 									fontSize: '0.75rem',
 									lineHeight: 1.4,
 									background:
-										promoMsg.type === 'success'
+										apiKeyMsg.type === 'success'
 											? 'rgba(22,163,74,0.08)'
 											: 'rgba(220,38,38,0.06)',
 									color:
-										promoMsg.type === 'success'
+										apiKeyMsg.type === 'success'
 											? '#16a34a'
 											: '#dc2626',
 								}}
 							>
-								{promoMsg.text}
+								{apiKeyMsg.text}
 							</div>
 						)}
 

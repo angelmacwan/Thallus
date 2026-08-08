@@ -33,18 +33,7 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
 
 
 def require_credits(current_user: models.User = Depends(get_current_user)):
-    """Dependency that blocks the request if the user has no credits remaining."""
-    credits = current_user.credits if current_user.credits is not None else 0.0
-    if credits <= 0:
-        from core.config import CREDITS_PER_USD
-        raise HTTPException(
-            status_code=status.HTTP_402_PAYMENT_REQUIRED,
-            detail=(
-                f"You have run out of credits. "
-                f"Your current balance is 0 credits. "
-                "Please top up to continue using Thallus."
-            ),
-        )
+    """Pass-through dependency (BYOK framework - no credit limits enforced)."""
     return current_user
 
 
@@ -57,3 +46,27 @@ def require_admin(current_user: models.User = Depends(get_current_user)):
             detail="Admin access required.",
         )
     return current_user
+
+
+def mask_api_key(key: str | None) -> str | None:
+    if not key:
+        return None
+    key = key.strip()
+    if len(key) >= 10:
+        return f"{key[:6]}...{key[-4:]}"
+    return "••••••••"
+
+
+def get_user_gemini_api_key(user: models.User) -> str:
+    """Retrieve the user's saved Gemini API key from DB, falling back to GEMINI_API_KEY env var if present."""
+    import os
+    key = (user.gemini_api_key or "").strip() or (os.getenv("GEMINI_API_KEY") or "").strip()
+    if not key or key == "your_gemini_api_key_here":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "Gemini API key is required. Please open Settings and add your Gemini API Key before running simulations."
+            ),
+        )
+    return key
+

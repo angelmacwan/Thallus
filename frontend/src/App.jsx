@@ -53,6 +53,7 @@ import SimulationsView from './views/Simulations';
 import AdminView from './views/Admin';
 import NewSimulationModal from './components/NewSimulationModal';
 import SettingsModal from './components/SettingsModal';
+import ApiKeyRequiredModal from './components/ApiKeyRequiredModal';
 
 function InfoModal({ open, onClose }) {
 	if (!open) return null;
@@ -406,8 +407,21 @@ function Sidebar() {
 	const [profileOpen, setProfileOpen] = useState(false);
 	const [infoOpen, setInfoOpen] = useState(false);
 	const [settingsOpen, setSettingsOpen] = useState(false);
+	const [apiKeyRequiredOpen, setApiKeyRequiredOpen] = useState(false);
 	const [credits, setCredits] = useState(null);
 	const profileRef = useRef(null);
+
+	// Listen for global modal open events
+	useEffect(() => {
+		const handleOpenSettings = () => setSettingsOpen(true);
+		const handleOpenKeyPrompt = () => setApiKeyRequiredOpen(true);
+		window.addEventListener('open-settings', handleOpenSettings);
+		window.addEventListener('open-api-key-required', handleOpenKeyPrompt);
+		return () => {
+			window.removeEventListener('open-settings', handleOpenSettings);
+			window.removeEventListener('open-api-key-required', handleOpenKeyPrompt);
+		};
+	}, []);
 
 	// Decode email from JWT
 	const email = (() => {
@@ -883,57 +897,6 @@ function Sidebar() {
 								zIndex: 100,
 							}}
 						>
-							{/* Credits bar */}
-							{credits !== null &&
-								(() => {
-									const pct =
-										credits.initial_credits > 0
-											? Math.min(
-													100,
-													(credits.display_credits /
-														credits.initial_credits) *
-														100,
-												)
-											: 0;
-									const barColor =
-										pct > 50
-											? '#16a34a'
-											: pct > 20
-												? '#d97706'
-												: '#dc2626';
-									return (
-										<div
-											style={{
-												padding: '0.6rem 0.85rem',
-												borderBottom:
-													'1px solid var(--outline-variant)',
-											}}
-										>
-											<div
-												style={{
-													display: 'flex',
-													alignItems: 'center',
-													gap: '0.35rem',
-												}}
-											>
-												<Coins
-													size={12}
-													color={barColor}
-												/>
-												<span
-													style={{
-														fontSize: '0.72rem',
-														fontWeight: 600,
-														color: barColor,
-													}}
-												>
-													{credits.display_credits.toLocaleString()}{' '}
-													credits
-												</span>
-											</div>
-										</div>
-									);
-								})()}
 							<button
 								className="sidebar-nav-btn"
 								onClick={() => {
@@ -1037,6 +1000,10 @@ function Sidebar() {
 			<SettingsModal
 				open={settingsOpen}
 				onClose={() => setSettingsOpen(false)}
+			/>
+			<ApiKeyRequiredModal
+				open={apiKeyRequiredOpen}
+				onClose={() => setApiKeyRequiredOpen(false)}
 			/>
 		</>
 	);

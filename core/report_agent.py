@@ -10,10 +10,11 @@ from core.usage import UsageSummary
 from core.prompts import report_agent_chat_prompt, structured_report_prompt
 
 class ReportAgent:
-    def __init__(self, graph: LocalGraphMemory, log_path: str = "data/actions.jsonl"):
+    def __init__(self, graph: LocalGraphMemory, log_path: str = "data/actions.jsonl", api_key: str | None = None):
         self.graph = graph
         self.log_path = log_path
-        self.client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+        self.api_key = api_key or os.getenv("GEMINI_API_KEY")
+        self.client = genai.Client(api_key=self.api_key)
         self._usage = UsageSummary()
 
     def _load_logs(self) -> str:

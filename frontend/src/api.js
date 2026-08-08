@@ -25,6 +25,14 @@ api.interceptors.response.use(
         window.location.href = '/login';
       }
     }
+    const detail = error.response?.data?.detail;
+    if (
+      error.response?.status === 400 &&
+      typeof detail === 'string' &&
+      (detail.includes('Gemini API key') || detail.includes('Gemini API Key'))
+    ) {
+      window.dispatchEvent(new CustomEvent('open-api-key-required'));
+    }
     return Promise.reject(error);
   }
 );

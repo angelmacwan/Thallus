@@ -26,11 +26,12 @@ from core.prompts import generate_questions_prompt, answer_questions_prompt
 
 
 class QuestionMetrics:
-    def __init__(self, outputs_path: str):
+    def __init__(self, outputs_path: str, api_key: str | None = None):
         self.outputs_path = outputs_path
         self.actions_file = os.path.join(outputs_path, "actions.jsonl")
         self.agents_file = os.path.join(outputs_path, "agents.json")
         self.objective_file = os.path.join(outputs_path, "objective.txt")
+        self.api_key = api_key
         self._usage = UsageSummary()
         self.result_file = os.path.join(outputs_path, "questions_metrics.json")
 
@@ -176,7 +177,7 @@ class QuestionMetrics:
     def _call_llm(self, prompt: str, temperature: float = 0.2) -> Optional[str]:
         if not GENAI_AVAILABLE:
             return None
-        api_key = os.getenv("GEMINI_API_KEY")
+        api_key = self.api_key or os.getenv("GEMINI_API_KEY")
         if not api_key:
             return None
         try:

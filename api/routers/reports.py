@@ -6,7 +6,7 @@ from fastapi.responses import PlainTextResponse
 from sqlalchemy.orm import Session
 
 from .. import crud, schemas, models
-from ..deps import get_db, get_current_user
+from ..deps import get_db, get_current_user, get_user_gemini_api_key
 from ..billing import deduct_credits
 
 router = APIRouter(prefix="/api/reports", tags=["reports"])
@@ -19,6 +19,8 @@ def generate_report(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
+    user_api_key = get_user_gemini_api_key(current_user)
+
     db_session = crud.get_session(db, session_uuid)
     if not db_session or db_session.user_id != current_user.id:
         raise HTTPException(status_code=404, detail="Session not found")
@@ -65,7 +67,7 @@ def generate_report(
             except Exception:
                 pass
 
-    ra = ReportAgent(graph, log_path=log_path)
+    ra = ReportAgent(graph, log_path=log_path, api_key=user_api_key)
 
     report_uuid = uuid.uuid4().hex
     file_name = f"report_{report_uuid}.md"

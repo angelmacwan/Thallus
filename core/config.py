@@ -1,7 +1,7 @@
 import os
 
 # Google GenAI model used for ingestion, ontology, and profiling
-MODEL_NAME = 'gemini-2.5-flash-lite'
+MODEL_NAME = 'gemini-3.1-flash-lite'
 
 # camel-ai model type string used by the OASIS simulation runner.
 # Must be a model type recognised by camel-ai (e.g. "gemini-1.5-flash",

@@ -32,6 +32,7 @@ def generate_report(
     scenario_name: str,
     seed_text: str,
     agent_profiles: list[dict[str, Any]],
+    api_key: str | None = None,
 ) -> tuple[dict[str, Any], UsageSummary]:
     """
     Read actions.jsonl and agent profiles from output_dir, call Gemini,
@@ -41,7 +42,7 @@ def generate_report(
     from google.genai import types as _gtypes
     from core.config import MODEL_NAME
 
-    client = _genai.Client(api_key=os.environ["GEMINI_API_KEY"])
+    client = _genai.Client(api_key=api_key or os.getenv("GEMINI_API_KEY"))
 
     # Read activity log
     log_path = os.path.join(output_dir, "actions.jsonl")

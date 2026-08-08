@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 from typing import List
 from .. import crud, models, schemas
 from ..database import SessionLocal, get_db
-from ..deps import get_current_user, require_credits
+from ..deps import get_current_user, require_credits, get_user_gemini_api_key
 
 router = APIRouter(
     prefix="/api/insights",
@@ -70,7 +70,7 @@ def _status_from_file(file_path: str) -> schemas.InsightsStatusResponse:
         return schemas.InsightsStatusResponse(available=False, status="pending")
 
 
-def _run_insights_bg(outputs_path: str, query: str, debate_rounds: int, insight_id: str, user_id: int = None) -> None:
+def _run_insights_bg(outputs_path: str, query: str, debate_rounds: int, insight_id: str, user_id: int = None, user_api_key: str = None) -> None:
     """Background task: run InsightsEngine and update DB status when done."""
     from core.insights_engine import InsightsEngine
     from ..billing import UsageSummary, deduct_credits
@@ -83,10 +83,17 @@ def _run_insights_bg(outputs_path: str, query: str, debate_rounds: int, insight_
         record = crud.get_insight_by_uuid(db, insight_id)
         if record:
             crud.update_insight_status(db, record, "running")
+            if not user_api_key and (user_id or record.user_id):
+                u = db.query(models.User).get(user_id or record.user_id)
+                if u and u.gemini_api_key:
+                    user_api_key = u.gemini_api_key.strip()
     finally:
         db.close()
 
-    engine = InsightsEngine(outputs_path, result_file=file_path)
+    if not user_api_key:
+        user_api_key = os.getenv("GEMINI_API_KEY")
+
+    engine = InsightsEngine(outputs_path, result_file=file_path, api_key=user_api_key)
     usage = engine.run(query, debate_rounds)
 
     # Update DB status from final file and deduct credits
@@ -215,6 +222,8 @@ def generate_insights(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(require_credits),
 ):
+    user_api_key = get_user_gemini_api_key(current_user)
+
     db_session = crud.get_session(db, session_uuid)
     if not db_session or db_session.user_id != current_user.id:
         raise HTTPException(status_code=404, detail="Session not found")
@@ -239,7 +248,7 @@ def generate_insights(
     )
 
     background_tasks.add_task(
-        _run_insights_bg, db_session.outputs_path, request.query, debate_rounds, insight_id, current_user.id
+        _run_insights_bg, db_session.outputs_path, request.query, debate_rounds, insight_id, current_user.id, user_api_key
     )
     return {"message": "Insights generation started", "insight_id": insight_id}
 
@@ -300,6 +309,8 @@ def generate_scenario_insights(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(require_credits),
 ):
+    user_api_key = get_user_gemini_api_key(current_user)
+
     scenario = crud.get_scenario_by_uuid(db, scenario_uuid)
     if not scenario or not scenario.outputs_path:
         raise HTTPException(status_code=404, detail="Scenario not found")
@@ -319,7 +330,7 @@ def generate_scenario_insights(
     )
 
     background_tasks.add_task(
-        _run_insights_bg, scenario.outputs_path, request.query, debate_rounds, insight_id, current_user.id
+        _run_insights_bg, scenario.outputs_path, request.query, debate_rounds, insight_id, current_user.id, user_api_key
     )
     return {"message": "Insights generation started", "insight_id": insight_id}
 

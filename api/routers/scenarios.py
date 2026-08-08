@@ -10,7 +10,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from .. import crud, models, schemas
-from ..deps import get_current_user, get_db, require_credits
+from ..deps import get_current_user, get_db, require_credits, get_user_gemini_api_key
 
 router = APIRouter(prefix="/api/scenarios", tags=["scenarios"])
 
@@ -122,6 +122,7 @@ def _run_scenario_task(
     emit,
     user_label: str = "You",
     user_id: int = None,
+    user_api_key: str = None,
 ):
     from ..database import SessionLocal
     from ..billing import UsageSummary, deduct_credits
@@ -135,6 +136,13 @@ def _run_scenario_task(
     scenario.status = "running"
     scenario.outputs_path = scenario_outputs_path
     db.commit()
+
+    if not user_api_key:
+        user = db.query(models.User).filter(models.User.id == (user_id or scenario.user_id)).first()
+        if user and user.gemini_api_key:
+            user_api_key = user.gemini_api_key.strip()
+    if not user_api_key:
+        user_api_key = os.getenv("GEMINI_API_KEY")
 
     usage = UsageSummary()
 
@@ -162,6 +170,7 @@ def _run_scenario_task(
             user_label=user_label,
             emit_event=emit,
             objective=objective,
+            api_key=user_api_key,
         )
         sr.run(rounds)
         usage += sr._usage
@@ -225,6 +234,9 @@ def run_scenario(
         except Exception:
             pass
 
+    # Require user to have configured Gemini API Key
+    user_api_key = get_user_gemini_api_key(current_user)
+
     # Derive a readable label from the user's email (e.g. "angel" from "angel@example.com")
     user_label = current_user.email.split("@")[0]
 
@@ -239,6 +251,7 @@ def run_scenario(
         emit,
         user_label,
         current_user.id,
+        user_api_key,
     )
 
     crud.log_action(db, current_user.id, "run_scenario", f"Scenario: {scenario_uuid}")
@@ -424,9 +437,8 @@ def chat_with_scenario(
     # Use scenario-specific log if available, fall back to main session log
     scenario_log = os.path.join(scenario.outputs_path, "actions.jsonl") if scenario.outputs_path else None
     main_log = os.path.join(db_session.outputs_path, "actions.jsonl")
-    log_path = scenario_log if scenario_log and os.path.exists(scenario_log) else main_log
-
-    ra = ReportAgent(graph, log_path=log_path)
+    user_api_key = get_user_gemini_api_key(current_user)
+    ra = ReportAgent(graph, log_path=log_path, api_key=user_api_key)
 
     enriched_query = scenario_chat_context_prompt(
         scenario_name=scenario.name,
