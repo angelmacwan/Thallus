@@ -53,7 +53,7 @@ class ProfileGenerator:
         self.client = genai.Client(api_key=self.api_key)
         self._usage = UsageSummary()
 
-    def generate_profiles(self, output_path: str = "data/agents.json", target_count: int = None, objective: str = "") -> list:
+    def generate_profiles(self, output_path: str = "data/agents.json", init_populations: list = None, objective: str = "") -> list:
         objective = (objective or "").strip()
 
         # ── Step 1: Always extract agents from named entities in the seed documents ──
@@ -85,15 +85,28 @@ class ProfileGenerator:
         core_count = len(agents)
         print(f"Generated {core_count} core seed agent(s) from graph entities")
 
-        # ── Step 2: If a force count is specified, add that many additional agents ──
-        if target_count:
-            print(f"Force-generating {target_count} additional agent(s) on top of {core_count} seed agents…")
+        # ── Step 2: If init_populations is specified, use them as reference ──
+        if init_populations:
+            print(f"Force-generating initial populations: {init_populations}")
             existing_names = {a.get("realname", "") for a in agents}
-            additional = self._generate_objective_agents(objective, target_count, existing_names=existing_names)
-            agents.extend(additional)
-            print(f"Total: {len(agents)} agent(s) ({core_count} seed + {len(additional)} force-generated)")
+            
+            # Read reference MD files
+            population_context = ""
+            for pop in init_populations:
+                pop_file = f"api/reference_populations/{pop}.md"
+                if os.path.exists(pop_file):
+                    with open(pop_file, "r") as f:
+                        population_context += f"\\n\\n{f.read()}"
+            
+            if population_context:
+                target_count = len(init_populations) * 50 # Generate ~50 per population
+                objective_with_pop = f"{objective}\\n\\nREFERENCE POPULATIONS TO INCLUDE:\\n{population_context}"
+                additional = self._generate_objective_agents(objective_with_pop, target_count, existing_names=existing_names)
+                agents.extend(additional)
+            
+            print(f"Total: {len(agents)} agent(s) ({core_count} seed + {len(agents) - core_count} from populations)")
 
-        # ── Step 3: If seed extraction yielded nothing and no force count, fall back ──
+        # ── Step 3: If seed extraction yielded nothing and no initial populations, fall back ──
         elif core_count == 0:
             print("No named entities found in seed documents; using objective-driven generation as fallback…")
             agents = self._generate_objective_agents(objective, target_count=None)

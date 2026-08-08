@@ -251,13 +251,14 @@ class SimulationRunner:
 
         key = self.api_key or os.getenv("GEMINI_API_KEY")
         if key:
-            # Resolve model type – fall back gracefully if the string is not
-            # a recognised enum value in the installed camel-ai version.
-            from camel.types import ModelType as MT
-            try:
-                model_type = MT(CAMEL_MODEL_TYPE)
-            except ValueError:
-                model_type = MT.GEMINI_1_5_FLASH  # safe fallback
+            # Resolve model type by bypassing enum validation so we can use newer models
+            # that aren't yet in camel-ai's ModelType enum.
+            class CustomModelType(str):
+                @property
+                def value(self):
+                    return str(self)
+            model_type = CustomModelType(CAMEL_MODEL_TYPE)
+            
             print(f"Using Google/Gemini model: {model_type.value}")
             return ModelFactory.create(
                 model_platform=ModelPlatformType.GEMINI,

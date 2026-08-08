@@ -40,7 +40,7 @@ def _get_current_user_query(
     return user
 
 
-def run_simulation_task(session_id: int, session_uuid: str, inputs_path: str, outputs_path: str, rounds: int, agent_count: int, emit, enable_web_search: bool = False, objective: str = "", user_id: int = None, focus_topics: list = None, user_api_key: str = None):
+def run_simulation_task(session_id: int, session_uuid: str, inputs_path: str, outputs_path: str, rounds: int, init_populations: list, emit, enable_web_search: bool = False, objective: str = "", user_id: int = None, focus_topics: list = None, user_api_key: str = None):
     # Runs in background task thread
     from ..database import SessionLocal
     from ..billing import UsageSummary, deduct_credits
@@ -97,7 +97,7 @@ def run_simulation_task(session_id: int, session_uuid: str, inputs_path: str, ou
         emit("stage", "Generating agent profiles…")
         agents_path = os.path.join(outputs_path, "agents.json")
         pg = ProfileGenerator(graph, api_key=user_api_key)
-        profiles = pg.generate_profiles(output_path=agents_path, target_count=agent_count, objective=objective)
+        profiles = pg.generate_profiles(output_path=agents_path, init_populations=init_populations, objective=objective)
         usage += pg._usage
         n_agents = len(profiles) if isinstance(profiles, list) else "?"
         emit("stage", f"{n_agents} agent profile(s) generated")
@@ -144,7 +144,7 @@ def run_simulation_task(session_id: int, session_uuid: str, inputs_path: str, ou
 async def upload_and_simulate(
     background_tasks: BackgroundTasks,
     rounds: int = Form(...),
-    agent_count: int = Form(None),  # Optional: only force inflate if specified
+    init_populations: str = Form(None),
     title: str = Form(None),
     objective: str = Form(None),
     enable_web_search: bool = Form(False),
@@ -191,6 +191,14 @@ async def upload_and_simulate(
         except Exception:
             focus_topics_list = []
 
+    # Parse init populations
+    init_populations_list: list = []
+    if init_populations:
+        try:
+            init_populations_list = _json.loads(init_populations)
+        except Exception:
+            init_populations_list = []
+
     # Create session
     db_session = crud.create_session(db, current_user.id, inputs_path, outputs_path, rounds, title)
     db_session.session_id = session_uuid
@@ -224,7 +232,7 @@ async def upload_and_simulate(
         inputs_path,
         outputs_path,
         rounds,
-        agent_count,
+        init_populations_list,
         emit,
         enable_web_search,
         objective or "",
@@ -703,7 +711,7 @@ async def resimulate(
     background_tasks: BackgroundTasks,
     session_uuid: str,
     rounds: int = Form(...),
-    agent_count: int = Form(None),
+    init_populations: str = Form(None),
     objective: str = Form(None),
     enable_web_search: bool = Form(False),
     focus_topics: str = Form(None),  # JSON-encoded list of user-defined search topics
@@ -808,6 +816,14 @@ async def resimulate(
     db.commit()
     db.refresh(db_session)
 
+    # Parse init populations
+    init_populations_list: list = []
+    if init_populations:
+        try:
+            init_populations_list = _json.loads(init_populations)
+        except Exception:
+            init_populations_list = []
+
     crud.log_action(db, current_user.id, "resimulate", f"Session: {session_uuid}, Rounds: {rounds}")
 
     # 7. Queue background simulation task
@@ -832,7 +848,7 @@ async def resimulate(
         inputs_path,
         outputs_path,
         rounds,
-        agent_count,
+        init_populations_list,
         emit,
         enable_web_search,
         objective or "",

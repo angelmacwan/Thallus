@@ -18,7 +18,18 @@ export default function Home() {
 	const [objective, setObjective] = useState('');
 	const [files, setFiles] = useState([]);
 	const [rounds, setRounds] = useState(3);
-	const [agentSlider, setAgentSlider] = useState(0);
+	const [initPopulations, setInitPopulations] = useState({
+		metro_city: false,
+		tier_1_city: false,
+		tier_2_city: false,
+		small_city: false,
+		village: false,
+		tech_workers: false,
+		blue_collar_workers: false,
+		kids: false,
+		adults: false,
+		elderly: false,
+	});
 	const [uploading, setUploading] = useState(false);
 	const [dragging, setDragging] = useState(false);
 	const [enableWebSearch, setEnableWebSearch] = useState(false);
@@ -33,7 +44,7 @@ export default function Home() {
 			.catch(() => {});
 	}, []);
 
-	const getAgentCount = (v) => [0, 50, 150, 300, 500][v];
+
 
 	const handleCreate = async (e) => {
 		e.preventDefault();
@@ -44,8 +55,8 @@ export default function Home() {
 		try {
 			const formData = new FormData();
 			formData.append('rounds', rounds);
-			const agentCount = getAgentCount(agentSlider);
-			if (agentCount > 0) formData.append('agent_count', agentCount);
+			const selectedPops = Object.keys(initPopulations).filter(k => initPopulations[k]);
+			if (selectedPops.length > 0) formData.append('init_populations', JSON.stringify(selectedPops));
 			if (title.trim()) formData.append('title', title.trim());
 			if (objective.trim())
 				formData.append('objective', objective.trim());
@@ -372,68 +383,40 @@ export default function Home() {
 									</div>
 								</label>
 
-								{/* Agent Count Slider */}
+								{/* Initial Populations Checkboxes */}
 								<div
 									className="form-group"
 									style={{ margin: 0 }}
 								>
 									<label className="form-label">
-										Force Add Agents
+										Initial Population (Optional)
 									</label>
-									<div style={{ paddingTop: '0.5rem' }}>
-										<input
-											type="range"
-											min="0"
-											max="4"
-											step="1"
-											value={agentSlider}
-											onChange={(e) =>
-												setAgentSlider(
-													Number(e.target.value),
-												)
-											}
-											style={{
-												width: '100%',
-												cursor: 'pointer',
-											}}
-										/>
-										<div
-											style={{
-												display: 'flex',
-												justifyContent: 'space-between',
-												marginTop: '0.4rem',
-												fontSize: '0.7rem',
-												color: 'var(--text-secondary)',
-											}}
-										>
-											<span
-												style={{
-													fontWeight:
-														agentSlider === 0
-															? 600
-															: 400,
-												}}
-											>
-												Natural
-											</span>
-											<span>50</span>
-											<span>150</span>
-											<span>300</span>
-											<span>500</span>
-										</div>
-										<div
-											style={{
-												marginTop: '0.5rem',
-												textAlign: 'center',
-												fontSize: '0.82rem',
-												fontWeight: 600,
-												color: 'var(--accent-color)',
-											}}
-										>
-											{agentSlider === 0
-												? 'Generate naturally from input'
-												: `Force inflate to ${getAgentCount(agentSlider)} agents`}
-										</div>
+									<p style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', margin: '0.3rem 0 0.8rem', lineHeight: 1.4 }}>
+										Select pre-defined populations to seed the simulation.
+									</p>
+									<div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+										{Object.entries({
+											metro_city: 'Metro City',
+											tier_1_city: 'Tier 1 City',
+											tier_2_city: 'Tier 2 City',
+											small_city: 'Small City',
+											village: 'Village',
+											tech_workers: 'Tech Workers',
+											blue_collar_workers: 'Blue Collar Workers',
+											kids: 'Kids',
+											adults: 'Adults',
+											elderly: 'Elderly',
+										}).map(([key, label]) => (
+											<label key={key} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.82rem', cursor: 'pointer' }}>
+												<input
+													type="checkbox"
+													checked={initPopulations[key]}
+													onChange={(e) => setInitPopulations({ ...initPopulations, [key]: e.target.checked })}
+													style={{ accentColor: 'var(--accent-color)', cursor: 'pointer' }}
+												/>
+												{label}
+											</label>
+										))}
 									</div>
 								</div>
 							</div>
