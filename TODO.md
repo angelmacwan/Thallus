@@ -15,3 +15,7 @@
     - Overall i need to improve the quality of the simulations
     - right now i can just upload files to chatgpt or claude and ask it how the public will respond and it almost always woorks. You need to find a way that sets this product (thallus) apart
     - agents in the sim should act more like actual people, the sim quality matter a lot
+    - i see you have already implimented some of it
+    - we can definatelt improve the quality of agents we generate as well as their interactions
+    - OASIS and camel tools use seed data and extracts entities and relations and uses that to generate ontology and behaviour of agents
+    - so the MD fils for population should include agents info like name job hobbies personality type and much more
